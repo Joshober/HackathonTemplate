@@ -26,18 +26,11 @@ export default function StudentSearchPage() {
   const t = getTranslations(language);
 
   useEffect(() => {
-    // Check for existing location permission
-    if ('permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-        setLocationPermission(result.state);
-        // Auto-request location if already granted
-        if (result.state === 'granted') {
-          requestLocation();
-        }
-      }).catch(() => {
-        // Permissions API not supported, just keep default state
-      });
-    }
+    // Set default location to Graceland University
+    setUserLocation({ lat: 40.6231, lng: -93.7138 });
+    
+    // Automatically request location on page load
+    requestLocation();
   }, []);
 
   const requestLocation = () => {
@@ -240,6 +233,14 @@ export default function StudentSearchPage() {
 
                 {/* Buildings List */}
                 <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
+                  <div className="bg-blue-50 rounded-lg p-3 mb-3">
+                    <p className="text-xs text-blue-700 font-medium">
+                      📍 {filteredBuildings.length} building{filteredBuildings.length !== 1 ? 's' : ''} found
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Click on a building to see it on the map
+                    </p>
+                  </div>
                   {filteredBuildings.map((building) => (
                     <BuildingCard
                       key={building.id}
