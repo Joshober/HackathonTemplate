@@ -6,11 +6,15 @@ class Item:
     def __init__(self, title: str, description: str, userId: str, 
                  _id: Optional[str] = None, 
                  createdAt: Optional[datetime] = None,
-                 updatedAt: Optional[datetime] = None):
+                 updatedAt: Optional[datetime] = None,
+                 imageUrls: Optional[list] = None,
+                 videoUrls: Optional[list] = None):
         self._id = _id
         self.userId = userId
         self.title = title
         self.description = description
+        self.imageUrls = imageUrls or []
+        self.videoUrls = videoUrls or []
         self.createdAt = createdAt or datetime.utcnow()
         self.updatedAt = updatedAt or datetime.utcnow()
     
@@ -20,6 +24,8 @@ class Item:
             'userId': self.userId,
             'title': self.title,
             'description': self.description,
+            'imageUrls': self.imageUrls,
+            'videoUrls': self.videoUrls,
             'createdAt': self.createdAt.isoformat() if isinstance(self.createdAt, datetime) else self.createdAt,
             'updatedAt': self.updatedAt.isoformat() if isinstance(self.updatedAt, datetime) else self.updatedAt,
         }
@@ -34,7 +40,9 @@ class Item:
             title=data['title'],
             description=data['description'],
             userId=data['userId'],
-            _id=str(data['_id']) if '_id' in data else None
+            _id=str(data['_id']) if '_id' in data else None,
+            imageUrls=data.get('imageUrls', []),
+            videoUrls=data.get('videoUrls', [])
         )
         
         if 'createdAt' in data:

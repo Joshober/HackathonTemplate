@@ -1,10 +1,35 @@
 'use client';
 
 import Link from 'next/link';
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useEffect, useState } from 'react';
+import { getCurrentUser, logout, User } from '@/lib/auth';
 
 export default function Navbar() {
-  const { user, isLoading } = useUser();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+    } catch (error) {
+      console.error('Error loading user:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   return (
     <nav className="bg-white shadow-md">
@@ -39,21 +64,21 @@ export default function Navbar() {
                 <span className="text-gray-700 text-sm">
                   {user.name || user.email}
                 </span>
-                <a
-                  href="/api/auth/logout"
+                <button
+                  onClick={handleLogout}
                   className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700"
                 >
                   Logout
-                </a>
+                </button>
               </>
             )}
             {!isLoading && !user && (
-              <a
-                href="/api/auth/login"
+              <Link
+                href="/"
                 className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
               >
                 Login
-              </a>
+              </Link>
             )}
           </div>
         </div>

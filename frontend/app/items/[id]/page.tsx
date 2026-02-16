@@ -1,44 +1,54 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
-import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getCurrentUser, login, User } from '@/lib/auth';
+import { useRouter, useParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import ItemForm from '@/components/ItemForm';
 import { api, Item } from '@/lib/api';
 
 export default function EditItemPage() {
-  const { user, isLoading } = useUser();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const params = useParams();
   const [item, setItem] = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/api/auth/login');
-    }
-  }, [user, isLoading, router]);
+    loadUser();
+  }, []);
 
-  useEffect(() => {
-    const loadItem = async () => {
-      if (params.id && typeof params.id === 'string') {
-        try {
-          const data = await api.getItem(params.id);
-          setItem(data);
-        } catch (err) {
-          console.error('Failed to load item:', err);
-          router.push('/dashboard');
-        } finally {
-          setLoading(false);
-        }
+  const loadUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        await login();
+        return;
       }
-    };
-
-    if (user) {
+      setUser(currentUser);
       loadItem();
+    } catch (error) {
+      console.error('Error loading user:', error);
+      await login();
+    } finally {
+      setIsLoading(false);
     }
-  }, [params.id, user, router]);
+  };
+
+  const loadItem = async () => {
+    if (params.id && typeof params.id === 'string') {
+      try {
+        const data = await api.getItem(params.id);
+        setItem(data);
+      } catch (err) {
+        console.error('Failed to load item:', err);
+        router.push('/dashboard');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
 
   if (isLoading || loading || !user) {
     return (

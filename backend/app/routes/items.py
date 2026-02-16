@@ -1,12 +1,23 @@
 from flask import Blueprint, request, jsonify
+from werkzeug.utils import secure_filename
 from app.db.mongodb import get_db
 from app.models.item import Item
-from app.routes.auth import require_auth
+from app.routes.auth_backend import require_auth
+from app.config.cloudinary_config import upload_image, upload_video
 from datetime import datetime
 from bson import ObjectId
 from bson.errors import InvalidId
 
 bp = Blueprint('items', __name__)
+
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'webm', 'ogg', 'mov', 'avi'}
+
+def allowed_image_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+def allowed_video_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
 
 @bp.route('/items', methods=['GET'])
 @require_auth
@@ -67,18 +78,45 @@ def get_item(item_id, user_id):
 @bp.route('/items', methods=['POST'])
 @require_auth
 def create_item(user_id):
-    """Create a new item"""
+    """Create a new item with optional images and videos"""
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
-        title = data.get('title')
-        description = data.get('description')
+        # Handle both JSON and form-data
+        if request.is_json:
+            data = request.get_json()
+            title = data.get('title')
+            description = data.get('description')
+            imageUrls = data.get('imageUrls', [])
+            videoUrls = data.get('videoUrls', [])
+        else:
+            data = request.form
+            title = data.get('title')
+            description = data.get('description')
+            imageUrls = []
+            videoUrls = []
         
         if not title or not description:
             return jsonify({'error': 'Title and description are required'}), 400
+        
+        # Handle file uploads
+        if 'images' in request.files:
+            files = request.files.getlist('images')
+            for file in files:
+                if file and file.filename and allowed_image_file(file.filename):
+                    try:
+                        image_url = upload_image(file, folder='items')
+                        imageUrls.append(image_url)
+                    except Exception as e:
+                        return jsonify({'error': f'Failed to upload image: {str(e)}'}), 500
+        
+        if 'videos' in request.files:
+            files = request.files.getlist('videos')
+            for file in files:
+                if file and file.filename and allowed_video_file(file.filename):
+                    try:
+                        video_url = upload_video(file, folder='items')
+                        videoUrls.append(video_url)
+                    except Exception as e:
+                        return jsonify({'error': f'Failed to upload video: {str(e)}'}), 500
         
         db = get_db()
         items_collection = db.items
@@ -89,6 +127,8 @@ def create_item(user_id):
             'userId': user_id,
             'title': title,
             'description': description,
+            'imageUrls': imageUrls,
+            'videoUrls': videoUrls,
             'createdAt': now,
             'updatedAt': now
         }
@@ -105,13 +145,8 @@ def create_item(user_id):
 @bp.route('/items/<item_id>', methods=['PUT'])
 @require_auth
 def update_item(item_id, user_id):
-    """Update an existing item"""
+    """Update an existing item with optional images and videos"""
     try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
         db = get_db()
         items_collection = db.items
         
@@ -126,12 +161,53 @@ def update_item(item_id, user_id):
         if not existing_item:
             return jsonify({'error': 'Item not found'}), 404
         
+        # Handle both JSON and form-data
+        if request.is_json:
+            data = request.get_json()
+        else:
+            data = request.form
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
         # Prepare update data
         update_data = {'updatedAt': datetime.utcnow()}
         if 'title' in data:
             update_data['title'] = data['title']
         if 'description' in data:
             update_data['description'] = data['description']
+        
+        # Handle image uploads
+        imageUrls = existing_item.get('imageUrls', [])
+        if 'images' in request.files:
+            files = request.files.getlist('images')
+            for file in files:
+                if file and file.filename and allowed_image_file(file.filename):
+                    try:
+                        image_url = upload_image(file, folder='items')
+                        imageUrls.append(image_url)
+                    except Exception as e:
+                        return jsonify({'error': f'Failed to upload image: {str(e)}'}), 500
+        elif 'imageUrls' in data:
+            # Allow setting imageUrls directly from JSON
+            imageUrls = data.get('imageUrls', [])
+        update_data['imageUrls'] = imageUrls
+        
+        # Handle video uploads
+        videoUrls = existing_item.get('videoUrls', [])
+        if 'videos' in request.files:
+            files = request.files.getlist('videos')
+            for file in files:
+                if file and file.filename and allowed_video_file(file.filename):
+                    try:
+                        video_url = upload_video(file, folder='items')
+                        videoUrls.append(video_url)
+                    except Exception as e:
+                        return jsonify({'error': f'Failed to upload video: {str(e)}'}), 500
+        elif 'videoUrls' in data:
+            # Allow setting videoUrls directly from JSON
+            videoUrls = data.get('videoUrls', [])
+        update_data['videoUrls'] = videoUrls
         
         # Update item
         items_collection.update_one(

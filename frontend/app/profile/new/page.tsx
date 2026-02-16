@@ -1,20 +1,35 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useEffect, useState } from 'react';
+import { getCurrentUser, login, User } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import ProfileForm from '@/components/ProfileForm';
 
 export default function NewProfilePage() {
-  const { user, isLoading } = useUser();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/api/auth/login');
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        await login();
+        return;
+      }
+      setUser(currentUser);
+    } catch (error) {
+      console.error('Error loading user:', error);
+      await login();
+    } finally {
+      setIsLoading(false);
     }
-  }, [user, isLoading, router]);
+  };
 
   if (isLoading || !user) {
     return (

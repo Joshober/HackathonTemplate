@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from werkzeug.utils import secure_filename
 from app.db.mongodb import get_db
 from app.models.profile import Profile
-from app.routes.auth import require_auth
+from app.routes.auth_backend import require_auth, get_user_info_from_request as get_user_info_from_token
 from app.config.cloudinary_config import upload_image, delete_image
 from datetime import datetime
 from bson import ObjectId
@@ -19,7 +19,7 @@ def allowed_file(filename):
 @bp.route('/profiles', methods=['GET'])
 @require_auth
 def get_profile(user_id):
-    """Get profile for the authenticated user"""
+    """Get profile for the authenticated user, auto-create if doesn't exist"""
     try:
         db = get_db()
         profiles_collection = db.profiles
@@ -27,8 +27,47 @@ def get_profile(user_id):
         # Find profile for this user
         profile = profiles_collection.find_one({'userId': user_id})
         
+        # If profile doesn't exist, auto-create it from Auth0 user data
         if not profile:
-            return jsonify({'error': 'Profile not found'}), 404
+            now = datetime.utcnow()
+            display_name = 'User'
+            profile_image_url = None
+            
+            # Try to get user info from token
+            try:
+                user_info = get_user_info_from_token()
+                display_name = (
+                    user_info.get('name') or 
+                    user_info.get('nickname') or 
+                    (user_info.get('email', '').split('@')[0] if user_info.get('email') else None) or
+                    'User'
+                )
+                profile_image_url = user_info.get('picture') or None
+            except Exception as e:
+                # If we can't get user info, use defaults
+                print(f"Warning: Could not get user info from token: {str(e)}")
+                # Extract username from user_id if it's in email format
+                if '@' in user_id:
+                    display_name = user_id.split('@')[0]
+                elif '|' in user_id:
+                    # Auth0 user ID format: auth0|123456 or google-oauth2|123456
+                    display_name = user_id.split('|')[-1][:10]  # Use last part of ID
+            
+            # Create profile with available info
+            new_profile = {
+                'userId': user_id,
+                'displayName': display_name,
+                'bio': '',  # Empty bio, user can fill it later
+                'profileImageUrl': profile_image_url,
+                'createdAt': now,
+                'updatedAt': now
+            }
+            
+            try:
+                result = profiles_collection.insert_one(new_profile)
+                profile = profiles_collection.find_one({'_id': result.inserted_id})
+            except Exception as e:
+                return jsonify({'error': f'Failed to create profile: {str(e)}'}), 500
         
         # Convert ObjectId to string and format dates
         profile['_id'] = str(profile['_id'])
@@ -39,7 +78,11 @@ def get_profile(user_id):
         
         return jsonify(profile), 200
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in get_profile: {str(e)}")
+        print(error_details)
+        return jsonify({'error': str(e), 'details': error_details if os.getenv('FLASK_ENV') == 'development' else None}), 500
 
 @bp.route('/profiles', methods=['POST'])
 @require_auth

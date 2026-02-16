@@ -72,6 +72,52 @@ export default function ItemList() {
                 {item.title}
               </h3>
               <p className="text-gray-600 mb-2">{item.description}</p>
+              
+              {/* Display Images */}
+              {item.imageUrls && item.imageUrls.length > 0 && (
+                <div className="mb-2">
+                  <div className="flex flex-wrap gap-2">
+                    {item.imageUrls.slice(0, 3).map((url, index) => (
+                      <div key={index} className="relative w-20 h-20 rounded overflow-hidden border border-gray-300">
+                        <img
+                          src={url}
+                          alt={`${item.title} image ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                    {item.imageUrls.length > 3 && (
+                      <div className="w-20 h-20 rounded border border-gray-300 flex items-center justify-center bg-gray-100 text-gray-500 text-sm">
+                        +{item.imageUrls.length - 3}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Display Videos */}
+              {item.videoUrls && item.videoUrls.length > 0 && (
+                <div className="mb-2">
+                  <div className="flex flex-wrap gap-2">
+                    {item.videoUrls.slice(0, 2).map((url, index) => (
+                      <div key={index} className="relative w-32 h-20 rounded overflow-hidden border border-gray-300 bg-black">
+                        <video
+                          src={url}
+                          className="w-full h-full object-contain"
+                          controls
+                          preload="metadata"
+                        />
+                      </div>
+                    ))}
+                    {item.videoUrls.length > 2 && (
+                      <div className="w-32 h-20 rounded border border-gray-300 flex items-center justify-center bg-gray-100 text-gray-500 text-sm">
+                        +{item.videoUrls.length - 2}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
               {item.createdAt && (
                 <p className="text-sm text-gray-400">
                   Created: {new Date(item.createdAt).toLocaleDateString()}

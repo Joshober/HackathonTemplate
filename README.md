@@ -26,6 +26,7 @@ A full-stack hackathon template featuring Next.js frontend, Flask backend, Auth0
 - **Database**: MongoDB Atlas integration
 - **Image Storage**: Cloudinary integration for profile images
 - **User Profiles**: Create and manage user profiles with images
+- **AI Chatbot**: OpenRouter-powered chatbot accessible from all pages
 - **Containerization**: Docker and Docker Compose setup
 - **CRUD Operations**: Full Create, Read, Update, Delete functionality for Items and Profiles
 
@@ -37,6 +38,7 @@ A full-stack hackathon template featuring Next.js frontend, Flask backend, Auth0
 - Auth0 account (free tier available)
 - MongoDB Atlas account (free tier available)
 - Cloudinary account (free tier available)
+- OpenRouter account (free tier available) - for AI chatbot
 
 ## Setup Instructions
 
@@ -101,7 +103,15 @@ cd HackathonTemplate
 
 Note: Keep your API Secret secure and never commit it to version control.
 
-### 5. Environment Variables
+### 5. OpenRouter Configuration
+
+1. Sign up for a free OpenRouter account at https://openrouter.ai
+2. Get your API key:
+   - Go to https://openrouter.ai/keys
+   - Create a new API key
+   - Copy the key (you'll need it for the backend environment variables)
+
+### 6. Environment Variables
 
 **Quick Start:** Copy the example files and fill in your values:
 - Root: Copy `.env.example` to `.env`
@@ -141,6 +151,7 @@ CORS_ORIGINS=http://localhost:3000
 CLOUDINARY_CLOUD_NAME=YOUR_CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY=YOUR_CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET=YOUR_CLOUDINARY_API_SECRET
+OPENROUTER_API_KEY=YOUR_OPENROUTER_API_KEY
 ```
 
 #### Root .env (for Docker Compose)
@@ -167,9 +178,10 @@ CORS_ORIGINS=http://localhost:3000
 CLOUDINARY_CLOUD_NAME=YOUR_CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY=YOUR_CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET=YOUR_CLOUDINARY_API_SECRET
+OPENROUTER_API_KEY=YOUR_OPENROUTER_API_KEY
 ```
 
-### 5. Running with Docker (Recommended)
+### 7. Running with Docker (Recommended)
 
 ```bash
 # Build and start all services
@@ -189,7 +201,7 @@ The application will be available at:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5000
 
-### 7. Running Locally (Without Docker)
+### 8. Running Locally (Without Docker)
 
 #### Frontend
 
@@ -230,7 +242,8 @@ HackathonTemplate/
 │   │   ├── ItemForm.tsx      # Create/Edit item form
 │   │   ├── ItemList.tsx      # Display items list
 │   │   ├── ProfileForm.tsx   # Create/Edit profile form
-│   │   ├── ProfileCard.tsx  # Display profile card
+│   │   ├── ProfileCard.tsx   # Display profile card
+│   │   ├── Chatbot.tsx       # AI chatbot component
 │   │   └── Navbar.tsx        # Navigation with auth
 │   ├── lib/                  # Utilities
 │   │   ├── auth0.ts          # Auth0 helpers
@@ -244,6 +257,7 @@ HackathonTemplate/
 │   │   ├── routes/
 │   │   │   ├── items.py      # Items CRUD endpoints
 │   │   │   ├── profiles.py   # Profile CRUD endpoints
+│   │   │   ├── chat.py       # OpenRouter chat endpoint
 │   │   │   ├── auth.py       # Auth verification
 │   │   │   └── health.py     # Health check endpoint
 │   │   ├── models/
@@ -296,6 +310,25 @@ All profile endpoints require authentication via Bearer token in the Authorizati
 - `POST /api/profiles/image` - Upload profile image only
   - `image` (required): Image file
 
+### Chat
+
+- `POST /api/chat` - Send chat message to AI assistant (no authentication required)
+  ```json
+  {
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ],
+    "model": "openai/gpt-3.5-turbo"
+  }
+  ```
+  Returns:
+  ```json
+  {
+    "message": "Assistant response",
+    "usage": {...}
+  }
+  ```
+
 ## Usage
 
 1. Start the application (Docker or local)
@@ -305,6 +338,7 @@ All profile endpoints require authentication via Bearer token in the Authorizati
 5. Create your profile with an image (click "Create Profile" in the dashboard)
 6. Create, view, edit, and delete items
 7. Edit your profile anytime from the dashboard or navigation
+8. Click the chat button (bottom-right) to interact with the AI assistant
 
 ## Development
 
@@ -340,6 +374,13 @@ All profile endpoints require authentication via Bearer token in the Authorizati
 - Check that image file size is under 5MB
 - Ensure image format is supported (PNG, JPG, GIF, WEBP)
 - Check Cloudinary dashboard for upload limits on free tier
+
+### OpenRouter/Chatbot Issues
+
+- Verify OpenRouter API key is set in backend `.env` file
+- Check that the backend is running and accessible
+- Ensure the API key has sufficient credits on OpenRouter
+- Check backend logs for detailed error messages
 
 ### Docker Issues
 

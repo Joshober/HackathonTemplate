@@ -1,45 +1,55 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getCurrentUser, login, User } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import ProfileForm from '@/components/ProfileForm';
 import { api, Profile } from '@/lib/api';
 
 export default function EditProfilePage() {
-  const { user, isLoading } = useUser();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/api/auth/login');
-    }
-  }, [user, isLoading, router]);
+    loadUser();
+  }, []);
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      if (user) {
-        try {
-          const data = await api.getProfile();
-          setProfile(data);
-        } catch (err) {
-          if (err instanceof Error && err.message.includes('404')) {
-            router.push('/profile/new');
-          }
-        } finally {
-          setLoading(false);
-        }
+  const loadUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        await login();
+        return;
       }
-    };
-
-    if (user) {
+      setUser(currentUser);
       loadProfile();
+    } catch (error) {
+      console.error('Error loading user:', error);
+      await login();
+    } finally {
+      setIsLoading(false);
     }
-  }, [user, router]);
+  };
+
+  const loadProfile = async () => {
+    if (!user) return;
+    
+    try {
+      const data = await api.getProfile();
+      setProfile(data);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('404')) {
+        router.push('/profile/new');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (isLoading || loading || !user) {
     return (
@@ -57,7 +67,6 @@ export default function EditProfilePage() {
   }
 
   const handleProfileUpdate = async () => {
-    // Reload profile and redirect to profile page
     try {
       router.push('/profile');
     } catch (err) {

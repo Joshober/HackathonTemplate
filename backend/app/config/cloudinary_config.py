@@ -37,6 +37,22 @@ def upload_image(file, folder='profiles'):
     except Exception as e:
         raise Exception(f"Failed to upload image: {str(e)}")
 
+def upload_video(file, folder='items'):
+    """Upload a video to Cloudinary"""
+    try:
+        result = cloudinary.uploader.upload(
+            file,
+            folder=folder,
+            resource_type='video',
+            transformation=[
+                {'quality': 'auto'},
+                {'fetch_format': 'auto'}
+            ]
+        )
+        return result.get('secure_url')
+    except Exception as e:
+        raise Exception(f"Failed to upload video: {str(e)}")
+
 def delete_image(public_id):
     """Delete an image from Cloudinary"""
     try:

@@ -2,6 +2,18 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Environment Variables
+
+The frontend requires the backend API URL. Create a `.env.local` file in the `frontend` directory:
+
+```
+NEXT_PUBLIC_API_URL=http://localhost:5000
+```
+
+The OpenRouter API key is now configured in the backend (see main README).
+
+### Running the Development Server
+
 First, run the development server:
 
 ```bash

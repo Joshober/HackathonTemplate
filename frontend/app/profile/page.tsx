@@ -1,8 +1,8 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getCurrentUser, login, User } from '@/lib/auth';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import ProfileForm from '@/components/ProfileForm';
 import { api, Profile } from '@/lib/api';
@@ -10,52 +10,77 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 export default function ProfilePage() {
-  const { user, isLoading } = useUser();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/api/auth/login');
+    loadUser();
+  }, []);
+
+  const loadUser = async () => {
+    try {
+      const currentUser = await getCurrentUser();
+      if (!currentUser) {
+        await login();
+        return;
+      }
+      setUser(currentUser);
+      loadProfile();
+    } catch (error) {
+      console.error('Error loading user:', error);
+      await login();
+    } finally {
+      setIsLoading(false);
     }
-  }, [user, isLoading, router]);
+  };
 
   useEffect(() => {
-    const loadProfile = async () => {
-      if (user) {
-        try {
-          setLoading(true);
-          const data = await api.getProfile();
-          setProfile(data);
-        } catch (err) {
-          if (err instanceof Error && err.message.includes('404')) {
-            // Profile doesn't exist yet
-            setProfile(null);
-          }
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
     if (user) {
       loadProfile();
     }
   }, [user]);
 
+  const loadProfile = async () => {
+    if (!user) return;
+    
+    try {
+      setLoading(true);
+      const data = await api.getProfile();
+      setProfile(data);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      console.error('Error loading profile:', err);
+      
+      if (errorMessage.includes('404') || errorMessage.includes('not found') || errorMessage.includes('500')) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const retryData = await api.getProfile();
+          setProfile(retryData);
+        } catch (retryErr) {
+          console.error('Retry failed:', retryErr);
+          setProfile(null);
+        }
+      } else {
+        setProfile(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleProfileUpdate = async () => {
-    // Reload profile after update
     if (user) {
       try {
         const data = await api.getProfile();
         setProfile(data);
         setEditing(false);
       } catch (err) {
-        // If profile was just created, it should exist now
         if (err instanceof Error && err.message.includes('404')) {
-          // Profile still doesn't exist, stay in edit mode
+          // Profile still doesn't exist
         }
       }
     }
