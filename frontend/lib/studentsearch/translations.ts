@@ -2,8 +2,8 @@ import { Language } from '../types';
 
 export const translations = {
   en: {
-    title: 'Campus Navigator',
-    subtitle: 'Find your way around campus',
+    title: 'Graceland University',
+    subtitle: 'Campus Navigator',
     buildings: 'Buildings',
     myClasses: 'My Classes',
     search: 'Search buildings...',
@@ -28,8 +28,8 @@ export const translations = {
     addClasses: 'Add your class schedule to see navigation options'
   },
   es: {
-    title: 'Navegador del Campus',
-    subtitle: 'Encuentra tu camino por el campus',
+    title: 'Universidad Graceland',
+    subtitle: 'Navegador del Campus',
     buildings: 'Edificios',
     myClasses: 'Mis Clases',
     search: 'Buscar edificios...',
