@@ -30,6 +30,12 @@ export default function Navbar() {
                 >
                   Profile
                 </Link>
+                <Link
+                  href="/studentsearch"
+                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Student Search
+                </Link>
                 <span className="text-gray-700 text-sm">
                   {user.name || user.email}
                 </span>
