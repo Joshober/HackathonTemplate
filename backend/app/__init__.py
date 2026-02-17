@@ -29,12 +29,14 @@ def create_app():
     init_cloudinary()
     
     # Register blueprints
-    from app.routes import items, health, profiles, chat, auth_backend, okrs
+    from app.routes import items, health, profiles, chat, auth_backend, okrs, realtime, files
     app.register_blueprint(items.bp, url_prefix='/api')
     app.register_blueprint(profiles.bp, url_prefix='/api')
     app.register_blueprint(chat.bp, url_prefix='/api')
     app.register_blueprint(auth_backend.bp, url_prefix='/api')
     app.register_blueprint(okrs.bp, url_prefix='/api')
+    app.register_blueprint(realtime.bp, url_prefix='/api')
+    app.register_blueprint(files.bp, url_prefix='/api')
     app.register_blueprint(health.bp)
     
     return app

@@ -86,9 +86,10 @@ function convertToObjectiveTree(apiObj: ObjectiveTree, allObjectives: ApiObjecti
 
 interface ObjectivesViewProps {
   onUpdateProgress?: (objective: Objective) => void;
+  onObjectiveClick?: (objectiveId: string) => void;
 }
 
-export function ObjectivesView({ onUpdateProgress }: ObjectivesViewProps) {
+export function ObjectivesView({ onUpdateProgress, onObjectiveClick }: ObjectivesViewProps) {
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -165,7 +166,13 @@ export function ObjectivesView({ onUpdateProgress }: ObjectivesViewProps) {
         <Card className={`${depth > 0 ? 'ml-8' : ''} hover:shadow-md transition-shadow`}>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3 flex-1">
+              <div 
+                className="flex items-start gap-3 flex-1 cursor-pointer"
+                onClick={() => {
+                  toggleNode(objective.id);
+                  onObjectiveClick?.(objective.id);
+                }}
+              >
                 <Button
                   variant="ghost"
                   size="sm"
@@ -215,13 +222,24 @@ export function ObjectivesView({ onUpdateProgress }: ObjectivesViewProps) {
                   <Button 
                     variant="ghost" 
                     size="sm"
-                    onClick={() => onUpdateProgress(objective)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpdateProgress(objective);
+                    }}
                     title="Update Progress"
                   >
                     <RefreshCw className="h-4 w-4" />
                   </Button>
                 )}
-                <Button variant="ghost" size="sm" title="Edit Objective">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  title="Edit Objective"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onObjectiveClick?.(objective.id);
+                  }}
+                >
                   <Edit className="h-4 w-4" />
                 </Button>
               </div>

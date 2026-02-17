@@ -24,6 +24,8 @@ export interface Profile {
 export type ObjectiveLevel = 'strategic' | 'functional' | 'tactical';
 export type ObjectiveTimeline = 'annual' | 'quarterly';
 
+export type WorkflowState = 'draft' | 'submitted' | 'under_review' | 'approved' | 'active' | 'completed' | 'archived';
+
 export interface Objective {
   _id?: string;
   title: string;
@@ -35,6 +37,56 @@ export interface Objective {
   quarter?: string;
   parentObjectiveId?: string | null;
   division?: string;
+  workflowState?: WorkflowState;
+  workflowHistory?: Array<{
+    state: string;
+    userId: string;
+    timestamp: string;
+    reason?: string;
+    comment?: string;
+  }>;
+  permissions?: {
+    viewOnly?: string[];
+    editKeyResults?: string[];
+    editObjective?: string[];
+    fullControl?: string[];
+  };
+  riskFlag?: boolean;
+  milestones?: Array<{
+    title: string;
+    date: string;
+    status: 'pending' | 'in_progress' | 'completed';
+  }>;
+  dependencies?: Array<{
+    objectiveId: string;
+    type: 'upstream' | 'downstream' | 'blocks' | 'depends_on' | 'related';
+    impact: 'high' | 'medium' | 'low';
+    progress: number;
+    isAtRisk: boolean;
+    linkedAt?: string;
+    linkedBy?: string;
+  }>;
+  files?: Array<{
+    fileId: string;
+    name: string;
+    url: string;
+    size: number;
+    mimeType: string;
+    uploadedBy: string;
+    uploadedAt: string;
+    associatedWith: 'objective' | 'key_result';
+    keyResultId?: string;
+  }>;
+  pinnedFields?: {
+    theme?: string;
+    roadmap?: string;
+    customerSegments?: string;
+    value?: string;
+    documents?: string;
+    overallNecessity?: string;
+    deliveryProgress?: number;
+  };
+  lastModified?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -53,7 +105,24 @@ export interface KeyResult {
   currentValue?: string;
   unit?: string;
   score?: number | null;
-  notes?: Array<{ text?: string; createdAt?: string }>;
+  ownerId?: string;
+  partnerId?: string;
+  expectedEoQScore?: number;
+  notes?: Array<{
+    text: string;
+    date: string;
+    userId: string;
+    createdAt: string;
+  }>;
+  scoreHistory?: Array<{
+    score: number;
+    timestamp: string;
+    userId: string;
+    note?: string;
+  }>;
+  targetDate?: string;
+  velocity?: number;
+  lastModified?: string;
   createdAt?: string;
   lastUpdatedAt?: string;
 }
@@ -363,5 +432,179 @@ export const api = {
 
   async deleteKeyResult(id: string): Promise<void> {
     return fetchWithAuth(`/api/key-results/${id}`, { method: 'DELETE' });
+  },
+
+  // Workflow API
+  async submitObjective(id: string, data?: { reason?: string; comment?: string }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/workflow/submit`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  },
+
+  async approveObjective(id: string, data?: { reason?: string; comment?: string }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/workflow/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  },
+
+  async rejectObjective(id: string, data: { reason: string; comment?: string }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/workflow/reject`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async requestChanges(id: string, data: { reason: string; comment?: string }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/workflow/request-changes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getWorkflowHistory(id: string): Promise<any[]> {
+    return fetchWithAuth(`/api/objectives/${id}/workflow/history`);
+  },
+
+  // Permissions API
+  async getPermissions(id: string): Promise<{
+    permissionLevel: string;
+    canView: boolean;
+    canEditKR: boolean;
+    canEditObjective: boolean;
+    canDelete: boolean;
+    canChangeWorkflow: boolean;
+  }> {
+    return fetchWithAuth(`/api/objectives/${id}/permissions`);
+  },
+
+  async updatePermissions(id: string, permissions: any): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/permissions`, {
+      method: 'POST',
+      body: JSON.stringify({ permissions }),
+    });
+  },
+
+  // Audit API
+  async getObjectiveAudit(id: string): Promise<any[]> {
+    return fetchWithAuth(`/api/objectives/${id}/audit`);
+  },
+
+  async getKeyResultAudit(id: string): Promise<any[]> {
+    return fetchWithAuth(`/api/key-results/${id}/audit`);
+  },
+
+  // Real-time API
+  async getObjectiveUpdates(id: string, since?: string): Promise<{
+    hasUpdates: boolean;
+    lastModified: string;
+    objectiveUpdates: any;
+    keyResultUpdates: any[];
+  }> {
+    const params = since ? `?since=${encodeURIComponent(since)}` : '';
+    return fetchWithAuth(`/api/objectives/${id}/updates${params}`);
+  },
+
+  // Dependencies API
+  async getDependencies(id: string): Promise<{ upstream: any[]; downstream: any[] }> {
+    return fetchWithAuth(`/api/objectives/${id}/dependencies`);
+  },
+
+  async addDependency(id: string, data: {
+    objectiveId: string;
+    type?: string;
+    impact?: string;
+    progress?: number;
+    isAtRisk?: boolean;
+  }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/dependencies`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateDependency(id: string, depId: string, data: {
+    progress?: number;
+    isAtRisk?: boolean;
+    impact?: string;
+    type?: string;
+  }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/dependencies/${depId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async removeDependency(id: string, depId: string): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/dependencies/${depId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async searchObjectives(params: {
+    q?: string;
+    department?: string;
+    level?: string;
+    fiscalYear?: number;
+  }): Promise<Objective[]> {
+    const search = new URLSearchParams();
+    if (params.q) search.set('q', params.q);
+    if (params.department) search.set('department', params.department);
+    if (params.level) search.set('level', params.level);
+    if (params.fiscalYear) search.set('fiscalYear', String(params.fiscalYear));
+    const q = search.toString();
+    return fetchWithAuth(`/api/objectives/search${q ? `?${q}` : ''}`);
+  },
+
+  // Files API
+  async uploadFile(objectiveId: string, file: File, data?: {
+    associatedWith?: 'objective' | 'key_result';
+    keyResultId?: string;
+  }): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (data?.associatedWith) formData.append('associatedWith', data.associatedWith);
+    if (data?.keyResultId) formData.append('keyResultId', data.keyResultId);
+    return fetchWithAuth(`/api/objectives/${objectiveId}/files`, {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  async listFiles(objectiveId: string): Promise<any[]> {
+    return fetchWithAuth(`/api/objectives/${objectiveId}/files`);
+  },
+
+  async getFileMetadata(fileId: string): Promise<any> {
+    return fetchWithAuth(`/api/files/${fileId}`);
+  },
+
+  async downloadFile(fileId: string): Promise<{ downloadUrl: string; filename: string }> {
+    return fetchWithAuth(`/api/files/${fileId}/download`);
+  },
+
+  async getFilePreview(fileId: string): Promise<{ previewUrl: string }> {
+    return fetchWithAuth(`/api/files/${fileId}/preview`);
+  },
+
+  async deleteFile(fileId: string): Promise<void> {
+    return fetchWithAuth(`/api/files/${fileId}`, { method: 'DELETE' });
+  },
+
+  // Pinned Fields API
+  async updatePinnedFields(id: string, fields: {
+    theme?: string;
+    roadmap?: string;
+    customerSegments?: string;
+    value?: string;
+    documents?: string;
+    overallNecessity?: string;
+    deliveryProgress?: number;
+  }): Promise<Objective> {
+    return fetchWithAuth(`/api/objectives/${id}/pinned-fields`, {
+      method: 'PUT',
+      body: JSON.stringify(fields),
+    });
   },
 };

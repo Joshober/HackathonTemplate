@@ -1,11 +1,19 @@
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 LEVEL_STRATEGIC = 'strategic'
 LEVEL_FUNCTIONAL = 'functional'
 LEVEL_TACTICAL = 'tactical'
 TIMELINE_ANNUAL = 'annual'
 TIMELINE_QUARTERLY = 'quarterly'
+
+WORKFLOW_DRAFT = 'draft'
+WORKFLOW_SUBMITTED = 'submitted'
+WORKFLOW_UNDER_REVIEW = 'under_review'
+WORKFLOW_APPROVED = 'approved'
+WORKFLOW_ACTIVE = 'active'
+WORKFLOW_COMPLETED = 'completed'
+WORKFLOW_ARCHIVED = 'archived'
 
 
 class Objective:
@@ -23,6 +31,15 @@ class Objective:
         quarter: Optional[str] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
+        workflow_state: Optional[str] = None,
+        workflow_history: Optional[List[Dict[str, Any]]] = None,
+        permissions: Optional[Dict[str, List[str]]] = None,
+        risk_flag: Optional[bool] = None,
+        milestones: Optional[List[Dict[str, Any]]] = None,
+        dependencies: Optional[List[Dict[str, Any]]] = None,
+        files: Optional[List[Dict[str, Any]]] = None,
+        pinned_fields: Optional[Dict[str, Any]] = None,
+        last_modified: Optional[datetime] = None,
     ):
         self._id = _id
         self.title = title
@@ -34,6 +51,20 @@ class Objective:
         self.quarter = quarter  # Q1, Q2, Q3, Q4 when timeline is quarterly
         self.parent_objective_id = parent_objective_id
         self.division = division
+        self.workflow_state = workflow_state or WORKFLOW_ACTIVE
+        self.workflow_history = workflow_history or []
+        self.permissions = permissions or {
+            'viewOnly': [],
+            'editKeyResults': [],
+            'editObjective': [],
+            'fullControl': []
+        }
+        self.risk_flag = risk_flag or False
+        self.milestones = milestones or []
+        self.dependencies = dependencies or []
+        self.files = files or []
+        self.pinned_fields = pinned_fields or {}
+        self.last_modified = last_modified or datetime.utcnow()
         self.created_at = created_at or datetime.utcnow()
         self.updated_at = updated_at or datetime.utcnow()
 
@@ -45,8 +76,17 @@ class Objective:
             'level': self.level,
             'timeline': self.timeline,
             'fiscalYear': self.fiscal_year,
+            'workflowState': self.workflow_state,
+            'workflowHistory': self.workflow_history,
+            'permissions': self.permissions,
+            'riskFlag': self.risk_flag,
+            'milestones': self.milestones,
+            'dependencies': self.dependencies,
+            'files': self.files,
+            'pinnedFields': self.pinned_fields,
             'createdAt': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
             'updatedAt': self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else self.updated_at,
+            'lastModified': self.last_modified.isoformat() if isinstance(self.last_modified, datetime) else self.last_modified,
         }
         if self._id:
             result['_id'] = str(self._id)
@@ -71,6 +111,19 @@ class Objective:
             parent_objective_id=data.get('parentObjectiveId') or data.get('parent_objective_id'),
             division=data.get('division'),
             quarter=data.get('quarter'),
+            workflow_state=data.get('workflowState', WORKFLOW_ACTIVE),
+            workflow_history=data.get('workflowHistory', []),
+            permissions=data.get('permissions', {
+                'viewOnly': [],
+                'editKeyResults': [],
+                'editObjective': [],
+                'fullControl': []
+            }),
+            risk_flag=data.get('riskFlag', False),
+            milestones=data.get('milestones', []),
+            dependencies=data.get('dependencies', []),
+            files=data.get('files', []),
+            pinned_fields=data.get('pinnedFields', {}),
         )
         if 'createdAt' in data:
             val = data['createdAt']
@@ -84,4 +137,10 @@ class Objective:
         elif 'updated_at' in data:
             val = data['updated_at']
             obj.updated_at = datetime.fromisoformat(val.replace('Z', '+00:00')) if isinstance(val, str) else val
+        if 'lastModified' in data:
+            val = data['lastModified']
+            obj.last_modified = datetime.fromisoformat(val.replace('Z', '+00:00')) if isinstance(val, str) else val
+        elif 'last_modified' in data:
+            val = data['last_modified']
+            obj.last_modified = datetime.fromisoformat(val.replace('Z', '+00:00')) if isinstance(val, str) else val
         return obj

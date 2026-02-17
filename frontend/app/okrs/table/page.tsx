@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { getCurrentUser, login, User } from '@/lib/auth';
 import { AppLayout } from '@/components/AppLayout';
-import { ObjectivesView } from '@/components/ObjectivesView';
+import { OKRTableView } from '@/components/OKRTableView';
 import { OKRModal } from '@/components/OKRModal';
 
-export default function OKRsPage() {
+export default function OKRTablePage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
@@ -39,15 +39,15 @@ export default function OKRsPage() {
 
   if (isLoading || !user) {
     return (
-      <AppLayout title="Objectives" description="Manage strategic, functional, and tactical objectives" showNewObjective>
+      <AppLayout title="OKR Table" description="Table view of all objectives and key results">
         <div className="text-center text-muted-foreground">Loading...</div>
       </AppLayout>
     );
   }
 
   return (
-    <AppLayout title="Objectives" description="Manage strategic, functional, and tactical objectives" showNewObjective>
-      <ObjectivesView onObjectiveClick={handleObjectiveClick} />
+    <AppLayout title="OKR Table" description="Table view of all objectives and key results">
+      <OKRTableView onObjectiveClick={handleObjectiveClick} />
       <OKRModal
         objectiveId={selectedObjectiveId}
         open={modalOpen}
