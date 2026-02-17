@@ -1,278 +1,551 @@
 """
-Seed script to load mock data into MongoDB.
-Run this script to populate the database with sample objectives and key results.
+Seed script to populate MongoDB with example OKR data showcasing all features.
 """
 import os
-from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+env_path = Path(__file__).parent / '.env'
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    # Try loading from parent directory
+    load_dotenv(Path(__file__).parent.parent / '.env')
+
+from app.db.mongodb import get_db
+from datetime import datetime, timedelta
 from bson import ObjectId
 
-# Load environment variables
-load_dotenv()
-
-from app.db.mongodb import init_db, get_db
-
-def seed_data():
-    """Load mock data into MongoDB"""
-    print("Initializing database connection...")
-    init_db()
+def seed_database():
     db = get_db()
     
     # Clear existing data (optional - comment out if you want to keep existing data)
-    print("Clearing existing objectives and key results...")
+    print("Clearing existing data...")
     db.objectives.delete_many({})
     db.key_results.delete_many({})
+    db.user_roles.delete_many({})
+    db.audit_logs.delete_many({})
+    db.file_artifacts.delete_many({})
     
-    # Get a default user ID (you may need to adjust this based on your auth setup)
-    # For seeding, we'll use a placeholder user ID
-    default_user_id = "auth0|seed_user_12345"
+    print("Creating user roles...")
+    # Create user roles
+    users = [
+        {'userId': 'user-admin-1', 'role': 'admin', 'department': 'Engineering'},
+        {'userId': 'user-leader-1', 'role': 'leader', 'department': 'Engineering'},
+        {'userId': 'user-leader-2', 'role': 'leader', 'department': 'Product'},
+        {'userId': 'user-standard-1', 'role': 'standard', 'department': 'Engineering'},
+        {'userId': 'user-standard-2', 'role': 'standard', 'department': 'Product'},
+        {'userId': 'user-viewonly-1', 'role': 'view_only', 'department': 'Sales'},
+    ]
     
-    print("Creating objectives and key results...")
+    for user in users:
+        db.user_roles.update_one(
+            {'userId': user['userId']},
+            {
+                '$set': {
+                    **user,
+                    'createdAt': datetime.utcnow(),
+                    'updatedAt': datetime.utcnow(),
+                }
+            },
+            upsert=True
+        )
     
-    # Create Strategic Objective: Digital Transformation & Innovation
-    strategic_obj = {
-        'title': 'Digital Transformation & Innovation',
-        'description': 'Drive company-wide digital transformation through modern technology adoption',
-        'ownerId': default_user_id,
+    print("Creating objectives...")
+    now = datetime.utcnow()
+    
+    # Strategic Objective 1 - Active with dependencies
+    strategic_obj_1 = {
+        '_id': ObjectId(),
+        'title': 'Increase Customer Satisfaction Score to 4.5+',
+        'description': 'Improve overall customer satisfaction across all touchpoints to achieve industry-leading NPS scores.',
+        'ownerId': 'user-leader-1',
         'level': 'strategic',
         'timeline': 'annual',
-        'fiscalYear': 2026,
-        'parentObjectiveId': None,
-        'division': None,
-        'quarter': None,
-        'createdAt': datetime.utcnow(),
-        'updatedAt': datetime.utcnow(),
+        'fiscalYear': 2024,
+        'division': 'Engineering',
+        'workflowState': 'active',
+        'workflowHistory': [
+            {
+                'state': 'draft',
+                'userId': 'user-leader-1',
+                'timestamp': now - timedelta(days=30),
+                'reason': 'Initial creation',
+                'comment': 'Created strategic objective'
+            },
+            {
+                'state': 'submitted',
+                'userId': 'user-leader-1',
+                'timestamp': now - timedelta(days=25),
+                'reason': 'Ready for review',
+                'comment': 'Submitted for approval'
+            },
+            {
+                'state': 'approved',
+                'userId': 'user-admin-1',
+                'timestamp': now - timedelta(days=20),
+                'reason': 'Approved by leadership',
+                'comment': 'Looks good, approved'
+            },
+            {
+                'state': 'active',
+                'userId': 'user-leader-1',
+                'timestamp': now - timedelta(days=15),
+                'reason': 'Activated',
+                'comment': 'Objective is now active'
+            }
+        ],
+        'permissions': {
+            'viewOnly': ['user-viewonly-1'],
+            'editKeyResults': ['user-standard-1', 'user-standard-2'],
+            'editObjective': ['user-leader-1'],
+            'fullControl': ['user-admin-1']
+        },
+        'riskFlag': False,
+        'milestones': [
+            {'title': 'Q1 Baseline Measurement', 'date': now + timedelta(days=30), 'status': 'pending'},
+            {'title': 'Q2 Improvement Initiatives', 'date': now + timedelta(days=90), 'status': 'pending'},
+            {'title': 'Q3 Mid-Year Review', 'date': now + timedelta(days=180), 'status': 'pending'},
+        ],
+        'dependencies': [],
+        'files': [],
+        'pinnedFields': {
+            'theme': 'Customer Experience',
+            'roadmap': 'Q1: Baseline, Q2: Initiatives, Q3: Review',
+            'customerSegments': 'Enterprise, SMB, Consumer',
+            'value': 'High - Directly impacts retention and revenue',
+            'documents': 'Customer_Satisfaction_Plan.pdf',
+            'overallNecessity': 'Critical',
+            'deliveryProgress': 0.3
+        },
+        'createdAt': now - timedelta(days=30),
+        'updatedAt': now - timedelta(days=1),
+        'lastModified': now - timedelta(days=1),
     }
-    strategic_id = db.objectives.insert_one(strategic_obj).inserted_id
-    print(f"Created strategic objective: {strategic_obj['title']}")
     
-    # Key Results for Strategic Objective
-    strategic_krs = [
-        {
-            'objectiveId': strategic_id,
-            'title': 'Migrate 100% of legacy systems to cloud',
-            'target': '100',
-            'currentValue': '75',
-            'unit': '%',
-            'score': 75.0,
-            'notes': [{'text': 'On track, 3 systems remaining', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-        {
-            'objectiveId': strategic_id,
-            'title': 'Implement AI-driven analytics across 5 departments',
-            'target': '5',
-            'currentValue': '3',
-            'unit': 'depts',
-            'score': 60.0,
-            'notes': [{'text': 'Sales, Marketing, and Finance complete', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-        {
-            'objectiveId': strategic_id,
-            'title': 'Achieve 95% user satisfaction score',
-            'target': '95',
-            'currentValue': '62',
-            'unit': '%',
-            'score': 65.0,
-            'notes': [{'text': 'Quarterly surveys showing improvement', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-    ]
-    db.key_results.insert_many(strategic_krs)
-    print(f"Created {len(strategic_krs)} key results for strategic objective")
-    
-    # Create Functional Objective: Infrastructure Modernization
-    functional_obj1 = {
-        'title': 'Infrastructure Modernization',
-        'description': 'Update and modernize IT infrastructure to support digital initiatives',
-        'ownerId': default_user_id,
-        'level': 'functional',
+    # Strategic Objective 2 - Under Review
+    strategic_obj_2 = {
+        '_id': ObjectId(),
+        'title': 'Launch New Product Line by Q3',
+        'description': 'Develop and launch three new product offerings to expand market reach.',
+        'ownerId': 'user-leader-2',
+        'level': 'strategic',
         'timeline': 'annual',
-        'fiscalYear': 2026,
-        'parentObjectiveId': strategic_id,
-        'division': 'Infrastructure',
-        'quarter': None,
-        'createdAt': datetime.utcnow(),
-        'updatedAt': datetime.utcnow(),
+        'fiscalYear': 2024,
+        'division': 'Product',
+        'workflowState': 'under_review',
+        'workflowHistory': [
+            {
+                'state': 'draft',
+                'userId': 'user-leader-2',
+                'timestamp': now - timedelta(days=10),
+                'reason': 'Initial creation',
+                'comment': 'Draft created'
+            },
+            {
+                'state': 'submitted',
+                'userId': 'user-leader-2',
+                'timestamp': now - timedelta(days=5),
+                'reason': 'Ready for review',
+                'comment': 'Submitted for approval'
+            },
+            {
+                'state': 'under_review',
+                'userId': 'user-admin-1',
+                'timestamp': now - timedelta(days=2),
+                'reason': 'Under review',
+                'comment': 'Reviewing with stakeholders'
+            }
+        ],
+        'permissions': {
+            'viewOnly': [],
+            'editKeyResults': ['user-standard-2'],
+            'editObjective': ['user-leader-2'],
+            'fullControl': ['user-admin-1']
+        },
+        'riskFlag': False,
+        'milestones': [],
+        'dependencies': [],
+        'files': [],
+        'pinnedFields': {
+            'theme': 'Product Innovation',
+            'roadmap': 'Q1: Research, Q2: Development, Q3: Launch',
+            'customerSegments': 'Enterprise, SMB',
+            'value': 'High - New revenue stream',
+            'overallNecessity': 'Important',
+            'deliveryProgress': 0.1
+        },
+        'createdAt': now - timedelta(days=10),
+        'updatedAt': now - timedelta(days=2),
+        'lastModified': now - timedelta(days=2),
     }
-    functional_id1 = db.objectives.insert_one(functional_obj1).inserted_id
-    print(f"Created functional objective: {functional_obj1['title']}")
     
-    # Key Results for Infrastructure Modernization
-    functional_krs1 = [
-        {
-            'objectiveId': functional_id1,
-            'title': 'Complete cloud migration for 20 applications',
-            'target': '20',
-            'currentValue': '15',
-            'unit': 'apps',
-            'score': 75.0,
-            'notes': [{'text': '5 apps in final testing phase', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
+    # Functional Objective - Approved
+    functional_obj_1 = {
+        '_id': ObjectId(),
+        'title': 'Improve API Response Times by 40%',
+        'description': 'Optimize backend services to reduce average API response time from 500ms to 300ms.',
+        'ownerId': 'user-leader-1',
+        'level': 'functional',
+        'timeline': 'quarterly',
+        'fiscalYear': 2024,
+        'quarter': 'Q1',
+        'parentObjectiveId': strategic_obj_1['_id'],
+        'division': 'Engineering',
+        'workflowState': 'approved',
+        'workflowHistory': [
+            {
+                'state': 'draft',
+                'userId': 'user-leader-1',
+                'timestamp': now - timedelta(days=20),
+                'reason': 'Initial creation',
+                'comment': 'Created functional objective'
+            },
+            {
+                'state': 'submitted',
+                'userId': 'user-leader-1',
+                'timestamp': now - timedelta(days=15),
+                'reason': 'Ready for review',
+                'comment': 'Submitted'
+            },
+            {
+                'state': 'approved',
+                'userId': 'user-admin-1',
+                'timestamp': now - timedelta(days=10),
+                'reason': 'Approved',
+                'comment': 'Good technical objective'
+            }
+        ],
+        'permissions': {
+            'viewOnly': [],
+            'editKeyResults': ['user-standard-1'],
+            'editObjective': ['user-leader-1'],
+            'fullControl': ['user-admin-1']
         },
-        {
-            'objectiveId': functional_id1,
-            'title': 'Reduce infrastructure costs by 30%',
-            'target': '30',
-            'currentValue': '22',
-            'unit': '%',
-            'score': 73.0,
-            'notes': [{'text': 'Savings tracking ahead of schedule', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
+        'riskFlag': False,
+        'milestones': [],
+        'dependencies': [
+            {
+                'objectiveId': strategic_obj_1['_id'],
+                'type': 'depends_on',
+                'impact': 'high',
+                'progress': 0.3,
+                'isAtRisk': False,
+                'linkedAt': now - timedelta(days=18),
+                'linkedBy': 'user-leader-1'
+            }
+        ],
+        'files': [],
+        'pinnedFields': {
+            'theme': 'Performance',
+            'roadmap': 'Q1: Optimization sprint',
+            'value': 'Medium - Improves user experience',
+            'deliveryProgress': 0.2
         },
-    ]
-    db.key_results.insert_many(functional_krs1)
-    print(f"Created {len(functional_krs1)} key results for Infrastructure Modernization")
+        'createdAt': now - timedelta(days=20),
+        'updatedAt': now - timedelta(days=10),
+        'lastModified': now - timedelta(days=10),
+    }
     
-    # Create Tactical Objective: Q1 Cloud Migration Sprint
-    tactical_obj1 = {
-        'title': 'Q1 Cloud Migration Sprint',
-        'description': 'Focus on migrating critical business applications',
-        'ownerId': default_user_id,
+    # Tactical Objective - Draft with at-risk dependency
+    tactical_obj_1 = {
+        '_id': ObjectId(),
+        'title': 'Implement Caching Layer for User Data',
+        'description': 'Add Redis caching to reduce database load and improve response times.',
+        'ownerId': 'user-standard-1',
         'level': 'tactical',
         'timeline': 'quarterly',
-        'fiscalYear': 2026,
-        'parentObjectiveId': functional_id1,
-        'division': 'Infrastructure',
+        'fiscalYear': 2024,
         'quarter': 'Q1',
-        'createdAt': datetime.utcnow(),
-        'updatedAt': datetime.utcnow(),
+        'parentObjectiveId': functional_obj_1['_id'],
+        'division': 'Engineering',
+        'workflowState': 'draft',
+        'workflowHistory': [
+            {
+                'state': 'draft',
+                'userId': 'user-standard-1',
+                'timestamp': now - timedelta(days=5),
+                'reason': 'Initial creation',
+                'comment': 'Draft created'
+            }
+        ],
+        'permissions': {
+            'viewOnly': [],
+            'editKeyResults': ['user-standard-1'],
+            'editObjective': ['user-leader-1'],
+            'fullControl': []
+        },
+        'riskFlag': True,
+        'milestones': [],
+        'dependencies': [
+            {
+                'objectiveId': functional_obj_1['_id'],
+                'type': 'depends_on',
+                'impact': 'high',
+                'progress': 0.2,
+                'isAtRisk': True,
+                'linkedAt': now - timedelta(days=3),
+                'linkedBy': 'user-standard-1'
+            }
+        ],
+        'files': [],
+        'pinnedFields': {
+            'theme': 'Technical Infrastructure',
+            'deliveryProgress': 0.1
+        },
+        'createdAt': now - timedelta(days=5),
+        'updatedAt': now - timedelta(days=5),
+        'lastModified': now - timedelta(days=5),
     }
-    tactical_id1 = db.objectives.insert_one(tactical_obj1).inserted_id
-    print(f"Created tactical objective: {tactical_obj1['title']}")
     
-    # Key Results for Q1 Cloud Migration Sprint
-    tactical_krs1 = [
-        {
-            'objectiveId': tactical_id1,
-            'title': 'Migrate CRM system to AWS',
-            'target': '1',
-            'currentValue': '1',
-            'unit': 'system',
-            'score': 100.0,
-            'notes': [{'text': 'Completed ahead of schedule', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-        {
-            'objectiveId': tactical_id1,
-            'title': 'Complete security audit for 5 migrated apps',
-            'target': '5',
-            'currentValue': '4',
-            'unit': 'apps',
-            'score': 80.0,
-            'notes': [{'text': 'Final app in review', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-    ]
-    db.key_results.insert_many(tactical_krs1)
-    print(f"Created {len(tactical_krs1)} key results for Q1 Cloud Migration Sprint")
+    # Insert objectives
+    objectives = [strategic_obj_1, strategic_obj_2, functional_obj_1, tactical_obj_1]
+    db.objectives.insert_many(objectives)
     
-    # Create Functional Objective: Data & Analytics Platform
-    functional_obj2 = {
-        'title': 'Data & Analytics Platform',
-        'description': 'Build enterprise-wide analytics capabilities',
-        'ownerId': default_user_id,
-        'level': 'functional',
-        'timeline': 'annual',
-        'fiscalYear': 2026,
-        'parentObjectiveId': strategic_id,
-        'division': 'Data & Analytics',
-        'quarter': None,
-        'createdAt': datetime.utcnow(),
-        'updatedAt': datetime.utcnow(),
+    print("Creating key results...")
+    
+    # Key Results for Strategic Objective 1
+    kr1_1 = {
+        '_id': ObjectId(),
+        'objectiveId': strategic_obj_1['_id'],
+        'title': 'Achieve NPS score of 50+',
+        'target': '50',
+        'currentValue': '42',
+        'unit': 'NPS',
+        'score': 0.84,  # 42/50 = 0.84
+        'ownerId': 'user-standard-1',
+        'partnerId': 'user-standard-2',
+        'expectedEoQScore': 1.0,
+        'notes': [
+            {
+                'text': 'Q1 baseline measurement completed. Current NPS at 42, on track for target.',
+                'date': '2024-01-15',
+                'userId': 'user-standard-1',
+                'createdAt': now - timedelta(days=10)
+            },
+            {
+                'text': 'Customer feedback program launched. Expecting improvements in Q2.',
+                'date': '2024-01-20',
+                'userId': 'user-standard-1',
+                'createdAt': now - timedelta(days=5)
+            }
+        ],
+        'scoreHistory': [
+            {'score': 0.7, 'timestamp': now - timedelta(days=30), 'userId': 'user-standard-1', 'note': 'Initial measurement'},
+            {'score': 0.75, 'timestamp': now - timedelta(days=20), 'userId': 'user-standard-1', 'note': 'Q1 progress'},
+            {'score': 0.84, 'timestamp': now - timedelta(days=5), 'userId': 'user-standard-1', 'note': 'Latest update'}
+        ],
+        'targetDate': now + timedelta(days=270),
+        'velocity': 0.005,  # Approximate daily improvement
+        'createdAt': now - timedelta(days=30),
+        'lastUpdatedAt': now - timedelta(days=5),
+        'lastModified': now - timedelta(days=5),
     }
-    functional_id2 = db.objectives.insert_one(functional_obj2).inserted_id
-    print(f"Created functional objective: {functional_obj2['title']}")
     
-    # Key Results for Data & Analytics Platform
-    functional_krs2 = [
-        {
-            'objectiveId': functional_id2,
-            'title': 'Deploy unified data warehouse',
-            'target': '1',
-            'currentValue': '0.6',
-            'unit': 'platform',
-            'score': 60.0,
-            'notes': [{'text': 'Infrastructure ready, ETL in progress', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-        {
-            'objectiveId': functional_id2,
-            'title': 'Train 100 users on analytics tools',
-            'target': '100',
-            'currentValue': '54',
-            'unit': 'users',
-            'score': 54.0,
-            'notes': [{'text': '3 training sessions completed', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-    ]
-    db.key_results.insert_many(functional_krs2)
-    print(f"Created {len(functional_krs2)} key results for Data & Analytics Platform")
-    
-    # Create Tactical Objective: Q1 Analytics Foundation
-    tactical_obj2 = {
-        'title': 'Q1 Analytics Foundation',
-        'description': 'Establish core analytics infrastructure',
-        'ownerId': default_user_id,
-        'level': 'tactical',
-        'timeline': 'quarterly',
-        'fiscalYear': 2026,
-        'parentObjectiveId': functional_id2,
-        'division': 'Data & Analytics',
-        'quarter': 'Q1',
-        'createdAt': datetime.utcnow(),
-        'updatedAt': datetime.utcnow(),
+    kr1_2 = {
+        '_id': ObjectId(),
+        'objectiveId': strategic_obj_1['_id'],
+        'title': 'Reduce customer support ticket volume by 25%',
+        'target': '25',
+        'currentValue': '18',
+        'unit': '% reduction',
+        'score': 0.72,  # 18/25 = 0.72
+        'ownerId': 'user-standard-2',
+        'partnerId': None,
+        'expectedEoQScore': 0.9,
+        'notes': [
+            {
+                'text': 'Self-service portal improvements showing positive results.',
+                'date': '2024-01-18',
+                'userId': 'user-standard-2',
+                'createdAt': now - timedelta(days=7)
+            }
+        ],
+        'scoreHistory': [
+            {'score': 0.6, 'timestamp': now - timedelta(days=25), 'userId': 'user-standard-2', 'note': 'Baseline'},
+            {'score': 0.72, 'timestamp': now - timedelta(days=7), 'userId': 'user-standard-2', 'note': 'Current'}
+        ],
+        'targetDate': now + timedelta(days=240),
+        'velocity': 0.004,
+        'createdAt': now - timedelta(days=25),
+        'lastUpdatedAt': now - timedelta(days=7),
+        'lastModified': now - timedelta(days=7),
     }
-    tactical_id2 = db.objectives.insert_one(tactical_obj2).inserted_id
-    print(f"Created tactical objective: {tactical_obj2['title']}")
     
-    # Key Results for Q1 Analytics Foundation
-    tactical_krs2 = [
+    # Key Results for Strategic Objective 2
+    kr2_1 = {
+        '_id': ObjectId(),
+        'objectiveId': strategic_obj_2['_id'],
+        'title': 'Complete market research for 3 product concepts',
+        'target': '3',
+        'currentValue': '2',
+        'unit': 'concepts',
+        'score': 0.67,
+        'ownerId': 'user-standard-2',
+        'partnerId': None,
+        'expectedEoQScore': 1.0,
+        'notes': [
+            {
+                'text': 'Two concepts validated. Third concept research in progress.',
+                'date': '2024-01-22',
+                'userId': 'user-standard-2',
+                'createdAt': now - timedelta(days=3)
+            }
+        ],
+        'scoreHistory': [
+            {'score': 0.33, 'timestamp': now - timedelta(days=8), 'userId': 'user-standard-2', 'note': 'First concept'},
+            {'score': 0.67, 'timestamp': now - timedelta(days=3), 'userId': 'user-standard-2', 'note': 'Second concept'}
+        ],
+        'targetDate': now + timedelta(days=30),
+        'velocity': 0.033,
+        'createdAt': now - timedelta(days=10),
+        'lastUpdatedAt': now - timedelta(days=3),
+        'lastModified': now - timedelta(days=3),
+    }
+    
+    # Key Results for Functional Objective 1
+    kr3_1 = {
+        '_id': ObjectId(),
+        'objectiveId': functional_obj_1['_id'],
+        'title': 'Reduce average API response time to 300ms',
+        'target': '300',
+        'currentValue': '420',
+        'unit': 'ms',
+        'score': 0.71,  # (500-420)/(500-300) = 0.71
+        'ownerId': 'user-standard-1',
+        'partnerId': None,
+        'expectedEoQScore': 1.0,
+        'notes': [
+            {
+                'text': 'Database query optimization completed. Response times improving.',
+                'date': '2024-01-25',
+                'userId': 'user-standard-1',
+                'createdAt': now - timedelta(days=1)
+            }
+        ],
+        'scoreHistory': [
+            {'score': 0.5, 'timestamp': now - timedelta(days=15), 'userId': 'user-standard-1', 'note': 'Baseline: 500ms'},
+            {'score': 0.65, 'timestamp': now - timedelta(days=8), 'userId': 'user-standard-1', 'note': 'After optimization: 430ms'},
+            {'score': 0.71, 'timestamp': now - timedelta(days=1), 'userId': 'user-standard-1', 'note': 'Current: 420ms'}
+        ],
+        'targetDate': now + timedelta(days=60),
+        'velocity': 0.014,
+        'createdAt': now - timedelta(days=20),
+        'lastUpdatedAt': now - timedelta(days=1),
+        'lastModified': now - timedelta(days=1),
+    }
+    
+    # Key Results for Tactical Objective 1
+    kr4_1 = {
+        '_id': ObjectId(),
+        'objectiveId': tactical_obj_1['_id'],
+        'title': 'Deploy Redis caching for user profile data',
+        'target': '100',
+        'currentValue': '0',
+        'unit': '% coverage',
+        'score': 0.0,
+        'ownerId': 'user-standard-1',
+        'partnerId': None,
+        'expectedEoQScore': 0.8,
+        'notes': [
+            {
+                'text': 'Redis infrastructure setup in progress. Waiting on dependency approval.',
+                'date': '2024-01-26',
+                'userId': 'user-standard-1',
+                'createdAt': now
+            }
+        ],
+        'scoreHistory': [],
+        'targetDate': now + timedelta(days=45),
+        'velocity': 0.0,
+        'createdAt': now - timedelta(days=5),
+        'lastUpdatedAt': now,
+        'lastModified': now,
+    }
+    
+    # Insert key results
+    key_results = [kr1_1, kr1_2, kr2_1, kr3_1, kr4_1]
+    db.key_results.insert_many(key_results)
+    
+    # Update strategic_obj_1 dependencies to include functional_obj_1
+    strategic_obj_1_deps = [
         {
-            'objectiveId': tactical_id2,
-            'title': 'Set up data warehouse architecture',
-            'target': '1',
-            'currentValue': '0.8',
-            'unit': 'system',
-            'score': 80.0,
-            'notes': [{'text': 'Core tables configured', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
-        {
-            'objectiveId': tactical_id2,
-            'title': 'Onboard 3 departments to platform',
-            'target': '3',
-            'currentValue': '2',
-            'unit': 'depts',
-            'score': 67.0,
-            'notes': [{'text': 'Sales and Marketing live', 'createdAt': datetime.utcnow().isoformat()}],
-            'createdAt': datetime.utcnow(),
-            'lastUpdatedAt': datetime.utcnow(),
-        },
+            'objectiveId': functional_obj_1['_id'],
+            'type': 'downstream',
+            'impact': 'high',
+            'progress': 0.2,
+            'isAtRisk': False,
+            'linkedAt': now - timedelta(days=18),
+            'linkedBy': 'user-leader-1'
+        }
     ]
-    db.key_results.insert_many(tactical_krs2)
-    print(f"Created {len(tactical_krs2)} key results for Q1 Analytics Foundation")
+    db.objectives.update_one(
+        {'_id': strategic_obj_1['_id']},
+        {'$set': {'dependencies': strategic_obj_1_deps}}
+    )
     
-    print("\nSeed data loaded successfully!")
-    print(f"Total objectives created: {db.objectives.count_documents({})}")
-    print(f"Total key results created: {db.key_results.count_documents({})}")
+    print("Creating audit logs...")
+    # Create some audit log entries
+    audit_logs = [
+        {
+            'entityType': 'objective',
+            'entityId': strategic_obj_1['_id'],
+            'action': 'created',
+            'userId': 'user-leader-1',
+            'timestamp': now - timedelta(days=30),
+            'changes': [],
+            'reason': 'Objective created'
+        },
+        {
+            'entityType': 'objective',
+            'entityId': strategic_obj_1['_id'],
+            'action': 'workflow_transition',
+            'userId': 'user-admin-1',
+            'timestamp': now - timedelta(days=20),
+            'changes': [
+                {'field': 'workflowState', 'oldValue': 'submitted', 'newValue': 'approved'}
+            ],
+            'reason': 'Approved by leadership'
+        },
+        {
+            'entityType': 'key_result',
+            'entityId': kr1_1['_id'],
+            'action': 'updated',
+            'userId': 'user-standard-1',
+            'timestamp': now - timedelta(days=5),
+            'changes': [
+                {'field': 'score', 'oldValue': 0.75, 'newValue': 0.84},
+                {'field': 'currentValue', 'oldValue': '38', 'newValue': '42'}
+            ],
+            'reason': 'Updated progress based on latest survey results'
+        },
+        {
+            'entityType': 'objective',
+            'entityId': functional_obj_1['_id'],
+            'action': 'dependency_added',
+            'userId': 'user-leader-1',
+            'timestamp': now - timedelta(days=18),
+            'changes': [
+                {'field': 'dependencies', 'oldValue': 0, 'newValue': 1}
+            ],
+            'reason': 'Added dependency link to strategic objective'
+        }
+    ]
+    
+    db.audit_logs.insert_many(audit_logs)
+    
+    print("Database seeded successfully!")
+    print(f"\nCreated:")
+    print(f"  - {len(objectives)} objectives")
+    print(f"  - {len(key_results)} key results")
+    print(f"  - {len(users)} user roles")
+    print(f"  - {len(audit_logs)} audit log entries")
+    print(f"\nExample objectives:")
+    print(f"  1. {strategic_obj_1['title']} (Active)")
+    print(f"  2. {strategic_obj_2['title']} (Under Review)")
+    print(f"  3. {functional_obj_1['title']} (Approved)")
+    print(f"  4. {tactical_obj_1['title']} (Draft, At Risk)")
 
 if __name__ == '__main__':
-    try:
-        seed_data()
-    except Exception as e:
-        print(f"\nError seeding data: {e}")
-        import traceback
-        traceback.print_exc()
+    seed_database()
