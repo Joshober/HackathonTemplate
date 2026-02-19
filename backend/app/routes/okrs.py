@@ -679,7 +679,31 @@ def get_workflow_history(objective_id, user_id):
             return jsonify({'error': 'Objective not found'}), 404
         
         history = objective.get('workflowHistory', [])
-        return jsonify(history), 200
+        # Serialize each entry so timestamp (datetime) is JSON-serializable
+        serialized = []
+        for entry in history:
+            e = dict(entry)
+            if isinstance(e.get('timestamp'), datetime):
+                e['timestamp'] = e['timestamp'].isoformat()
+            serialized.append(e)
+        return jsonify(serialized), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/objectives/<objective_id>/audit', methods=['GET'])
+@require_auth
+def get_objective_audit(objective_id, user_id):
+    """Get audit trail for an objective."""
+    try:
+        oid = _parse_object_id(objective_id)
+        if oid is None:
+            return jsonify({'error': 'Invalid objective ID'}), 400
+        db = get_db()
+        if not db.objectives.find_one({'_id': oid}):
+            return jsonify({'error': 'Objective not found'}), 404
+        trail = get_audit_trail('objective', objective_id)
+        return jsonify(trail), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

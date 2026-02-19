@@ -163,7 +163,14 @@ export function OKRModal({ objectiveId, open, onClose }: OKRModalProps) {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex-1">
                   <OKRPinnedFields objective={objective} permissions={permissions} />
-                  <OKRWorkflowState objective={objective} permissions={permissions} />
+                  <OKRWorkflowState
+                    objective={objective}
+                    permissions={permissions}
+                    onUpdate={(obj) => {
+                      setObjective(obj);
+                      setLastModified(obj.lastModified || obj.updatedAt || null);
+                    }}
+                  />
                 </div>
                 <Button
                   variant="outline"
@@ -218,7 +225,7 @@ export function OKRModal({ objectiveId, open, onClose }: OKRModalProps) {
                 </TabsContent>
 
                 <TabsContent value="history" className="mt-4">
-                  <OKRModalHistory objectiveId={objectiveId!} />
+                  <OKRModalHistory objectiveId={objectiveId!} objective={objective} />
                 </TabsContent>
 
                 <TabsContent value="dependencies" className="mt-4">
