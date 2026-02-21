@@ -5,7 +5,7 @@ import { getCurrentUser, login, User } from '@/lib/auth';
 import Link from 'next/link';
 import DashboardShell from '@/components/DashboardShell';
 import { motion } from 'motion/react';
-import { Clock, User as UserIcon, MessageCircle, Headphones, Mic } from 'lucide-react';
+import { Clock, User as UserIcon, MessageCircle, Headphones, Mic, Camera } from 'lucide-react';
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -167,6 +167,30 @@ export default function Dashboard() {
             className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
           >
             Go to Voice Assistant →
+          </Link>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.24 }}
+          whileHover={{ y: -4, scale: 1.02 }}
+          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 p-3 rounded-xl">
+              <Camera className="w-6 h-6 text-emerald-500" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold">Pose Attendance</h3>
+              <p className="text-sm text-gray-400">Presença por Pose — professor captura pose, alunos imitam</p>
+            </div>
+          </div>
+          <Link
+            href="/pose-attendance"
+            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
+          >
+            Go to Pose Attendance →
           </Link>
         </motion.div>
 
