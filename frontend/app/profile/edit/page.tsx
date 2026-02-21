@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { getCurrentUser, login, User } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
+import DashboardShell from '@/components/DashboardShell';
 import ProfileForm from '@/components/ProfileForm';
 import { api, Profile } from '@/lib/api';
 
@@ -28,8 +28,7 @@ export default function EditProfilePage() {
       }
       setUser(currentUser);
       loadProfile();
-    } catch (error) {
-      console.error('Error loading user:', error);
+    } catch {
       await login();
     } finally {
       setIsLoading(false);
@@ -38,7 +37,6 @@ export default function EditProfilePage() {
 
   const loadProfile = async () => {
     if (!user) return;
-    
     try {
       const data = await api.getProfile();
       setProfile(data);
@@ -53,11 +51,8 @@ export default function EditProfilePage() {
 
   if (isLoading || loading || !user) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">Loading...</div>
-        </div>
+      <div className="min-h-screen bg-[#0E1117] flex items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
       </div>
     );
   }
@@ -66,31 +61,24 @@ export default function EditProfilePage() {
     return null;
   }
 
-  const handleProfileUpdate = async () => {
-    try {
-      router.push('/profile');
-    } catch (err) {
-      // Handle error
-    }
+  const handleProfileUpdate = () => {
+    router.push('/profile');
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6">
-          <Link
-            href="/profile"
-            className="text-indigo-600 hover:text-indigo-700 text-sm font-medium mb-4 inline-block"
-          >
-            ← Back to Profile
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Edit Profile</h1>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <ProfileForm profile={profile} onSuccess={handleProfileUpdate} />
-        </div>
+    <DashboardShell>
+      <div className="mb-6">
+        <Link
+          href="/profile"
+          className="text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium mb-4 inline-block"
+        >
+          ← Back to Profile
+        </Link>
+        <h1 className="text-3xl font-bold text-white">Edit Profile</h1>
       </div>
-    </div>
+      <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8">
+        <ProfileForm profile={profile} onSuccess={handleProfileUpdate} />
+      </div>
+    </DashboardShell>
   );
 }

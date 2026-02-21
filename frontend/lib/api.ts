@@ -100,8 +100,15 @@ async function fetchPublic(url: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }));
-    throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    const text = await response.text();
+    let msg = `Error ${response.status}`;
+    try {
+      const error = JSON.parse(text);
+      msg = error.error || error.message || msg;
+    } catch {
+      if (text.length < 200) msg = text || msg;
+    }
+    throw new Error(msg);
   }
 
   return response.json();
@@ -278,11 +285,32 @@ export const api = {
     });
   },
 
-  // Chat API (public endpoint, no auth required)
-  async sendChatMessage(messages: Array<{ role: string; content: string }>, model?: string): Promise<{ message: string; usage?: any }> {
+  // Chat API (public, no auth). Optional images, optional mode 'assistant' | 'roast'.
+  async sendChatMessage(
+    messages: Array<{ role: string; content: string }>,
+    model?: string,
+    imagesBase64?: string[],
+    mode?: 'assistant' | 'roast'
+  ): Promise<{ message: string; usage?: any }> {
+    const body: { messages: typeof messages; model?: string; images?: string[]; mode?: string } = {
+      messages,
+      model: model || 'openai/gpt-3.5-turbo',
+    };
+    if (imagesBase64?.length) body.images = imagesBase64;
+    if (mode) body.mode = mode;
     return fetchPublic('/api/chat', {
       method: 'POST',
-      body: JSON.stringify({ messages, model: model || 'openai/gpt-3.5-turbo' }),
+      body: JSON.stringify(body),
+    });
+  },
+
+  // Roast AI (public, no auth) — image → truth + roast
+  async analyzeRoast(image: File): Promise<RoastAnalyzeResponse> {
+    const formData = new FormData();
+    formData.append('image', image);
+    return fetchPublic('/api/multiverse/analyze', {
+      method: 'POST',
+      body: formData,
     });
   },
 
@@ -314,3 +342,21 @@ export const api = {
     });
   },
 };
+
+// Roast AI types (aligned with backend JSON)
+export interface TruthResponse {
+  truth_caption: string;
+  truth_objects: string[];
+  scene_type: string;
+  truth_ocr: string;
+  confidence: string;
+}
+
+export interface RoastAnalyzeResponse {
+  truth: TruthResponse;
+  roast: string;
+  truth_source: 'local' | 'openrouter';
+  roast_source: string;
+  latency_ms_truth: number;
+  latency_ms_roast: number;
+}

@@ -54,7 +54,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
           image: imageFile || undefined,
         });
       }
-      
+
       if (onSuccess) {
         onSuccess();
       } else {
@@ -67,22 +67,23 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
     }
   };
 
+  const inputClass =
+    'w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50';
+  const labelClass = 'block text-sm font-medium text-gray-300 mb-1';
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl">
           {error}
         </div>
       )}
 
-      {/* Profile Image Upload */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Profile Image
-        </label>
-        <div className="flex items-center space-x-4">
+        <label className={labelClass}>Profile Image</label>
+        <div className="flex items-center gap-4">
           {imagePreview && (
-            <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300">
+            <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-white/20 flex-shrink-0">
               <Image
                 src={imagePreview}
                 alt="Profile preview"
@@ -96,18 +97,15 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
               type="file"
               accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
               onChange={handleImageChange}
-              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+              className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#4F8CFF]/20 file:text-[#4F8CFF] hover:file:bg-[#4F8CFF]/30"
             />
-            <p className="mt-1 text-xs text-gray-500">
-              PNG, JPG, GIF or WEBP. Max 5MB.
-            </p>
+            <p className="mt-1 text-xs text-gray-500">PNG, JPG, GIF or WEBP. Max 5MB.</p>
           </div>
         </div>
       </div>
 
-      {/* Display Name */}
       <div>
-        <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="displayName" className={labelClass}>
           Display Name *
         </label>
         <input
@@ -116,14 +114,13 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           required
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          className={inputClass}
           placeholder="Enter your display name"
         />
       </div>
 
-      {/* Bio */}
       <div>
-        <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="bio" className={labelClass}>
           Bio
         </label>
         <textarea
@@ -131,24 +128,23 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
           value={bio}
           onChange={(e) => setBio(e.target.value)}
           rows={4}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+          className={inputClass}
           placeholder="Tell us about yourself..."
         />
       </div>
 
-      {/* Submit Buttons */}
-      <div className="flex space-x-3">
+      <div className="flex gap-3">
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-md font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+          className="flex-1 bg-[#4F8CFF] hover:bg-[#5A96FF] text-white px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
         >
           {loading ? 'Saving...' : profile?._id ? 'Update Profile' : 'Create Profile'}
         </button>
         <button
           type="button"
           onClick={() => router.back()}
-          className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 font-medium hover:bg-gray-50"
+          className="px-4 py-2.5 border border-white/20 text-gray-300 rounded-xl font-medium hover:bg-white/5 transition-colors"
         >
           Cancel
         </button>

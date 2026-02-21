@@ -2,16 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { getCurrentUser, login, User } from '@/lib/auth';
-import { useRouter } from 'next/navigation';
-import Navbar from '@/components/Navbar';
-import ItemList from '@/components/ItemList';
-import ProfileCard from '@/components/ProfileCard';
 import Link from 'next/link';
+import DashboardShell from '@/components/DashboardShell';
+import { motion } from 'motion/react';
+import { Clock, User as UserIcon } from 'lucide-react';
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter();
 
   useEffect(() => {
     loadUser();
@@ -21,13 +19,11 @@ export default function Dashboard() {
     try {
       const currentUser = await getCurrentUser();
       if (!currentUser) {
-        // Redirect to login
         await login();
         return;
       }
       setUser(currentUser);
-    } catch (error) {
-      console.error('Error loading user:', error);
+    } catch {
       await login();
     } finally {
       setIsLoading(false);
@@ -36,11 +32,8 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center">Loading...</div>
-        </div>
+      <div className="min-h-screen bg-[#0E1117] flex items-center justify-center">
+        <div className="text-gray-400">Loading...</div>
       </div>
     );
   }
@@ -50,66 +43,60 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''}!
-          </h1>
-          <p className="text-gray-600">Manage your items and profile from here.</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Items Section */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="mb-6 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-900">My Items</h2>
-                <Link
-                  href="/items/new"
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md font-medium hover:bg-indigo-700 transition-colors"
-                >
-                  + Create New Item
-                </Link>
-              </div>
-              <ItemList />
-            </div>
+    <DashboardShell>
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="mb-8"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h2 className="text-3xl font-bold mb-1">Overview</h2>
+            <p className="text-gray-400">Welcome to your control center</p>
           </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <ProfileCard />
-            
-            {/* Quick Actions */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-              <div className="space-y-2">
-                <Link
-                  href="/items/new"
-                  className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-md transition-colors"
-                >
-                  Create New Item
-                </Link>
-                <Link
-                  href="/profile"
-                  className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-md transition-colors"
-                >
-                  View Profile
-                </Link>
-                <Link
-                  href="/profile/edit"
-                  className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded-md transition-colors"
-                >
-                  Edit Profile
-                </Link>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Clock className="w-4 h-4" />
+            <span>Last updated: Just now</span>
           </div>
         </div>
+      </motion.div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          whileHover={{ y: -4, scale: 1.02 }}
+          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <div className="bg-gradient-to-br from-[#4F8CFF]/20 to-[#4F8CFF]/5 p-3 rounded-xl">
+              <UserIcon className="w-6 h-6 text-[#4F8CFF]" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold">Profile</h3>
+              <p className="text-sm text-gray-400">View and edit your profile</p>
+            </div>
+          </div>
+          <Link
+            href="/profile"
+            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
+          >
+            Go to Profile →
+          </Link>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6"
+        >
+          <h3 className="text-xl font-semibold mb-2">Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''}</h3>
+          <p className="text-gray-400 text-sm">{user.email}</p>
+        </motion.div>
       </div>
-    </div>
+    </DashboardShell>
   );
 }

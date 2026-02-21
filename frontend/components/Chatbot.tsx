@@ -6,10 +6,32 @@ import { api } from '@/lib/api';
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  imagePreview?: string;
 }
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      resolve(base64 || '');
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+const CHAT_MODELS = [
+  { id: 'openai/gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+  { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+  { id: 'openai/gpt-4o', label: 'GPT-4o' },
+] as const;
 
 export default function Chatbot() {
   const [isOpen, setIsOpen] = useState(false);
+  const [chatMode, setChatMode] = useState<'assistant' | 'roast'>('assistant');
+  const [selectedModel, setSelectedModel] = useState<string>(CHAT_MODELS[0].id);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -17,8 +39,10 @@ export default function Chatbot() {
     },
   ]);
   const [input, setInput] = useState('');
+  const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,24 +52,36 @@ export default function Chatbot() {
     scrollToBottom();
   }, [messages]);
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+  const canSend = chatMode === 'roast' ? attachedImages.length > 0 : (input.trim() || attachedImages.length > 0);
 
-    const userMessage: Message = { role: 'user', content: input };
+  const sendMessage = async () => {
+    if ((!input.trim() && attachedImages.length === 0) || isLoading) return;
+
+    const userContent = input.trim() || '(See image)';
+    const userMessage: Message = {
+      role: 'user',
+      content: userContent,
+      imagePreview: attachedImages[0]?.preview,
+    };
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = input;
+    const currentImages = [...attachedImages];
     setInput('');
+    setAttachedImages([]);
     setIsLoading(true);
 
     try {
-      // Prepare messages for the API (include all previous messages + new user message)
       const apiMessages = [
         ...messages.map((msg) => ({ role: msg.role, content: msg.content })),
-        { role: 'user' as const, content: currentInput },
+        { role: 'user' as const, content: currentInput || '(See image)' },
       ];
 
-      const response = await api.sendChatMessage(apiMessages);
-      
+      const imagesBase64 = currentImages.length > 0
+        ? await Promise.all(currentImages.map(({ file }) => fileToBase64(file)))
+        : undefined;
+
+      const response = await api.sendChatMessage(apiMessages, selectedModel, imagesBase64, chatMode);
+
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.message || 'Sorry, I could not process your request.',
@@ -55,14 +91,36 @@ export default function Chatbot() {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
         role: 'assistant',
-        content: error instanceof Error 
+        content: error instanceof Error
           ? `Error: ${error.message}. Please check your backend configuration.`
-          : 'Sorry, there was an error processing your message. Please make sure the backend is running and the OpenRouter API key is configured correctly.',
+          : 'Sorry, there was an error. Ensure the backend is running and OPENROUTER_API_KEY is set.',
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const addImages = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    const newList: { file: File; preview: string }[] = [];
+    for (let i = 0; i < Math.min(files.length, 3); i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) continue;
+      newList.push({ file, preview: URL.createObjectURL(file) });
+    }
+    setAttachedImages((prev) => [...prev, ...newList].slice(0, 3));
+    e.target.value = '';
+  };
+
+  const removeImage = (index: number) => {
+    setAttachedImages((prev) => {
+      const next = [...prev];
+      URL.revokeObjectURL(next[index].preview);
+      next.splice(index, 1);
+      return next;
+    });
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -74,11 +132,11 @@ export default function Chatbot() {
 
   return (
     <>
-      {/* Chat Button */}
+      {/* Chat Button - matches Claude Home™ dark theme */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 bg-indigo-600 text-white rounded-full p-4 shadow-lg hover:bg-indigo-700 transition-all duration-200 hover:scale-110 z-50"
+          className="fixed bottom-6 right-6 bg-[#4F8CFF] hover:bg-[#5A96FF] text-white rounded-full p-4 shadow-lg shadow-[#4F8CFF]/20 transition-all duration-200 hover:scale-105 z-50"
           aria-label="Open chat"
         >
           <svg
@@ -98,59 +156,106 @@ export default function Chatbot() {
         </button>
       )}
 
-      {/* Chat Window */}
+      {/* Chat Window - dark theme */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-white rounded-lg shadow-2xl flex flex-col z-50 border border-gray-200">
+        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-[#0E1117] rounded-xl shadow-2xl flex flex-col z-50 border border-white/10 backdrop-blur-xl">
           {/* Header */}
-          <div className="bg-indigo-600 text-white p-4 rounded-t-lg flex justify-between items-center">
-            <h3 className="font-semibold text-lg">AI Assistant</h3>
-            <button
+          <div className="bg-[#4F8CFF]/20 border-b border-white/10 text-white p-4 rounded-t-xl flex flex-col gap-2">
+            {/* Tabs: Assistant | Roast */}
+            <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setChatMode('assistant')}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  chatMode === 'assistant' ? 'bg-[#4F8CFF] text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Assistant
+              </button>
+              <button
+                type="button"
+                onClick={() => setChatMode('roast')}
+                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                  chatMode === 'roast' ? 'bg-[#4F8CFF] text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Roast
+              </button>
+            </div>
+            <div className="flex justify-between items-center">
+              <h3 className="font-semibold text-lg">{chatMode === 'roast' ? 'Roast AI' : 'AI Assistant'}</h3>
+              <button
               onClick={() => setIsOpen(false)}
-              className="text-white hover:text-gray-200 transition-colors"
+              className="text-gray-400 hover:text-white transition-colors p-1"
               aria-label="Close chat"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
+                className="h-5 w-5"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+            </div>
+            {/* Model selector — for text; images always use vision model */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">Model:</span>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+                disabled={isLoading}
+              >
+                {CHAT_MODELS.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-[#0E1117] text-white">
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              {attachedImages.length > 0 && (
+                <span className="text-xs text-gray-400">(images → vision model)</span>
+              )}
+              {chatMode === 'roast' && (
+                <span className="text-xs text-amber-400/90">Attach image to roast</span>
+              )}
+            </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white/5">
             {messages.map((message, index) => (
               <div
                 key={index}
                 className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[80%] rounded-lg p-3 ${
+                  className={`max-w-[80%] rounded-xl p-3 ${
                     message.role === 'user'
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white text-gray-800 border border-gray-200'
+                      ? 'bg-[#4F8CFF]/20 border border-[#4F8CFF]/30 text-white'
+                      : 'bg-white/5 border border-white/10 text-gray-200'
                   }`}
                 >
+                  {message.imagePreview && (
+                    <img
+                      src={message.imagePreview}
+                      alt="Attached"
+                      className="rounded-lg mb-2 max-h-24 object-cover"
+                    />
+                  )}
                   <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white text-gray-800 border border-gray-200 rounded-lg p-3">
+                <div className="bg-white/5 border border-white/10 text-gray-400 rounded-xl p-3">
                   <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    <div className="w-2 h-2 bg-[#4F8CFF] rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-[#4F8CFF] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-2 h-2 bg-[#4F8CFF] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
                   </div>
                 </div>
               </div>
@@ -159,21 +264,50 @@ export default function Chatbot() {
           </div>
 
           {/* Input */}
-          <div className="p-4 border-t border-gray-200 bg-white rounded-b-lg">
-            <div className="flex space-x-2">
+          <div className="p-4 border-t border-white/10 bg-white/5 rounded-b-xl">
+            {attachedImages.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachedImages.map((img, i) => (
+                  <div key={i} className="relative">
+                    <img src={img.preview} alt="" className="h-14 w-14 rounded-lg object-cover border border-white/10" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      className="absolute -top-1 -right-1 bg-red-500/80 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-500"
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input type="file" ref={fileInputRef} accept="image/*" multiple className="hidden" onChange={addImages} />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-gray-400 hover:text-[#4F8CFF] hover:bg-white/5 rounded-lg transition-colors shrink-0"
+                aria-label="Attach image"
+                disabled={isLoading}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Type your message..."
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                placeholder={chatMode === 'roast' ? 'Attach an image (optional caption)…' : 'Type your message or attach an image…'}
+                className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
                 disabled={isLoading}
               />
               <button
                 onClick={sendMessage}
-                disabled={isLoading || !input.trim()}
-                className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isLoading || !canSend}
+                className="bg-[#4F8CFF] hover:bg-[#5A96FF] text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 Send
               </button>
