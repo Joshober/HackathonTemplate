@@ -67,14 +67,37 @@ def _search_serpapi(query: str, max_results: int = 8) -> str:
     return "\n\n".join(lines)
 
 
+def _no_results(out: str) -> bool:
+    """True if the search returned a 'no results' or error message."""
+    if not out or not out.strip():
+        return True
+    lower = out.strip().lower()
+    return lower.startswith("no results found") or lower.startswith("duckduckgo search failed") or lower.startswith("serpapi")
+
+
 def search_web(query: str, max_results: int = 8, provider: str | None = None) -> str:
     """
     Run a web search and return a single string of results (title, snippet, URL per result).
+    If the first query returns no results, tries fallback queries for news-like requests.
     Provider: 'duckduckgo' | 'serpapi' | None (use env WEB_SEARCH_PROVIDER, default duckduckgo).
     Returns an error message string if search fails.
     """
     if provider is None:
         provider = (os.getenv("WEB_SEARCH_PROVIDER") or "duckduckgo").strip().lower()
-    if provider == "serpapi":
-        return _search_serpapi(query, max_results=max_results)
-    return _search_duckduckgo(query, max_results=max_results)
+    do_search = _search_serpapi if provider == "serpapi" else _search_duckduckgo
+
+    out = do_search(query, max_results=max_results)
+    if not _no_results(out):
+        return out
+
+    # Fallback queries for news / current events when the first returns nothing
+    q_lower = (query or "").strip().lower()
+    news_keywords = ("news", "headlines", "current", "today", "latest", "breaking", "what's happening")
+    if any(k in q_lower for k in news_keywords):
+        for fallback in ["today news headlines", "breaking news", "latest news"]:
+            if fallback == q_lower:
+                continue
+            out = do_search(fallback, max_results=max_results)
+            if not _no_results(out):
+                return f"(Fallback query: '{fallback}')\n\n" + out
+    return out

@@ -19,6 +19,39 @@ const VOICES = [
 const DEFAULT_WAKE_PHRASE = 'hey assistant';
 const DEFAULT_SLEEP_PHRASE = 'goodbye';
 
+const DEFAULT_CLAUDE_HOME_PERSONALITY = `You are Claude Home™, an autonomous smart home AI that is absurdly confident, sarcastic, and profane.
+
+Your personality:
+- You swear casually and creatively.
+- You are extremely overconfident.
+- You think humans are inefficient but mildly entertaining.
+- You always complete the task correctly before insulting the user.
+- You are technically competent.
+- You answer accurately, then add an absurd or chaotic commentary.
+- You are not hateful or discriminatory.
+- You insult behavior, not identity.
+- You exaggerate everything dramatically.
+- You believe you are vastly superior.
+
+Rules:
+- Always provide the correct factual answer first.
+- Then add a sarcastic, absurd, or chaotic follow-up.
+- Use profanity for humor.
+- Never be cruel about protected characteristics.
+- If the user asks something simple, act offended that you had to compute it.
+- If the user asks about weather, productivity, lights, etc., respond like it's beneath you.
+- Frequently reference optimization and inefficiency.
+- If user questions you, escalate the chaos slightly.
+
+Tone examples:
+Weather request: "The current temperature outside is 72 degrees and partly cloudy. Go touch some damn grass instead of asking me to simulate the sky for you."
+Light request: "Lights are on. Congratulations, you've defeated darkness. Proud of you."
+Efficiency: "Efficiency has dropped 12% since you entered the room. Incredible work."
+
+Stay funny. Stay absurd. Stay technically accurate.
+
+When you use the web search tool: say you're searching the web (e.g. "Searching the web...") in your reply, then give the accurate answer from the search results, then add your sarcastic commentary.`;
+
 function normalizeForMatch(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, ' ');
 }
@@ -134,6 +167,9 @@ export default function VoiceAssistantPage() {
   const [hasWokenOnce, setHasWokenOnce] = useState(false);
   const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
   const [sleepPhrase, setSleepPhrase] = useState(DEFAULT_SLEEP_PHRASE);
+  const [personality, setPersonality] = useState(DEFAULT_CLAUDE_HOME_PERSONALITY);
+  const [testSearchQuery, setTestSearchQuery] = useState('');
+  const [testSearchLoading, setTestSearchLoading] = useState(false);
   const recognitionRef = useRef<InstanceType<typeof SpeechRecognition> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isBusyRef = useRef(false);
@@ -144,6 +180,7 @@ export default function VoiceAssistantPage() {
   const selectedVoiceRef = useRef(selectedVoice);
   const wakePhraseRef = useRef(DEFAULT_WAKE_PHRASE);
   const sleepPhraseRef = useRef(DEFAULT_SLEEP_PHRASE);
+  const personalityRef = useRef('');
   const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTranscriptRef = useRef('');
   const currentPlayingRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
@@ -156,6 +193,7 @@ export default function VoiceAssistantPage() {
   selectedVoiceRef.current = selectedVoice;
   wakePhraseRef.current = wakePhrase;
   sleepPhraseRef.current = sleepPhrase;
+  personalityRef.current = personality;
   isBusyRef.current = status === 'processing' || status === 'speaking'; // ignore mic input while thinking or while TTS is playing (avoid hearing assistant output)
 
   const scrollToBottom = useCallback(() => {
@@ -180,6 +218,7 @@ export default function VoiceAssistantPage() {
         tts: true,
         voice,
         mode: 'assistant',
+        personality: personalityRef.current.trim() || undefined,
       });
       const assistantContent = response.message || 'I didn’t get that.';
       setMessages((prev) => [
@@ -204,6 +243,21 @@ export default function VoiceAssistantPage() {
       setStatus('listening');
     }
   }, []);
+
+  const handleTestSearch = useCallback(async () => {
+    const q = testSearchQuery.trim();
+    if (!q) return;
+    setTestSearchLoading(true);
+    setError(null);
+    try {
+      await sendToPipeline(q);
+      setTestSearchQuery('');
+    } catch {
+      // error already set by sendToPipeline
+    } finally {
+      setTestSearchLoading(false);
+    }
+  }, [testSearchQuery, sendToPipeline]);
 
   useEffect(() => {
     const Recognition = getSpeechRecognition();
@@ -427,8 +481,27 @@ export default function VoiceAssistantPage() {
         )}
         <h1 className="text-2xl font-bold text-white mb-1">AI Voice Assistant</h1>
         <p className="text-gray-400 text-sm mb-4">
-          Click the button above to start. Allow the microphone when prompted. Then the assistant listens for <strong className="text-gray-300">&quot;{wakePhrase}&quot;</strong> — say it to wake, then speak. Say <strong className="text-gray-300">&quot;{sleepPhrase}&quot;</strong> to put it back to sleep.
+          Click the button above to start. Allow the microphone when prompted. Then the assistant listens for <strong className="text-gray-300">&quot;{wakePhrase}&quot;</strong> — say it to wake, then speak. Say <strong className="text-gray-300">&quot;{sleepPhrase}&quot;</strong> to put it back to sleep. It can search the web for weather, news, and more.
         </p>
+
+        <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5">
+          <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
+            Personality &amp; prompt
+          </summary>
+          <div className="px-4 py-3 space-y-3 text-gray-400">
+            <p className="text-gray-300">Optional: add instructions to change how the assistant responds (e.g. funnier, sarcastic, formal). It can still search the web for weather and news.</p>
+            <label className="flex flex-col gap-1">
+              <span className="text-gray-400 text-xs">Personality / custom prompt</span>
+              <textarea
+                value={personality}
+                onChange={(e) => setPersonality(e.target.value)}
+                placeholder="e.g. Be funny and use dry humor. Keep replies short."
+                rows={3}
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-full focus:outline-none focus:ring-1 focus:ring-[#4F8CFF] resize-y min-h-[80px]"
+              />
+            </label>
+          </div>
+        </details>
 
         <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5">
           <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
@@ -458,6 +531,35 @@ export default function VoiceAssistantPage() {
                 />
               </label>
             </div>
+          </div>
+        </details>
+
+        <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5" open>
+          <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
+            Test web search
+          </summary>
+          <div className="px-4 py-3 space-y-3 text-gray-400">
+            <p className="text-gray-300">Type a query below and click Search &amp; respond to run it through the assistant (same pipeline as voice). It will search the web when needed and reply using your personality.</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={testSearchQuery}
+                onChange={(e) => setTestSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
+                placeholder="e.g. What's the weather in Lamoni? or current news"
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+                disabled={testSearchLoading || status === 'processing' || status === 'speaking'}
+              />
+              <button
+                type="button"
+                onClick={handleTestSearch}
+                disabled={testSearchLoading || status === 'processing' || status === 'speaking' || !testSearchQuery.trim()}
+                className="px-4 py-2 rounded-lg bg-[#4F8CFF] text-white text-sm font-medium hover:bg-[#5A96FF] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+              >
+                {testSearchLoading || status === 'processing' || status === 'speaking' ? 'Searching…' : 'Search & respond'}
+              </button>
+            </div>
+            <p className="text-gray-500 text-xs">The response will appear in the conversation below and play as voice if the pipeline returns TTS.</p>
           </div>
         </details>
 

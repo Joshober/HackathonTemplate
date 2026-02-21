@@ -10,6 +10,7 @@ from app.prompts.roast import ROAST_CHAT_SYSTEM
 from app.prompts.support import SUPPORT_SYSTEM
 from app.prompts.assistant_web import ASSISTANT_WEB_SYSTEM
 from app.services.web_search import search_web
+from app.services.weather import get_weather as fetch_weather
 
 bp = Blueprint('chat', __name__)
 
@@ -47,12 +48,29 @@ def _remove_echo_sentences(user_content: str, last_assistant_content: str) -> st
     return ' '.join(kept)
 
 
-SEARCH_WEB_TOOLS = [
+ASSISTANT_TOOLS = [
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_weather',
+            'description': 'Get current weather for a location. ALWAYS use this for any weather question (e.g. "weather in X", "temperature in Lamoni"). Pass the location as a string: city name, or "city state", or "city country".',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'location': {
+                        'type': 'string',
+                        'description': 'Location: city name, or "city state" (e.g. "Lamoni Iowa"), or "city country"',
+                    },
+                },
+                'required': ['location'],
+            },
+        },
+    },
     {
         'type': 'function',
         'function': {
             'name': 'search_web',
-            'description': 'Search the web for current information. Use when the user asks about recent events, facts, or when you need up-to-date information to answer accurately.',
+            'description': 'Search the web for current information. Use for news, general facts, or when you need up-to-date information. Do NOT use for weather—use get_weather instead.',
             'parameters': {
                 'type': 'object',
                 'properties': {
@@ -68,11 +86,16 @@ SEARCH_WEB_TOOLS = [
 ]
 
 
-def _chat_with_web_search(messages, model, headers, timeout_sec=60):
-    """Run chat with web search tool; returns (assistant_message, usage)."""
+def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_override=None):
+    """Run chat with web search tool; returns (assistant_message, usage).
+    personality_override: optional string appended to the system prompt (e.g. "Be funny and sarcastic.").
+    """
+    system_content = ASSISTANT_WEB_SYSTEM
+    if personality_override and str(personality_override).strip():
+        system_content = system_content + "\n\nAdditional personality / instructions (follow these when replying):\n" + str(personality_override).strip()
     if not messages or messages[0].get('role') != 'system':
-        messages = [{'role': 'system', 'content': ASSISTANT_WEB_SYSTEM}] + list(messages)
-    payload = {'model': model, 'messages': messages, 'tools': SEARCH_WEB_TOOLS, 'tool_choice': 'auto'}
+        messages = [{'role': 'system', 'content': system_content}] + list(messages)
+    payload = {'model': model, 'messages': messages, 'tools': ASSISTANT_TOOLS, 'tool_choice': 'auto'}
     max_turns = 5
     usage_merged = {}
     content = ''
@@ -117,7 +140,12 @@ def _chat_with_web_search(messages, model, headers, timeout_sec=60):
                 args = json.loads(args_str)
             except json.JSONDecodeError:
                 args = {}
-            tool_result = search_web(args.get('query', '')) if name == 'search_web' else f'Unknown tool: {name}'
+            if name == 'get_weather':
+                tool_result = fetch_weather(args.get('location', ''))
+            elif name == 'search_web':
+                tool_result = search_web(args.get('query', ''))
+            else:
+                tool_result = f'Unknown tool: {name}'
             messages.append({'role': 'tool', 'tool_call_id': tid, 'content': tool_result})
         payload['messages'] = messages
     return (content or 'I hit the search limit. Please try a shorter question.'), usage_merged
@@ -517,8 +545,9 @@ def chat_pipeline():
         timeout_sec = 120 if has_video else 60
 
         if mode == 'assistant' and not has_images and not has_video:
-            # Assistant mode: web search tool is available; model can search the internet when needed
-            assistant_message, usage_merged = _chat_with_web_search(messages, model, headers, timeout_sec)
+            # Assistant mode: web search tool is available; optional personality/custom prompt
+            personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
+            assistant_message, usage_merged = _chat_with_web_search(messages, model, headers, timeout_sec, personality_override=personality or None)
             out = {'message': assistant_message, 'usage': usage_merged}
         else:
             response = requests.post(

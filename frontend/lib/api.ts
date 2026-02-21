@@ -378,6 +378,8 @@ export const api = {
     voice?: string;
     mode?: 'assistant' | 'roast' | 'support';
     model?: string;
+    /** Optional personality / custom prompt (e.g. "Be funny and sarcastic.") for assistant mode. */
+    personality?: string;
   }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: any }> {
     const formData = new FormData();
     if (options.text) formData.append('text', options.text);
@@ -388,6 +390,7 @@ export const api = {
     if (options.voice) formData.append('voice', options.voice);
     if (options.mode) formData.append('mode', options.mode);
     if (options.model) formData.append('model', options.model);
+    if (options.personality != null && options.personality.trim()) formData.append('personality', options.personality.trim());
     if (options.audio) formData.append('audio', options.audio);
     if (options.images?.length) {
       options.images.forEach((f) => formData.append('images', f));
