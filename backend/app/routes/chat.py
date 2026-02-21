@@ -86,11 +86,30 @@ ASSISTANT_TOOLS = [
 ]
 
 
-def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_override=None):
+def _reverse_geocode(lat: float, lon: float) -> str | None:
+    """Convert lat/lon to a place name (e.g. 'Lamoni, Iowa, United States') using Nominatim. Returns None on failure."""
+    try:
+        r = requests.get(
+            'https://nominatim.openstreetmap.org/reverse',
+            params={'lat': lat, 'lon': lon, 'format': 'json'},
+            headers={'User-Agent': 'HackathonVoiceAssistant/1.0'},
+            timeout=5,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return (data.get('display_name') or '').strip() or None
+    except Exception:
+        return None
+
+
+def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_override=None, user_location=None):
     """Run chat with web search tool; returns (assistant_message, usage).
-    personality_override: optional string appended to the system prompt (e.g. "Be funny and sarcastic.").
+    personality_override: optional string appended to the system prompt.
+    user_location: optional place name string (e.g. from reverse geocode); when set, model knows user's location for 'near me' queries.
     """
     system_content = ASSISTANT_WEB_SYSTEM
+    if user_location and str(user_location).strip():
+        system_content = system_content + "\n\nThe user's current location is: " + str(user_location).strip() + ". When they ask for 'restaurants near me', 'nearby', or similar, use this location (e.g. search 'restaurants in [this area]')."
     if personality_override and str(personality_override).strip():
         system_content = system_content + "\n\nAdditional personality / instructions (follow these when replying):\n" + str(personality_override).strip()
     if not messages or messages[0].get('role') != 'system':
@@ -545,9 +564,23 @@ def chat_pipeline():
         timeout_sec = 120 if has_video else 60
 
         if mode == 'assistant' and not has_images and not has_video:
-            # Assistant mode: web search tool is available; optional personality/custom prompt
+            # Assistant mode: optional user location (lat/lon) for "restaurants near me"
+            user_location = None
+            try:
+                lat_s = request.form.get('latitude', '').strip()
+                lon_s = request.form.get('longitude', '').strip()
+                if lat_s and lon_s:
+                    lat, lon = float(lat_s), float(lon_s)
+                    if -90 <= lat <= 90 and -180 <= lon <= 180:
+                        user_location = _reverse_geocode(lat, lon)
+            except (ValueError, TypeError):
+                pass
             personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
-            assistant_message, usage_merged = _chat_with_web_search(messages, model, headers, timeout_sec, personality_override=personality or None)
+            assistant_message, usage_merged = _chat_with_web_search(
+                messages, model, headers, timeout_sec,
+                personality_override=personality or None,
+                user_location=user_location,
+            )
             out = {'message': assistant_message, 'usage': usage_merged}
         else:
             response = requests.post(

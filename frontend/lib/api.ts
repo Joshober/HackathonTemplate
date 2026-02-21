@@ -380,6 +380,9 @@ export const api = {
     model?: string;
     /** Optional personality / custom prompt (e.g. "Be funny and sarcastic.") for assistant mode. */
     personality?: string;
+    /** Optional user location for "restaurants near me" etc. */
+    latitude?: number;
+    longitude?: number;
   }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: any }> {
     const formData = new FormData();
     if (options.text) formData.append('text', options.text);
@@ -391,6 +394,10 @@ export const api = {
     if (options.mode) formData.append('mode', options.mode);
     if (options.model) formData.append('model', options.model);
     if (options.personality != null && options.personality.trim()) formData.append('personality', options.personality.trim());
+    if (options.latitude != null && options.longitude != null) {
+      formData.append('latitude', String(options.latitude));
+      formData.append('longitude', String(options.longitude));
+    }
     if (options.audio) formData.append('audio', options.audio);
     if (options.images?.length) {
       options.images.forEach((f) => formData.append('images', f));

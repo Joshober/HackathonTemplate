@@ -170,6 +170,8 @@ export default function VoiceAssistantPage() {
   const [personality, setPersonality] = useState(DEFAULT_CLAUDE_HOME_PERSONALITY);
   const [testSearchQuery, setTestSearchQuery] = useState('');
   const [testSearchLoading, setTestSearchLoading] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const recognitionRef = useRef<InstanceType<typeof SpeechRecognition> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isBusyRef = useRef(false);
@@ -181,10 +183,15 @@ export default function VoiceAssistantPage() {
   const wakePhraseRef = useRef(DEFAULT_WAKE_PHRASE);
   const sleepPhraseRef = useRef(DEFAULT_SLEEP_PHRASE);
   const personalityRef = useRef('');
+  const userLocationRef = useRef<{ lat: number; lon: number } | null>(null);
   const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTranscriptRef = useRef('');
   const currentPlayingRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
   const INTERIM_CLEAR_MS = 2000; // clear "Hearing..." after silence
+  /** Wait this long after last final transcript before sending (more time to pause mid-sentence) */
+  const FINAL_SEND_DELAY_MS = 2200;
+  const pendingFinalRef = useRef('');
+  const finalSendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   messagesRef.current = messages;
   isPausedRef.current = isPaused;
@@ -194,6 +201,7 @@ export default function VoiceAssistantPage() {
   wakePhraseRef.current = wakePhrase;
   sleepPhraseRef.current = sleepPhrase;
   personalityRef.current = personality;
+  userLocationRef.current = userLocation;
   isBusyRef.current = status === 'processing' || status === 'speaking'; // ignore mic input while thinking or while TTS is playing (avoid hearing assistant output)
 
   const scrollToBottom = useCallback(() => {
@@ -204,6 +212,45 @@ export default function VoiceAssistantPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  // Capture and store user location for "restaurants near me" (persist 24h in localStorage)
+  useEffect(() => {
+    const STORAGE_KEY = 'voice_assistant_location';
+    const CACHE_MS = 24 * 60 * 60 * 1000;
+    try {
+      const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      if (cached) {
+        const { lat, lon, ts } = JSON.parse(cached) as { lat: number; lon: number; ts: number };
+        if (typeof lat === 'number' && typeof lon === 'number' && Date.now() - (ts || 0) < CACHE_MS) {
+          setUserLocation({ lat, lon });
+          setLocationError(null);
+          return;
+        }
+      }
+    } catch {
+      // ignore invalid cache
+    }
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setUserLocation(loc);
+        setLocationError(null);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loc, ts: Date.now() }));
+        } catch {
+          // ignore
+        }
+      },
+      (err) => {
+        setLocationError(err.code === 1 ? 'Location denied' : err.message || 'Location unavailable');
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: CACHE_MS }
+    );
+  }, []);
+
   const sendToPipeline = useCallback(async (text: string) => {
     if (!text.trim()) return;
     interruptCurrentPlayback(currentPlayingRef);
@@ -212,6 +259,7 @@ export default function VoiceAssistantPage() {
     const currentMessages = messagesRef.current;
     const voice = selectedVoiceRef.current;
     try {
+      const loc = userLocationRef.current;
       const response = await api.chatPipeline({
         text: text.trim(),
         messages: currentMessages,
@@ -219,6 +267,7 @@ export default function VoiceAssistantPage() {
         voice,
         mode: 'assistant',
         personality: personalityRef.current.trim() || undefined,
+        ...(loc && { latitude: loc.lat, longitude: loc.lon }),
       });
       const assistantContent = response.message || 'I didn’t get that.';
       setMessages((prev) => [
@@ -296,42 +345,52 @@ export default function VoiceAssistantPage() {
       } else {
         setLiveTranscript('');
       }
-      // Only act on final results — never send from interim to avoid random/noise sends
+      // Final results: accumulate and send after user has paused (FINAL_SEND_DELAY_MS)
       if (finalTranscript.trim()) {
-        const text = finalTranscript.trim();
+        const newPart = finalTranscript.trim();
+        pendingFinalRef.current = (pendingFinalRef.current + ' ' + newPart).trim();
         if (interimDebounceRef.current) {
           clearTimeout(interimDebounceRef.current);
           interimDebounceRef.current = null;
         }
-        if (!awake) {
-          if (isWakePhrase(text, wake)) {
-            setIsAwake(true);
-            setHasWokenOnce(true);
-            const afterWake = stripWakePhrase(text, wake);
-            if (afterWake && !isLikelyNoise(afterWake)) sendToPipeline(afterWake);
-          } else if (hasWokenOnceRef.current) {
-            // After first wake this session, any speech wakes again (no need to repeat wake phrase)
-            setIsAwake(true);
-            if (!isLikelyNoise(text)) sendToPipeline(text);
+        if (finalSendTimeoutRef.current) {
+          clearTimeout(finalSendTimeoutRef.current);
+          finalSendTimeoutRef.current = null;
+        }
+        finalSendTimeoutRef.current = setTimeout(() => {
+          finalSendTimeoutRef.current = null;
+          const text = pendingFinalRef.current;
+          pendingFinalRef.current = '';
+          if (!text) return;
+          if (!awake) {
+            if (isWakePhrase(text, wakePhraseRef.current)) {
+              setIsAwake(true);
+              setHasWokenOnce(true);
+              const afterWake = stripWakePhrase(text, wakePhraseRef.current);
+              if (afterWake && !isLikelyNoise(afterWake)) sendToPipeline(afterWake);
+            } else if (hasWokenOnceRef.current) {
+              setIsAwake(true);
+              if (!isLikelyNoise(text)) sendToPipeline(text);
+            }
+            setLiveTranscript('');
+            lastTranscriptRef.current = '';
+            return;
           }
+          if (isSleepPhrase(text, sleepPhraseRef.current)) {
+            setIsAwake(false);
+            setLiveTranscript('');
+            lastTranscriptRef.current = '';
+            return;
+          }
+          if (isLikelyNoise(text)) {
+            setLiveTranscript('');
+            lastTranscriptRef.current = '';
+            return;
+          }
+          sendToPipeline(text);
           setLiveTranscript('');
           lastTranscriptRef.current = '';
-          return;
-        }
-        if (isSleepPhrase(text, sleep)) {
-          setIsAwake(false);
-          setLiveTranscript('');
-          lastTranscriptRef.current = '';
-          return;
-        }
-        if (isLikelyNoise(text)) {
-          setLiveTranscript('');
-          lastTranscriptRef.current = '';
-          return;
-        }
-        sendToPipeline(text);
-        setLiveTranscript('');
-        lastTranscriptRef.current = '';
+        }, FINAL_SEND_DELAY_MS);
         return;
       }
       // Interim only: update live display; do not send to pipeline (reduces random sends when it can't hear clearly)
@@ -374,6 +433,11 @@ export default function VoiceAssistantPage() {
         clearTimeout(interimDebounceRef.current);
         interimDebounceRef.current = null;
       }
+      if (finalSendTimeoutRef.current) {
+        clearTimeout(finalSendTimeoutRef.current);
+        finalSendTimeoutRef.current = null;
+      }
+      pendingFinalRef.current = '';
       try {
         recognition.stop();
       } catch {
@@ -458,6 +522,11 @@ export default function VoiceAssistantPage() {
     setIsPaused(true);
     setStatus('idle');
     setLiveTranscript('');
+    if (finalSendTimeoutRef.current) {
+      clearTimeout(finalSendTimeoutRef.current);
+      finalSendTimeoutRef.current = null;
+    }
+    pendingFinalRef.current = '';
     try {
       recognitionRef.current?.stop();
     } catch {
@@ -483,6 +552,16 @@ export default function VoiceAssistantPage() {
         <p className="text-gray-400 text-sm mb-4">
           Click the button above to start. Allow the microphone when prompted. Then the assistant listens for <strong className="text-gray-300">&quot;{wakePhrase}&quot;</strong> — say it to wake, then speak. Say <strong className="text-gray-300">&quot;{sleepPhrase}&quot;</strong> to put it back to sleep. It can search the web for weather, news, and more.
         </p>
+        {userLocation && (
+          <p className="text-gray-500 text-xs mb-2">
+            Location enabled — the assistant will use your location for &quot;restaurants near me&quot; and similar.
+          </p>
+        )}
+        {locationError && (
+          <p className="text-gray-500 text-xs mb-2">
+            Location not available ({locationError}). Allow location in your browser for &quot;restaurants near me&quot; to work.
+          </p>
+        )}
 
         <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5">
           <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
