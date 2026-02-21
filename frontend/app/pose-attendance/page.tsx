@@ -247,11 +247,9 @@ export default function PoseAttendancePage() {
     };
   }, [mode, referencePose, presenceConfirmed]);
 
-  // When entering student mode, turn on camera
+  // When entering professor or student mode, turn on camera
   useEffect(() => {
-    if (mode === 'student') {
-      startCamera();
-    }
+    startCamera();
     return () => stopCamera();
   }, [mode]);
 
