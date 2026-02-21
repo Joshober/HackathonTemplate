@@ -188,11 +188,6 @@ export default function VoiceAssistantPage() {
   const [liveTranscript, setLiveTranscript] = useState('');
   const [isAwake, setIsAwake] = useState(false);
   const [hasWokenOnce, setHasWokenOnce] = useState(false);
-  const [wakePhrase, setWakePhrase] = useState(DEFAULT_WAKE_PHRASE);
-  const [sleepPhrase, setSleepPhrase] = useState(DEFAULT_SLEEP_PHRASE);
-  const [personality, setPersonality] = useState(DEFAULT_CLAUDE_HOME_PERSONALITY);
-  const [testSearchQuery, setTestSearchQuery] = useState('');
-  const [testSearchLoading, setTestSearchLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [libraryCount, setLibraryCount] = useState<number | null>(null);
@@ -205,9 +200,6 @@ export default function VoiceAssistantPage() {
   const hasWokenOnceRef = useRef(false);
   const messagesRef = useRef<Message[]>([]);
   const selectedVoiceRef = useRef(selectedVoice);
-  const wakePhraseRef = useRef(DEFAULT_WAKE_PHRASE);
-  const sleepPhraseRef = useRef(DEFAULT_SLEEP_PHRASE);
-  const personalityRef = useRef('');
   const userLocationRef = useRef<{ lat: number; lon: number } | null>(null);
   const libraryCountRef = useRef<number | null>(null);
   const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -224,9 +216,6 @@ export default function VoiceAssistantPage() {
   isAwakeRef.current = isAwake;
   hasWokenOnceRef.current = hasWokenOnce;
   selectedVoiceRef.current = selectedVoice;
-  wakePhraseRef.current = wakePhrase;
-  sleepPhraseRef.current = sleepPhrase;
-  personalityRef.current = personality;
   userLocationRef.current = userLocation;
   libraryCountRef.current = libraryCount;
   isBusyRef.current = status === 'processing' || status === 'speaking'; // ignore mic input while thinking or while TTS is playing (avoid hearing assistant output)
@@ -329,7 +318,7 @@ export default function VoiceAssistantPage() {
         voice,
         mode: 'assistant',
         source: 'voice-assistant',
-        personality: personalityRef.current.trim() || undefined,
+        personality: DEFAULT_CLAUDE_HOME_PERSONALITY,
         ...(loc && { latitude: loc.lat, longitude: loc.lon }),
         ...(libCount != null && libCount >= 0 && { libraryCount: libCount }),
       });
@@ -356,21 +345,6 @@ export default function VoiceAssistantPage() {
       setStatus('listening');
     }
   }, []);
-
-  const handleTestSearch = useCallback(async () => {
-    const q = testSearchQuery.trim();
-    if (!q) return;
-    setTestSearchLoading(true);
-    setError(null);
-    try {
-      await sendToPipeline(q);
-      setTestSearchQuery('');
-    } catch {
-      // error already set by sendToPipeline
-    } finally {
-      setTestSearchLoading(false);
-    }
-  }, [testSearchQuery, sendToPipeline]);
 
   useEffect(() => {
     const Recognition = getSpeechRecognition();
@@ -425,10 +399,10 @@ export default function VoiceAssistantPage() {
           pendingFinalRef.current = '';
           if (!text) return;
           if (!awake) {
-            if (isWakePhrase(text, wakePhraseRef.current)) {
+            if (isWakePhrase(text, DEFAULT_WAKE_PHRASE)) {
               setIsAwake(true);
               setHasWokenOnce(true);
-              const afterWake = stripWakePhrase(text, wakePhraseRef.current);
+              const afterWake = stripWakePhrase(text, DEFAULT_WAKE_PHRASE);
               if (afterWake && !isLikelyNoise(afterWake)) sendToPipeline(afterWake);
             } else if (hasWokenOnceRef.current) {
               setIsAwake(true);
@@ -438,7 +412,7 @@ export default function VoiceAssistantPage() {
             lastTranscriptRef.current = '';
             return;
           }
-          if (isSleepPhrase(text, sleepPhraseRef.current)) {
+          if (isSleepPhrase(text, DEFAULT_SLEEP_PHRASE)) {
             setIsAwake(false);
             setLiveTranscript('');
             lastTranscriptRef.current = '';
@@ -598,210 +572,113 @@ export default function VoiceAssistantPage() {
     }
   }, []);
 
+  const isActive = status === 'listening' || status === 'processing' || status === 'speaking';
+  const isListening = status === 'listening';
+
   return (
-    <div className="min-h-screen bg-[#08050c] text-white">
+    <div className="min-h-screen bg-[#08050c] text-white bg-dot-grid">
       <Navbar />
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* One-click entry: runs Start listening logic so browser will show mic prompt (requires user gesture) */}
-        {status === 'idle' && hasRecognition && (
+      <div className="max-w-xl mx-auto px-4 sm:px-6 pt-6 pb-12">
+        {/* Hero */}
+        <header className="text-center mb-8">
+          <h1 className="font-heading text-3xl font-bold text-white tracking-tight">Voice Assistant</h1>
+          <p className="text-white/50 text-sm mt-1.5">
+            Say &quot;{DEFAULT_WAKE_PHRASE}&quot; to start · &quot;{DEFAULT_SLEEP_PHRASE}&quot; to end
+          </p>
+        </header>
+
+        {/* Voice orb + controls */}
+        <div className="flex flex-col items-center mb-8">
           <button
             type="button"
-            onClick={startListening}
-            className="w-full mb-6 py-6 rounded-xl border-2 border-[#ff6b35]/50 bg-[#ff6b35]/20 text-white font-medium text-lg hover:bg-[#ff6b35]/30 hover:border-[#ff6b35]/70 transition-colors focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
+            onClick={hasRecognition ? (isListening ? stopListening : startListening) : undefined}
+            disabled={!hasRecognition}
+            className={`
+              relative w-32 h-32 rounded-full flex items-center justify-center
+              transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-[#ff6b35] focus:ring-offset-2 focus:ring-offset-[#08050c]
+              ${status === 'idle' && hasRecognition
+                ? 'bg-[#ff6b35] hover:bg-[#ff8555] shadow-lg shadow-[#ff6b35]/25 hover:shadow-[#ff6b35]/40 hover:scale-105'
+                : isActive
+                  ? 'bg-[#ff6b35]/90 shadow-lg shadow-[#ff6b35]/30 scale-105'
+                  : 'bg-white/10 cursor-not-allowed'
+              }
+            `}
           >
-            Click to start listening — browser will ask for microphone access
+            {isActive && (
+              <span
+                className="absolute inset-0 rounded-full animate-ping opacity-30 bg-[#ff6b35]"
+                style={{ animationDuration: '1.5s' }}
+              />
+            )}
+            <svg
+              className={`relative w-12 h-12 text-white ${status === 'processing' || status === 'speaking' ? 'animate-pulse' : ''}`}
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 2.97 2.96 5.21 5.91 5.21s5.42-2.24 5.91-5.21c.09-.6-.39-1.14-1-1.14z" />
+            </svg>
           </button>
-        )}
-        <h1 className="text-2xl font-bold text-white mb-1">AI Voice Assistant</h1>
-        <p className="text-gray-400 text-sm mb-4">
-          Click the button above to start. Allow the microphone when prompted. Then the assistant listens for <strong className="text-gray-300">&quot;{wakePhrase}&quot;</strong> — say it to wake, then speak. Say <strong className="text-gray-300">&quot;{sleepPhrase}&quot;</strong> to put it back to sleep. It can search the web for weather, news, and more.
-        </p>
-        {userLocation && (
-          <p className="text-gray-500 text-xs mb-2">
-            Location enabled — the assistant will use your location for &quot;restaurants near me&quot; and similar.
+
+          <p className="mt-4 text-sm text-white/60 min-h-[20px]">
+            {status === 'idle' && hasRecognition && 'Tap to start · Microphone access required'}
+            {status === 'idle' && !hasRecognition && 'Voice not supported in this browser'}
+            {isListening && !isAwake && 'Listening for wake word…'}
+            {isListening && isAwake && 'Listening…'}
+            {status === 'processing' && 'Thinking…'}
+            {status === 'speaking' && 'Speaking…'}
+            {status === 'error' && 'Something went wrong'}
           </p>
-        )}
-        {locationError && (
-          <p className="text-gray-500 text-xs mb-2">
-            Location not available ({locationError}). Allow location in your browser for &quot;restaurants near me&quot; to work.
-          </p>
-        )}
-        <p className="text-gray-400 text-sm mb-2 flex flex-wrap items-center gap-2">
-          <span className="font-medium text-white">People in the library right now:</span>
-          {libraryCountLoading ? (
-            <span className="text-gray-500">Loading…</span>
-          ) : libraryCount != null ? (
-            <span className="tabular-nums font-semibold text-[#ff6b35]">{libraryCount}</span>
-          ) : (
-            <span className="text-gray-500">—</span>
-          )}
-          <span className="text-gray-500 text-xs">(sensor count — the assistant uses this when you ask)</span>
-        </p>
 
-        <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5">
-          <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
-            Personality &amp; prompt
-          </summary>
-          <div className="px-4 py-3 space-y-3 text-gray-400">
-            <p className="text-gray-300">Optional: add instructions to change how the assistant responds (e.g. funnier, sarcastic, formal). It can still search the web for weather and news.</p>
-            <label className="flex flex-col gap-1">
-              <span className="text-gray-400 text-xs">Personality / custom prompt</span>
-              <textarea
-                value={personality}
-                onChange={(e) => setPersonality(e.target.value)}
-                placeholder="e.g. Be funny and use dry humor. Keep replies short."
-                rows={3}
-                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-full focus:outline-none focus:ring-1 focus:ring-[#ff6b35] resize-y min-h-[80px]"
-              />
-            </label>
-          </div>
-        </details>
-
-        <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5">
-          <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
-            Wake word &amp; sleep word
-          </summary>
-          <div className="px-4 py-3 space-y-3 text-gray-400">
-            <p className="text-gray-300">When <strong>asleep</strong>, the assistant only reacts to the wake phrase. When <strong>awake</strong>, it processes your speech and goes to sleep if you say the sleep phrase.</p>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-gray-400 text-xs">Wake phrase</span>
-                <input
-                  type="text"
-                  value={wakePhrase}
-                  onChange={(e) => setWakePhrase(e.target.value)}
-                  placeholder={DEFAULT_WAKE_PHRASE}
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-48 focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-gray-400 text-xs">Sleep phrase</span>
-                <input
-                  type="text"
-                  value={sleepPhrase}
-                  onChange={(e) => setSleepPhrase(e.target.value)}
-                  placeholder={DEFAULT_SLEEP_PHRASE}
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-48 focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
-                />
-              </label>
-            </div>
-          </div>
-        </details>
-
-        <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5" open>
-          <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">
-            Test web search
-          </summary>
-          <div className="px-4 py-3 space-y-3 text-gray-400">
-            <p className="text-gray-300">Type a query below and click Search &amp; respond to run it through the assistant (same pipeline as voice). It will search the web when needed and reply using your personality.</p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="text"
-                value={testSearchQuery}
-                onChange={(e) => setTestSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
-                placeholder="e.g. What's the weather in Lamoni? or current news"
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
-                disabled={testSearchLoading || status === 'processing' || status === 'speaking'}
-              />
+          <div className="mt-4 flex items-center gap-4">
+            {hasRecognition && status !== 'idle' && (
               <button
                 type="button"
-                onClick={handleTestSearch}
-                disabled={testSearchLoading || status === 'processing' || status === 'speaking' || !testSearchQuery.trim()}
-                className="px-4 py-2 rounded-lg bg-[#ff6b35] text-white text-sm font-medium hover:bg-[#ff8555] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
+                onClick={stopListening}
+                className="text-xs text-white/50 hover:text-white/80 transition-colors"
               >
-                {testSearchLoading || status === 'processing' || status === 'speaking' ? 'Searching…' : 'Search & respond'}
+                Pause
               </button>
-            </div>
-            <p className="text-gray-500 text-xs">The response will appear in the conversation below and play as voice if the pipeline returns TTS.</p>
-          </div>
-        </details>
-
-        {/* Status & controls */}
-        <div className="flex flex-wrap items-center gap-3 mb-6">
-          <div
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${
-              status === 'listening'
-                ? 'bg-[#ff6b35]/20 border-[#ff6b35]/50'
-                : status === 'processing' || status === 'speaking'
-                  ? 'bg-amber-500/20 border-amber-500/50'
-                  : 'bg-white/5 border-white/10'
-            }`}
-          >
-            <span
-              className={`w-3 h-3 rounded-full ${
-                status === 'listening'
-                  ? 'bg-green-500 animate-pulse'
-                  : status === 'processing' || status === 'speaking'
-                    ? 'bg-amber-500 animate-pulse'
-                    : 'bg-gray-500'
-              }`}
-            />
-            <span className="text-sm font-medium text-gray-200">
-              {status === 'listening' && (isAwake ? 'Listening…' : 'Listening for wake word…')}
-              {status === 'processing' && 'Thinking…'}
-              {status === 'speaking' && 'Speaking…'}
-              {status === 'idle' && (isPaused ? 'Paused' : 'Starting…')}
-              {status === 'error' && 'Error'}
-            </span>
-          </div>
-          {status === 'listening' && (
-            <div
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm ${
-                isAwake ? 'bg-green-500/10 border-green-500/40 text-green-300' : 'bg-gray-500/20 border-gray-500/40 text-gray-400'
-              }`}
-            >
-              <span className="w-2 h-2 rounded-full bg-current" />
-              {isAwake ? 'Awake' : 'Asleep'}
-            </div>
-          )}
-          {hasRecognition && (
-            <button
-              type="button"
-              onClick={status === 'listening' ? stopListening : startListening}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                status === 'listening'
-                  ? 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  : 'bg-[#ff6b35] text-white hover:bg-[#ff8555]'
-              }`}
-            >
-              {status === 'listening' ? 'Pause listening' : 'Start listening'}
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <label htmlFor="voice" className="text-sm text-gray-400">Voice</label>
-            <select
-              id="voice"
-              value={selectedVoice}
-              onChange={(e) => setSelectedVoice(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
-            >
-              {VOICES.map((v) => (
-                <option key={v} value={v} className="bg-[#08050c]">{v}</option>
-              ))}
-            </select>
+            )}
+            <label className="flex items-center gap-2 text-xs text-white/50">
+              <span>Voice</span>
+              <select
+                id="voice"
+                value={selectedVoice}
+                onChange={(e) => setSelectedVoice(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-white/90 text-xs focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
+              >
+                {VOICES.map((v) => (
+                  <option key={v} value={v} className="bg-[#0f0b14]">{v}</option>
+                ))}
+              </select>
+            </label>
           </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm space-y-2">
+          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200/90 text-sm">
             <p>{error}</p>
             {error.includes('denied') && (
-              <p className="text-gray-400 text-xs mt-2">
-                If you’re on localhost, the mic should work in Chrome/Edge. Make sure no other app is blocking the microphone and that your OS allows the browser to use it.
+              <p className="text-white/50 text-xs mt-2">
+                Allow the microphone in your browser, then tap the button again.
               </p>
             )}
           </div>
         )}
 
         {/* Conversation */}
-        <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden flex flex-col" style={{ minHeight: '320px' }}>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar" style={{ maxHeight: '50vh' }}>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm overflow-hidden flex flex-col shadow-xl" style={{ minHeight: '320px' }}>
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar" style={{ maxHeight: '50vh' }}>
             {messages.length === 0 && !liveTranscript && (
-              <p className="text-gray-500 text-sm">Say &quot;{wakePhrase}&quot; to wake the assistant, then speak. Say &quot;{sleepPhrase}&quot; to put it back to sleep.</p>
+              <p className="text-white/40 text-sm text-center py-8">
+                Say &quot;{DEFAULT_WAKE_PHRASE}&quot; then ask anything — weather, news, or search.
+              </p>
             )}
             {liveTranscript && (
-              <p className="text-gray-400 text-sm italic">Hearing: &quot;{liveTranscript}&quot;</p>
+              <div className="flex justify-end">
+                <p className="text-white/50 text-sm italic max-w-[85%]">&quot;{liveTranscript}&quot;</p>
+              </div>
             )}
             {messages.map((msg, i) => (
               <div
@@ -809,13 +686,13 @@ export default function VoiceAssistantPage() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-xl px-4 py-2.5 ${
+                  className={`max-w-[88%] rounded-2xl px-4 py-3 ${
                     msg.role === 'user'
-                      ? 'bg-[#ff6b35]/20 border border-[#ff6b35]/30'
-                      : 'bg-white/5 border border-white/10 text-gray-200'
+                      ? 'bg-[#ff6b35]/15 border border-[#ff6b35]/20 text-white'
+                      : 'bg-white/5 border border-white/10 text-white/90'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
                 </div>
               </div>
             ))}
@@ -823,11 +700,17 @@ export default function VoiceAssistantPage() {
           </div>
         </div>
 
-        {!hasRecognition && (
-          <p className="mt-4 text-amber-400/90 text-sm">
-            Use Chrome or Edge for always-on voice. Safari and Firefox have limited support.
-          </p>
-        )}
+        {/* Footer context */}
+        <footer className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-white/40">
+          {userLocation && <span>Location on</span>}
+          {locationError && <span>Location off</span>}
+          {libraryCount != null && !libraryCountLoading && (
+            <span>Library: {libraryCount} here</span>
+          )}
+          {!hasRecognition && (
+            <span className="text-amber-400/80">Use Chrome or Edge for voice</span>
+          )}
+        </footer>
       </div>
     </div>
   );
