@@ -9,7 +9,7 @@ def _search_duckduckgo(query: str, max_results: int = 8) -> str:
     if not query or not str(query).strip():
         return "Error: empty search query."
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
 
         ddgs = DDGS()
         results = list(ddgs.text(str(query).strip(), max_results=max_results))
