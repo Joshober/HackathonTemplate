@@ -191,12 +191,12 @@ export default function Dashboard() {
               <FileWarning className="w-6 h-6 text-rose-400" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold">Bullshit Detect</h3>
+              <h3 className="text-xl font-semibold">Reality Check</h3>
               <p className="text-sm text-slate-400">Detect and filter unreliable or misleading content</p>
             </div>
           </div>
           <Link href="/bullshit-detect" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
-            Go to Bullshit Detect →
+            Go to Reality Check →
           </Link>
         </motion.div>
 

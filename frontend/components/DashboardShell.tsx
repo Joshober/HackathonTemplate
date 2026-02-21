@@ -11,7 +11,7 @@ const navItems = [
   { icon: GraduationCap, label: 'AI Tutor', href: '/tutor' },
   { icon: User, label: 'Profile', href: '/profile' },
   { icon: MessageCircle, label: 'Chat Pipeline', href: '/chat' },
-  { icon: FileWarning, label: 'Bullshit Detect', href: '/bullshit-detect' },
+  { icon: FileWarning, label: 'Reality Check', href: '/bullshit-detect' },
   { icon: Mic, label: 'Voice Assistant', href: '/voice-assistant' },
   { icon: Camera, label: 'Pose Attendance', href: '/pose-attendance' },
 ];

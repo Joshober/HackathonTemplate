@@ -616,7 +616,7 @@ def bullshit_detect():
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {api_key}',
             'HTTP-Referer': request.headers.get('Origin', ''),
-            'X-Title': 'Bullshit Detector',
+            'X-Title': 'Reality Check',
         }
         data, usage = _run_bullshit_detect(messages, model, headers)
         return jsonify({'read_aloud': data['read_aloud'], 'analysis': data['analysis'], 'usage': usage}), 200
@@ -683,7 +683,7 @@ def bullshit_detect_pipeline():
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {api_key}',
             'HTTP-Referer': request.headers.get('Origin', ''),
-            'X-Title': 'Bullshit Detector',
+            'X-Title': 'Reality Check',
         }
 
         user_content = text or ('(See video)' if has_video else '(See image)')

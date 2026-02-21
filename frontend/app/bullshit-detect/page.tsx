@@ -273,7 +273,7 @@ export default function BullshitDetectPage() {
             <FileWarning className="w-6 h-6 text-amber-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Bullshit Detect</h1>
+            <h1 className="text-2xl font-bold text-white">Reality Check</h1>
             <p className="text-gray-400 text-sm">
               Use voice, text, or attach images/video. Get a blunt analysis of jargon and fluff—no plain-language rewrite.
             </p>
