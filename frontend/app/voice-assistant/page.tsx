@@ -127,9 +127,38 @@ declare global {
   }
 }
 
-function getSpeechRecognition(): SpeechRecognitionConstructor | null {
+/** Minimal types for Web Speech API (not in all TS libs). */
+interface SpeechRecognitionResultItem {
+  transcript: string;
+}
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  length: number;
+  0: SpeechRecognitionResultItem;
+  [i: number]: SpeechRecognitionResultItem;
+}
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: SpeechRecognitionResult[];
+}
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionInstance) | null {
   if (typeof window === 'undefined') return null;
-  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  const C = window.SpeechRecognition || window.webkitSpeechRecognition;
+  return C ? (C as new () => SpeechRecognitionInstance) : null;
 }
 
 function playBase64Audio(
@@ -192,7 +221,7 @@ export default function VoiceAssistantPage() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [libraryCount, setLibraryCount] = useState<number | null>(null);
   const [libraryCountLoading, setLibraryCountLoading] = useState(true);
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const recognitionRef = useRef<InstanceType<NonNullable<ReturnType<typeof getSpeechRecognition>>> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isBusyRef = useRef(false);
   const isPausedRef = useRef(false);
@@ -360,7 +389,7 @@ export default function VoiceAssistantPage() {
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
       if (isPausedRef.current || isBusyRef.current) return;
       const awake = isAwakeRef.current;
       let finalTranscript = '';
@@ -440,7 +469,7 @@ export default function VoiceAssistantPage() {
       }
     };
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
       if (event.error === 'no-speech' || event.error === 'aborted') return;
       if (event.error === 'not-allowed') {
         setStatus('idle');
