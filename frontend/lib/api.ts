@@ -285,19 +285,21 @@ export const api = {
     });
   },
 
-  // Chat API (public, no auth). Optional images, optional video (roast: video max 20s), optional mode 'assistant' | 'roast'.
+  // Chat API (public, no auth). Optional images, optional PDFs, optional video (roast: video max 20s), optional mode 'assistant' | 'roast'.
   async sendChatMessage(
     messages: Array<{ role: string; content: string }>,
     model?: string,
     imagesBase64?: string[],
     mode?: 'assistant' | 'roast' | 'support',
     videoBase64?: string,
-    videoMime?: string
+    videoMime?: string,
+    pdfsBase64?: string[]
   ): Promise<{ message: string; usage?: any }> {
     const body: {
       messages: typeof messages;
       model?: string;
       images?: string[];
+      pdfs?: string[];
       mode?: string;
       video_b64?: string;
       video_mime?: string;
@@ -306,6 +308,7 @@ export const api = {
       model: model || 'openai/gpt-3.5-turbo',
     };
     if (imagesBase64?.length) body.images = imagesBase64;
+    if (pdfsBase64?.length) body.pdfs = pdfsBase64;
     if (mode) body.mode = mode;
     if (videoBase64) {
       body.video_b64 = videoBase64;
@@ -355,20 +358,21 @@ export const api = {
     });
   },
 
-  // Weekend Energy AI Tutor (auth) — FUN + HELP; optional images/video
+  // Weekend Energy AI Tutor (auth) — optional images/video/PDFs
   async askTutor(
     question: string,
-    options?: { weekday?: string; time?: string; images?: string[]; video_b64?: string; video_mime?: string }
+    options?: { weekday?: string; time?: string; images?: string[]; pdfs?: string[]; video_b64?: string; video_mime?: string }
   ): Promise<{ fun: string; help: string[]; raw?: string }> {
     const now = new Date();
     const weekday = options?.weekday ?? now.toLocaleDateString('en-US', { weekday: 'long' });
     const time = options?.time ?? now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    const body: { question: string; weekday: string; time: string; images?: string[]; video_b64?: string; video_mime?: string } = {
+    const body: { question: string; weekday: string; time: string; images?: string[]; pdfs?: string[]; video_b64?: string; video_mime?: string } = {
       question,
       weekday,
       time,
     };
     if (options?.images?.length) body.images = options.images;
+    if (options?.pdfs?.length) body.pdfs = options.pdfs;
     if (options?.video_b64) {
       body.video_b64 = options.video_b64;
       body.video_mime = options.video_mime || 'video/mp4';
@@ -392,11 +396,12 @@ export const api = {
     });
   },
 
-  // Chat Pipeline: STT -> Chat (text+images+video) -> TTS (same features as Chatbot: mode, video for roast)
+  // Chat Pipeline: STT -> Chat (text+images+video+PDFs) -> TTS (same features as Chatbot: mode, video for roast)
   async chatPipeline(options: {
     audio?: File;
     text?: string;
     images?: File[];
+    pdfs?: File[];
     video?: File;
     messages?: Array<{ role: string; content: string }>;
     tts?: boolean;
@@ -416,6 +421,9 @@ export const api = {
     if (options.audio) formData.append('audio', options.audio);
     if (options.images?.length) {
       options.images.forEach((f) => formData.append('images', f));
+    }
+    if (options.pdfs?.length) {
+      options.pdfs.forEach((f) => formData.append('pdfs', f));
     }
     if (options.video) formData.append('video', options.video);
     return fetchPublic('/api/chat/pipeline', {

@@ -68,6 +68,7 @@ export default function Chatbot() {
   ]);
   const [input, setInput] = useState('');
   const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
+  const [attachedPdfs, setAttachedPdfs] = useState<{ file: File }[]>([]);
   const [attachedVideo, setAttachedVideo] = useState<{ file: File; preview: string; duration: number } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -84,12 +85,12 @@ export default function Chatbot() {
 
   const canSend = chatMode === 'roast'
     ? attachedImages.length > 0 || attachedVideo !== null
-    : (input.trim() || attachedImages.length > 0);
+    : (input.trim() || attachedImages.length > 0 || attachedPdfs.length > 0);
 
   const sendMessage = async () => {
-    if ((!input.trim() && attachedImages.length === 0 && !attachedVideo) || isLoading) return;
+    if ((!input.trim() && attachedImages.length === 0 && attachedPdfs.length === 0 && !attachedVideo) || isLoading) return;
 
-    const userContent = input.trim() || (attachedVideo ? '(See video)' : '(See image)');
+    const userContent = input.trim() || (attachedVideo ? '(See video)' : attachedPdfs.length ? '(PDF attached)' : '(See image)');
     const userMessage: Message = {
       role: 'user',
       content: userContent,
@@ -100,9 +101,11 @@ export default function Chatbot() {
     setMessages((prev) => [...prev, userMessage]);
     const currentInput = input;
     const currentImages = [...attachedImages];
+    const currentPdfs = [...attachedPdfs];
     const currentVideo = attachedVideo;
     setInput('');
     setAttachedImages([]);
+    setAttachedPdfs([]);
     setAttachedVideo(null);
     setVideoError(null);
     setIsLoading(true);
@@ -110,10 +113,11 @@ export default function Chatbot() {
     try {
       const apiMessages = [
         ...messages.map((msg) => ({ role: msg.role, content: msg.content })),
-        { role: 'user' as const, content: currentInput || (currentVideo ? '(See video)' : '(See image)') },
+        { role: 'user' as const, content: currentInput || (currentVideo ? '(See video)' : currentPdfs.length ? '(PDF attached)' : '(See image)') },
       ];
 
       let imagesBase64: string[] | undefined;
+      let pdfsBase64: string[] | undefined;
       let videoBase64: string | undefined;
       let videoMime: string | undefined;
       if (currentVideo) {
@@ -123,6 +127,9 @@ export default function Chatbot() {
       } else if (currentImages.length > 0) {
         imagesBase64 = await Promise.all(currentImages.map(({ file }) => fileToBase64(file)));
       }
+      if (currentPdfs.length > 0) {
+        pdfsBase64 = await Promise.all(currentPdfs.map((p) => fileToBase64(p.file)));
+      }
 
       const response = await api.sendChatMessage(
         apiMessages,
@@ -130,7 +137,8 @@ export default function Chatbot() {
         imagesBase64,
         chatMode,
         videoBase64,
-        videoMime
+        videoMime,
+        pdfsBase64
       );
 
       const assistantMessage: Message = {
@@ -152,6 +160,8 @@ export default function Chatbot() {
     }
   };
 
+  const isPdfFile = (f: File) => f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
+
   const addImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
@@ -171,23 +181,26 @@ export default function Chatbot() {
             duration,
           });
           setAttachedImages([]);
+          setAttachedPdfs([]);
         })
         .catch(() => {
-          // e.g. .mov not decodable in this browser; still attach and let backend handle it
           setAttachedVideo({ file, preview: URL.createObjectURL(file), duration: 0 });
           setAttachedImages([]);
+          setAttachedPdfs([]);
         });
       e.target.value = '';
       return;
     }
     if (chatMode === 'roast' && attachedVideo) setAttachedVideo(null);
     const newList: { file: File; preview: string }[] = [];
+    const newPdfs: { file: File }[] = [];
     for (let i = 0; i < Math.min(files.length, 3); i++) {
       const f = files[i];
-      if (!f.type.startsWith('image/')) continue;
-      newList.push({ file: f, preview: URL.createObjectURL(f) });
+      if (chatMode !== 'roast' && isPdfFile(f)) newPdfs.push({ file: f });
+      else if (f.type.startsWith('image/')) newList.push({ file: f, preview: URL.createObjectURL(f) });
     }
     setAttachedImages((prev) => [...prev, ...newList].slice(0, 3));
+    setAttachedPdfs((prev) => [...prev, ...newPdfs].slice(0, 2));
     e.target.value = '';
   };
 
@@ -198,6 +211,10 @@ export default function Chatbot() {
       next.splice(index, 1);
       return next;
     });
+  };
+
+  const removePdf = (index: number) => {
+    setAttachedPdfs((prev) => prev.filter((_, i) => i !== index));
   };
 
   const removeVideo = () => {
@@ -402,11 +419,21 @@ export default function Chatbot() {
                 ))}
               </div>
             )}
+            {attachedPdfs.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachedPdfs.map((pdf, i) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                    <span className="text-sm truncate max-w-[120px]" title={pdf.file.name}>{pdf.file.name}</span>
+                    <button type="button" onClick={() => removePdf(i)} className="p-1.5 bg-red-500/80 rounded hover:bg-red-500 text-xs">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <input
                 type="file"
                 ref={fileInputRef}
-                accept={chatMode === 'roast' ? 'image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg' : 'image/*'}
+                accept={chatMode === 'roast' ? 'image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg' : 'image/*,application/pdf,.pdf'}
                 multiple={chatMode !== 'roast'}
                 className="hidden"
                 onChange={addImages}

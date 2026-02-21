@@ -69,6 +69,7 @@ export default function SupportPage() {
   ]);
   const [text, setText] = useState('');
   const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
+  const [attachedPdfs, setAttachedPdfs] = useState<{ file: File }[]>([]);
   const [attachedVideo, setAttachedVideo] = useState<{ file: File; preview: string; duration: number } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -186,6 +187,8 @@ export default function SupportPage() {
     }
   };
 
+  const isPdfFile = (f: File) => f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
@@ -201,10 +204,12 @@ export default function SupportPage() {
           }
           setAttachedVideo({ file, preview: URL.createObjectURL(file), duration });
           setAttachedImages([]);
+          setAttachedPdfs([]);
         })
         .catch(() => {
           setAttachedVideo({ file, preview: URL.createObjectURL(file), duration: 0 });
           setAttachedImages([]);
+          setAttachedPdfs([]);
         });
       e.target.value = '';
       return;
@@ -212,8 +217,8 @@ export default function SupportPage() {
     if (attachedVideo) setAttachedVideo(null);
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      if (!f.type.startsWith('image/')) continue;
-      setAttachedImages((prev) => [...prev, { file: f, preview: URL.createObjectURL(f) }]);
+      if (isPdfFile(f)) setAttachedPdfs((prev) => [...prev, { file: f }].slice(0, 2));
+      else if (f.type.startsWith('image/')) setAttachedImages((prev) => [...prev, { file: f, preview: URL.createObjectURL(f) }]);
     }
     e.target.value = '';
   };
@@ -235,15 +240,20 @@ export default function SupportPage() {
     }
   };
 
+  const removePdf = (idx: number) => {
+    setAttachedPdfs((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const sendPipeline = async (overrides?: { audio?: File; text?: string }) => {
     const inputText = (overrides?.text ?? text).trim();
     const audio = overrides?.audio;
     const images = attachedImages.map((x) => x.file);
+    const pdfs = attachedPdfs.map((x) => x.file);
     const video = attachedVideo?.file;
-    const hasMedia = images.length > 0 || !!video;
+    const hasMedia = images.length > 0 || pdfs.length > 0 || !!video;
     if (!inputText && !audio && !hasMedia) return;
 
-    const userContent = inputText || (audio ? '(Voice message)' : video ? '(See video)' : '(Image attached)');
+    const userContent = inputText || (audio ? '(Voice message)' : video ? '(See video)' : pdfs.length ? '(PDF attached)' : '(Image attached)');
     const userMsg: Message = { role: 'user', content: userContent };
     if (video) {
       userMsg.isVideo = true;
@@ -252,6 +262,8 @@ export default function SupportPage() {
     setMessages((prev) => [...prev, userMsg]);
     setText('');
     setAttachedImages([]);
+    const currentPdfs = [...attachedPdfs];
+    setAttachedPdfs([]);
     const currentVideo = attachedVideo;
     setAttachedVideo(null);
     setVideoError(null);
@@ -264,7 +276,7 @@ export default function SupportPage() {
         ...prevMessages
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({ role: m.role, content: m.content })),
-        { role: 'user' as const, content: inputText || (audio ? '(Voice message)' : currentVideo ? '(See video)' : '(See image)') },
+        { role: 'user' as const, content: inputText || (audio ? '(Voice message)' : currentVideo ? '(See video)' : currentPdfs.length ? '(See attached PDF)' : '(See image)') },
       ];
 
       if (audio) {
@@ -273,6 +285,7 @@ export default function SupportPage() {
           audio,
           text: inputText || undefined,
           images: images.length ? images : undefined,
+          pdfs: currentPdfs.length ? currentPdfs.map((p) => p.file) : undefined,
           video: currentVideo?.file,
           messages: pipelineMessages,
           tts: false,
@@ -304,6 +317,7 @@ export default function SupportPage() {
         }
       } else {
         let imagesBase64: string[] | undefined;
+        let pdfsBase64: string[] | undefined;
         let videoBase64: string | undefined;
         let videoMime: string | undefined;
         if (currentVideo) {
@@ -313,13 +327,17 @@ export default function SupportPage() {
         } else if (images.length > 0) {
           imagesBase64 = await Promise.all(images.map((f) => fileToBase64(f)));
         }
+        if (currentPdfs.length > 0) {
+          pdfsBase64 = await Promise.all(currentPdfs.map((p) => fileToBase64(p.file)));
+        }
         const result = await api.sendChatMessage(
           apiMessages,
           'openai/gpt-3.5-turbo',
           imagesBase64,
           'support',
           videoBase64,
-          videoMime
+          videoMime,
+          pdfsBase64
         );
         setMessages((prev) => [...prev, { role: 'assistant', content: result.message || 'No response.' }]);
       }
@@ -399,6 +417,12 @@ export default function SupportPage() {
                 <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
               </div>
             ))}
+            {attachedPdfs.map((pdf, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                <span className="text-sm truncate max-w-[140px]" title={pdf.file.name}>{pdf.file.name}</span>
+                <button type="button" onClick={() => removePdf(i)} className="p-1.5 bg-red-500/80 rounded hover:bg-red-500 text-xs">×</button>
+              </div>
+            ))}
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={isRecording ? stopRecording : startRecording} disabled={isLoading} className={`p-3 rounded-lg ${isRecording ? 'bg-red-500/30' : 'bg-white/10 hover:bg-white/20'}`} title={isRecording ? 'Stop' : 'Record'}>
@@ -407,7 +431,7 @@ export default function SupportPage() {
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="p-3 rounded-lg bg-white/10 hover:bg-white/20" title="Attach">
               <ImagePlus className="w-5 h-5" />
             </button>
-            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg" multiple={!attachedVideo} className="hidden" onChange={handleImageSelect} />
+            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg,application/pdf,.pdf" multiple={!attachedVideo} className="hidden" onChange={handleImageSelect} />
             <button type="button" onClick={() => setTtsEnabled((v) => !v)} className={`p-3 rounded-lg ${ttsEnabled ? 'bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20'}`} title="Speak response">
               <Volume2 className="w-5 h-5" />
             </button>
@@ -419,7 +443,7 @@ export default function SupportPage() {
               </select>
             )}
             <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe your issue or attach a screenshot…" className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-orange-500" />
-            <button type="submit" disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)} className="p-3 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-50">
+            <button type="submit" disabled={isLoading || (!text.trim() && attachedImages.length === 0 && attachedPdfs.length === 0 && !attachedVideo)} className="p-3 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-50">
               <Send className="w-5 h-5" />
             </button>
           </div>

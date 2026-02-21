@@ -6,6 +6,7 @@ import json
 import re
 import requests
 from openai import OpenAI
+from pypdf import PdfReader
 from app.prompts.roast import ROAST_CHAT_SYSTEM
 from app.prompts.support import SUPPORT_SYSTEM
 from app.prompts.assistant_web import ASSISTANT_WEB_SYSTEM
@@ -18,6 +19,35 @@ bp = Blueprint('chat', __name__)
 def _normalize_text(s: str) -> str:
     """Collapse whitespace to single space and strip."""
     return re.sub(r'\s+', ' ', (s or '').strip())
+
+
+def _extract_text_from_pdf_b64(b64_string: str) -> str:
+    """Extract text from a base64-encoded PDF. Returns empty string on failure."""
+    if not b64_string or not isinstance(b64_string, str):
+        return ''
+    try:
+        raw = base64.b64decode(b64_string)
+        reader = PdfReader(io.BytesIO(raw))
+        parts = []
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                parts.append(t)
+        return '\n\n'.join(parts).strip() if parts else ''
+    except Exception:
+        return ''
+
+
+def _extract_pdfs_text(pdfs_b64: list) -> str:
+    """Extract and concatenate text from a list of base64 PDFs."""
+    if not pdfs_b64 or not isinstance(pdfs_b64, list):
+        return ''
+    parts = []
+    for b64 in pdfs_b64:
+        text = _extract_text_from_pdf_b64(b64)
+        if text:
+            parts.append(text)
+    return '\n\n---\n\n'.join(parts) if parts else ''
 
 
 def _remove_echo_sentences(user_content: str, last_assistant_content: str) -> str:
@@ -73,7 +103,7 @@ def _chat_with_web_search(messages, model, headers, timeout_sec=60):
     """Run chat with web search tool; returns (assistant_message, usage)."""
     if not messages or messages[0].get('role') != 'system':
         messages = [{'role': 'system', 'content': ASSISTANT_WEB_SYSTEM}] + list(messages)
-    payload = {'model': model, 'messages': messages, 'tools': SEARCH_WEB_TOOLS, 'tool_choice': 'auto'}
+    payload = {'model': model, 'messages': messages, 'max_tokens': 8192, 'tools': SEARCH_WEB_TOOLS, 'tool_choice': 'auto'}
     max_turns = 5
     usage_merged = {}
     content = ''
@@ -203,6 +233,29 @@ def _process_support_actions(message: str) -> str:
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
     return cleaned
 
+def _inject_pdf_text_into_messages(messages, pdf_text: str):
+    """Prepend extracted PDF text to the last user message."""
+    if not messages or not pdf_text or not pdf_text.strip():
+        return messages
+    built = list(messages[:-1])
+    last = messages[-1]
+    if last.get('role') != 'user':
+        return messages
+    prefix = f"Attached PDF content:\n\n{pdf_text.strip()}\n\n"
+    content = last.get('content')
+    if isinstance(content, list):
+        new_content = []
+        for part in content:
+            if part.get('type') == 'text':
+                new_content.append({'type': 'text', 'text': prefix + (part.get('text') or '')})
+            else:
+                new_content.append(part)
+        built.append({'role': 'user', 'content': new_content})
+    else:
+        built.append({'role': 'user', 'content': prefix + (content or '')})
+    return built
+
+
 def _build_messages_with_images(messages, images_b64):
     """Inject images into the last user message as OpenRouter multimodal content."""
     if not messages or not images_b64:
@@ -308,12 +361,16 @@ def tutor():
         images_b64 = data.get('images') or []
         if not isinstance(images_b64, list):
             images_b64 = []
+        pdfs_b64 = data.get('pdfs') or []
+        pdf_text = _extract_pdfs_text(pdfs_b64) if isinstance(pdfs_b64, list) and pdfs_b64 else ''
+        if pdf_text:
+            question = f"{question}\n\nAttached PDF content:\n\n{pdf_text}".strip() if question else f"Attached PDF content:\n\n{pdf_text}"
         video_b64 = (data.get('video_b64') or '').strip()
         video_mime = (data.get('video_mime') or 'video/mp4').strip()
         has_images = len(images_b64) > 0
         has_video = len(video_b64) > 0
         if not question and not has_images and not has_video:
-            return jsonify({'error': 'Question or at least one image/video is required'}), 400
+            return jsonify({'error': 'Question or at least one image/video/PDF is required'}), 400
 
         weekday = (data.get('weekday') or '').strip() or 'Unknown'
         local_time = (data.get('time') or data.get('local_time') or '').strip() or 'Unknown'
@@ -345,7 +402,7 @@ def tutor():
         response = requests.post(
             'https://openrouter.ai/api/v1/chat/completions',
             headers=headers,
-            json={'model': model, 'messages': messages},
+            json={'model': model, 'messages': messages, 'max_tokens': 8192},
             timeout=timeout_sec,
         )
         if not response.ok:
@@ -357,10 +414,10 @@ def tutor():
 
         result = response.json()
         raw = (result.get('choices') or [{}])[0].get('message', {}).get('content', '') or ''
-        parsed = _parse_tutor_response(raw)
+        # Single reply: full text in fun, no separate HELP block
         return jsonify({
-            'fun': parsed['fun'],
-            'help': parsed['help'],
+            'fun': _normalize_text(raw) if raw else '',
+            'help': [],
             'raw': raw,
         }), 200
     except Exception as e:
@@ -379,6 +436,10 @@ def chat():
         messages = data['messages']
         images_b64 = data.get('images') or []
         has_images = isinstance(images_b64, list) and len(images_b64) > 0
+        pdfs_b64 = data.get('pdfs') or []
+        pdf_text = _extract_pdfs_text(pdfs_b64) if isinstance(pdfs_b64, list) and pdfs_b64 else ''
+        if pdf_text:
+            messages = _inject_pdf_text_into_messages(messages, pdf_text)
         video_b64 = data.get('video_b64') or ''
         video_mime = (data.get('video_mime') or 'video/mp4').strip()
         has_video = isinstance(video_b64, str) and len(video_b64) > 0
@@ -427,6 +488,7 @@ def chat():
         payload = {
             'model': model,
             'messages': messages,
+            'max_tokens': 8192,
         }
         
         timeout_sec = 120 if has_video else 60
@@ -559,8 +621,17 @@ def chat_pipeline():
         for key in request.files:
             if key.startswith('images') or key == 'image':
                 f = request.files[key]
-                if f and f.filename and f.content_type and 'image' in f.content_type:
+                if f and f.filename and f.content_type and 'image' in (f.content_type or '').lower():
                     images_b64.append(base64.b64encode(f.read()).decode('utf-8'))
+        # Step 2a: Get PDFs (multiple under key 'pdfs')
+        pdfs_b64 = []
+        for f in request.files.getlist('pdfs') or []:
+            if f and f.filename:
+                fn = (f.filename or '').lower()
+                ct = (f.content_type or '').strip().lower()
+                if 'pdf' in ct or fn.endswith('.pdf'):
+                    pdfs_b64.append(base64.b64encode(f.read()).decode('utf-8'))
+        pdf_text = _extract_pdfs_text(pdfs_b64) if pdfs_b64 else ''
 
         # Step 2b: Get video (single file, for roast); accept MOV (video/quicktime) and others
         video_b64 = ''
@@ -577,8 +648,8 @@ def chat_pipeline():
         has_video = bool(video_b64)
         has_images = len(images_b64) > 0
 
-        if not text and not has_images and not has_video:
-            return jsonify({'error': 'Provide audio, text, at least one image, or a video'}), 400
+        if not text and not has_images and not has_video and not pdf_text:
+            return jsonify({'error': 'Provide audio, text, at least one image, a video, or a PDF'}), 400
 
         # Step 3: Build messages
         try:
@@ -586,12 +657,14 @@ def chat_pipeline():
         except json.JSONDecodeError:
             messages = []
 
-        user_content = text or ('(See video)' if has_video else '(See image)')
+        user_content = text or ('(See video)' if has_video else ('(See image)' if has_images else '(See attached PDF)'))
         # Remove any sentence from the user prompt that appears in the previous AI reply (echo/TTS overlap)
         last_assistant = next((m for m in reversed(messages) if m.get('role') == 'assistant'), None)
         if last_assistant and isinstance(last_assistant.get('content'), str):
             user_content = _remove_echo_sentences(user_content, last_assistant['content']) or user_content
         messages.append({'role': 'user', 'content': user_content})
+        if pdf_text:
+            messages = _inject_pdf_text_into_messages(messages, pdf_text)
 
         # Step 4: Call chat (reuse existing logic; support roast + video like chatbot)
         if mode == 'roast' and has_video:
@@ -632,7 +705,7 @@ def chat_pipeline():
             response = requests.post(
                 'https://openrouter.ai/api/v1/chat/completions',
                 headers=headers,
-                json={'model': model, 'messages': messages},
+                json={'model': model, 'messages': messages, 'max_tokens': 8192},
                 timeout=timeout_sec,
             )
             if not response.ok:

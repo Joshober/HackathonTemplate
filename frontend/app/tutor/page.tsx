@@ -96,6 +96,7 @@ export default function TutorPage() {
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [ttsVoice, setTtsVoice] = useState('coral');
   const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
+  const [attachedPdfs, setAttachedPdfs] = useState<{ file: File }[]>([]);
   const [attachedVideo, setAttachedVideo] = useState<{ file: File; preview: string; duration: number } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -159,20 +160,23 @@ export default function TutorPage() {
 
   const sendToTutor = async (questionOverride?: string) => {
     const q = (questionOverride ?? text).trim();
-    const hasMedia = attachedImages.length > 0 || attachedVideo !== null;
+    const hasMedia = attachedImages.length > 0 || attachedPdfs.length > 0 || attachedVideo !== null;
     if ((!q && !hasMedia) || tutorLoading) return;
-    const userContent = q || (attachedVideo ? '(Video attached)' : '(Image attached)');
+    const userContent = q || (attachedVideo ? '(Video attached)' : attachedPdfs.length ? '(PDF attached)' : '(Image attached)');
     setMessages((prev) => [...prev, { role: 'user', content: userContent }]);
     setText('');
     const currentImages = [...attachedImages];
+    const currentPdfs = [...attachedPdfs];
     const currentVideo = attachedVideo;
     setAttachedImages([]);
+    setAttachedPdfs([]);
     setAttachedVideo(null);
     setVideoError(null);
     setTutorLoading(true);
     setTutorError(null);
     try {
       let imagesBase64: string[] | undefined;
+      let pdfsBase64: string[] | undefined;
       let video_b64: string | undefined;
       let video_mime: string | undefined;
       if (currentVideo) {
@@ -182,11 +186,11 @@ export default function TutorPage() {
       } else if (currentImages.length > 0) {
         imagesBase64 = await Promise.all(currentImages.map(({ file }) => fileToBase64(file)));
       }
-      const res = await api.askTutor(q || '(See attached)', { images: imagesBase64, video_b64, video_mime });
-      const parts: string[] = [];
-      if (res.fun) parts.push(`"${res.fun}"`);
-      if (res.help?.length) parts.push('\nHELP:\n' + res.help.map((s) => `• ${s}`).join('\n'));
-      const assistantContent = parts.join('\n\n') || 'No response.';
+      if (currentPdfs.length > 0) {
+        pdfsBase64 = await Promise.all(currentPdfs.map(({ file }) => fileToBase64(file)));
+      }
+      const res = await api.askTutor(q || '(See attached)', { images: imagesBase64, pdfs: pdfsBase64, video_b64, video_mime });
+      const assistantContent = (res.fun || '').trim() || 'No response.';
       setMessages((prev) => [...prev, { role: 'assistant', content: assistantContent }]);
       playTtsResponse(assistantContent);
     } catch (e) {
@@ -196,6 +200,8 @@ export default function TutorPage() {
       setTutorLoading(false);
     }
   };
+
+  const isPdfFile = (f: File) => f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -211,19 +217,24 @@ export default function TutorPage() {
           }
           setAttachedVideo({ file, preview: URL.createObjectURL(file), duration });
           setAttachedImages([]);
+          setAttachedPdfs([]);
         })
         .catch(() => {
           setAttachedVideo({ file, preview: URL.createObjectURL(file), duration: 0 });
           setAttachedImages([]);
+          setAttachedPdfs([]);
         });
     } else {
       if (attachedVideo) setAttachedVideo(null);
-      const list: { file: File; preview: string }[] = [];
-      for (let i = 0; i < Math.min(files.length, 3); i++) {
+      const newImages: { file: File; preview: string }[] = [];
+      const newPdfs: { file: File }[] = [];
+      for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        if (f.type.startsWith('image/')) list.push({ file: f, preview: URL.createObjectURL(f) });
+        if (isPdfFile(f)) newPdfs.push({ file: f });
+        else if (f.type.startsWith('image/')) newImages.push({ file: f, preview: URL.createObjectURL(f) });
       }
-      setAttachedImages((prev) => [...prev, ...list].slice(0, 3));
+      setAttachedImages((prev) => [...prev, ...newImages].slice(0, 3));
+      setAttachedPdfs((prev) => [...prev, ...newPdfs].slice(0, 2));
     }
     e.target.value = '';
   };
@@ -245,6 +256,10 @@ export default function TutorPage() {
     }
   };
 
+  const removePdf = (index: number) => {
+    setAttachedPdfs((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const startVoice = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -264,10 +279,7 @@ export default function TutorPage() {
           if (q) {
             setMessages((prev) => [...prev, { role: 'user', content: q }]);
             const res = await api.askTutor(q, {});
-            const parts: string[] = [];
-            if (res.fun) parts.push(`"${res.fun}"`);
-            if (res.help?.length) parts.push('\nHELP:\n' + res.help.map((s) => `• ${s}`).join('\n'));
-            const assistantContent = parts.join('\n\n') || 'No response.';
+            const assistantContent = (res.fun || '').trim() || 'No response.';
             setMessages((prev) => [...prev, { role: 'assistant', content: assistantContent }]);
             if (ttsEnabled && assistantContent.trim()) {
               const chunks = getParagraphsForTts(assistantContent);
@@ -377,6 +389,16 @@ export default function TutorPage() {
             ))}
           </div>
         )}
+        {attachedPdfs.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {attachedPdfs.map((pdf, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                <span className="text-sm truncate max-w-[160px]" title={pdf.file.name}>{pdf.file.name}</span>
+                <button type="button" onClick={() => removePdf(i)} className="p-1.5 bg-red-500/80 rounded hover:bg-red-500 text-xs">×</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Input bar — mic, attach, speaker, input, send */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
@@ -396,14 +418,14 @@ export default function TutorPage() {
               onClick={() => fileInputRef.current?.click()}
               disabled={tutorLoading}
               className="p-3 rounded-lg bg-white/10 hover:bg-white/20"
-              title="Attach image or video"
+              title="Attach image, video or PDF"
             >
               <ImagePlus className="w-5 h-5" />
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg"
+              accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg,application/pdf,.pdf"
               multiple={!attachedVideo}
               className="hidden"
               onChange={handleFileSelect}
