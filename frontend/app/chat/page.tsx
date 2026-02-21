@@ -370,7 +370,7 @@ export default function ChatPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#0E1117] flex items-center justify-center">
+      <div className="min-h-screen bg-[#08050c] flex items-center justify-center">
         <div className="text-gray-400">Loading...</div>
       </div>
     );
@@ -396,7 +396,7 @@ export default function ChatPage() {
               <div
                 className={`max-w-[85%] rounded-lg px-4 py-2 ${
                   m.role === 'user'
-                    ? 'bg-[#4F8CFF]/20 text-white'
+                    ? 'bg-[#ff6b35]/20 text-white'
                     : 'bg-white/10 text-gray-200'
                 }`}
               >
@@ -424,7 +424,7 @@ export default function ChatPage() {
           {attachedVideo && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-                <Video className="w-5 h-5 text-[#4F8CFF]" />
+                <Video className="w-5 h-5 text-[#ff6b35]" />
                 <span className="text-sm">Video ({attachedVideo.duration.toFixed(1)}s)</span>
               </div>
               <button type="button" onClick={removeVideo} className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500">×</button>
@@ -496,7 +496,7 @@ export default function ChatPage() {
                     setTtsProvider(p);
                     setTtsVoice(p === 'openai' ? 'coral' : 'Morgan Freeman');
                   }}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
                   title="TTS provider"
                 >
                   <option value="openai">OpenAI (faster)</option>
@@ -505,7 +505,7 @@ export default function ChatPage() {
                 <select
                   value={ttsVoice}
                   onChange={(e) => setTtsVoice(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
                   title="TTS voice"
                 >
                   {(ttsProvider === 'openai' ? OPENAI_TTS_VOICES : MAGIC_HOUR_VOICES).map((v) => (
@@ -520,13 +520,13 @@ export default function ChatPage() {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={getEffectiveMode({ images: attachedImages, video: attachedVideo }) === 'roast' ? 'Optional caption for image/video' : 'Type a message or attach image/video…'}
-              className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+              className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
             />
 
             <button
               type="submit"
               disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)}
-              className="p-3 rounded-lg bg-[#4F8CFF] hover:bg-[#6BA0FF] disabled:opacity-50"
+              className="p-3 rounded-lg bg-[#ff6b35] hover:bg-[#ff8555] disabled:opacity-50"
             >
               <Send className="w-5 h-5" />
             </button>

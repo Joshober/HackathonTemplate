@@ -221,7 +221,7 @@ export default function Chatbot() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 bg-[#4F8CFF] hover:bg-[#5A96FF] text-white rounded-full p-4 shadow-lg shadow-[#4F8CFF]/20 transition-all duration-200 hover:scale-105 z-50"
+          className="fixed bottom-6 right-6 bg-[#ff6b35] hover:bg-[#ff8555] text-white rounded-full p-4 shadow-lg shadow-[#ff6b35]/20 transition-all duration-200 hover:scale-105 z-50"
           aria-label="Open chat"
         >
           <svg
@@ -243,9 +243,9 @@ export default function Chatbot() {
 
       {/* Chat Window - dark theme */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-[#0E1117] rounded-xl shadow-2xl flex flex-col z-50 border border-white/10 backdrop-blur-xl">
+        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-[#08050c] rounded-xl shadow-2xl flex flex-col z-50 border border-white/10 backdrop-blur-xl">
           {/* Header */}
-          <div className="bg-[#4F8CFF]/20 border-b border-white/10 text-white p-4 rounded-t-xl flex flex-col gap-2">
+          <div className="bg-[#ff6b35]/20 border-b border-white/10 text-white p-4 rounded-t-xl flex flex-col gap-2">
             {/* Tabs: Assistant | Roast */}
             <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
               <button
@@ -255,7 +255,7 @@ export default function Chatbot() {
                   if (attachedVideo) removeVideo();
                 }}
                 className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  chatMode === 'assistant' ? 'bg-[#4F8CFF] text-white' : 'text-gray-400 hover:text-white'
+                  chatMode === 'assistant' ? 'bg-[#ff6b35] text-white' : 'text-gray-400 hover:text-white'
                 }`}
               >
                 Assistant
@@ -264,7 +264,7 @@ export default function Chatbot() {
                 type="button"
                 onClick={() => setChatMode('roast')}
                 className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                  chatMode === 'roast' ? 'bg-[#4F8CFF] text-white' : 'text-gray-400 hover:text-white'
+                  chatMode === 'roast' ? 'bg-[#ff6b35] text-white' : 'text-gray-400 hover:text-white'
                 }`}
               >
                 Roast
@@ -294,11 +294,11 @@ export default function Chatbot() {
               <select
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+                className="text-xs bg-white/10 border border-white/20 rounded-lg px-2 py-1.5 text-white focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
                 disabled={isLoading}
               >
                 {CHAT_MODELS.map((m) => (
-                  <option key={m.id} value={m.id} className="bg-[#0E1117] text-white">
+                  <option key={m.id} value={m.id} className="bg-[#08050c] text-white">
                     {m.label}
                   </option>
                 ))}
@@ -325,7 +325,7 @@ export default function Chatbot() {
                 <div
                   className={`max-w-[80%] rounded-xl p-3 ${
                     message.role === 'user'
-                      ? 'bg-[#4F8CFF]/20 border border-[#4F8CFF]/30 text-white'
+                      ? 'bg-[#ff6b35]/20 border border-[#ff6b35]/30 text-white'
                       : 'bg-white/5 border border-white/10 text-gray-200'
                   }`}
                 >
@@ -352,9 +352,9 @@ export default function Chatbot() {
               <div className="flex justify-start">
                 <div className="bg-white/5 border border-white/10 text-gray-400 rounded-xl p-3">
                   <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-[#4F8CFF] rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-[#4F8CFF] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                    <div className="w-2 h-2 bg-[#4F8CFF] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                    <div className="w-2 h-2 bg-[#ff6b35] rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-[#ff6b35] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-2 h-2 bg-[#ff6b35] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
                   </div>
                 </div>
               </div>
@@ -370,7 +370,7 @@ export default function Chatbot() {
             {attachedVideo && (
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[#4F8CFF]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-[#ff6b35]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
                   <span className="text-sm text-gray-300">Video ({attachedVideo.duration.toFixed(1)}s)</span>
@@ -414,7 +414,7 @@ export default function Chatbot() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-gray-400 hover:text-[#4F8CFF] hover:bg-white/5 rounded-lg transition-colors shrink-0"
+                className="p-2 text-gray-400 hover:text-[#ff6b35] hover:bg-white/5 rounded-lg transition-colors shrink-0"
                 aria-label="Attach image"
                 disabled={isLoading}
               >
@@ -428,13 +428,13 @@ export default function Chatbot() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={chatMode === 'roast' ? 'Attach image or video ≤20s (optional caption)…' : 'Type your message or attach an image…'}
-                className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
                 disabled={isLoading}
               />
               <button
                 onClick={sendMessage}
                 disabled={isLoading || !canSend}
-                className="bg-[#4F8CFF] hover:bg-[#5A96FF] text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                className="bg-[#ff6b35] hover:bg-[#ff8555] text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 Send
               </button>

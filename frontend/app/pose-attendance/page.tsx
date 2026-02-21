@@ -362,7 +362,7 @@ export default function PoseAttendancePage() {
                 <button
                   type="button"
                   onClick={startCamera}
-                  className="flex-1 px-4 py-2 bg-[#4F8CFF]/20 text-[#4F8CFF] rounded-lg hover:bg-[#4F8CFF]/30"
+                  className="flex-1 px-4 py-2 bg-[#ff6b35]/20 text-[#ff6b35] rounded-lg hover:bg-[#ff6b35]/30"
                 >
                   Turn on camera
                 </button>

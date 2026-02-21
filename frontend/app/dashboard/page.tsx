@@ -5,7 +5,7 @@ import { getCurrentUser, login, User } from '@/lib/auth';
 import Link from 'next/link';
 import DashboardShell from '@/components/DashboardShell';
 import { motion } from 'motion/react';
-import { Clock, User as UserIcon, MessageCircle, Headphones, Mic, Camera } from 'lucide-react';
+import { Clock, User as UserIcon, MessageCircle, Headphones, Mic, Camera, GraduationCap, FileWarning } from 'lucide-react';
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -32,8 +32,8 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0E1117] flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-[#08050c] flex items-center justify-center">
+        <div className="text-[#00e5c0]">Loading...</div>
       </div>
     );
   }
@@ -52,10 +52,10 @@ export default function Dashboard() {
       >
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="text-3xl font-bold mb-1">Overview</h2>
-            <p className="text-gray-400">Welcome to your control center</p>
+            <h2 className="font-heading text-3xl font-extrabold mb-1">Overview</h2>
+            <p className="text-slate-400">Your control center. We run it; you watch.</p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
+          <div className="flex items-center gap-2 text-sm text-slate-400">
             <Clock className="w-4 h-4" />
             <span>Last updated: Just now</span>
           </div>
@@ -68,21 +68,18 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
           whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-xl p-6 hover:bg-white/[0.05] hover:border-[#ff6b35]/30 transition-all"
         >
           <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gradient-to-br from-[#4F8CFF]/20 to-[#4F8CFF]/5 p-3 rounded-xl">
-              <UserIcon className="w-6 h-6 text-[#4F8CFF]" />
+            <div className="bg-gradient-to-br from-[#ff6b35]/20 to-[#00e5c0]/10 p-3 rounded-xl">
+              <UserIcon className="w-6 h-6 text-[#ff6b35]" />
             </div>
             <div>
               <h3 className="text-xl font-semibold">Profile</h3>
-              <p className="text-sm text-gray-400">View and edit your profile</p>
+              <p className="text-sm text-slate-400">View and edit your profile</p>
             </div>
           </div>
-          <Link
-            href="/profile"
-            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
-          >
+          <Link href="/profile" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
             Go to Profile →
           </Link>
         </motion.div>
@@ -92,10 +89,10 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-2xl p-6 hover:bg-white/[0.07] hover:border-[#00e5c0]/30 transition-all"
         >
           <h3 className="text-xl font-semibold mb-2">Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''}</h3>
-          <p className="text-gray-400 text-sm">{user.email}</p>
+          <p className="text-slate-400 text-sm">{user.email}</p>
         </motion.div>
 
         <motion.div
@@ -103,21 +100,18 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.21 }}
           whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-xl p-6 hover:bg-white/[0.05] hover:border-[#ff6b35]/30 transition-all"
         >
           <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gradient-to-br from-amber-500/20 to-amber-500/5 p-3 rounded-xl">
-              <MessageCircle className="w-6 h-6 text-amber-500" />
+            <div className="bg-gradient-to-br from-[#ff6b35]/20 to-amber-500/15 p-3 rounded-xl">
+              <MessageCircle className="w-6 h-6 text-[#ff6b35]" />
             </div>
             <div>
               <h3 className="text-xl font-semibold">Chat Pipeline</h3>
-              <p className="text-sm text-gray-400">Voice + text + images → AI → speech</p>
+              <p className="text-sm text-slate-400">Voice + text + images → AI → speech</p>
             </div>
           </div>
-          <Link
-            href="/chat"
-            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
-          >
+          <Link href="/chat" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
             Go to Chat →
           </Link>
         </motion.div>
@@ -127,21 +121,18 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.22 }}
           whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-2xl p-6 hover:bg-white/[0.07] hover:border-[#00e5c0]/30 transition-all"
         >
           <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gradient-to-br from-teal-500/20 to-teal-500/5 p-3 rounded-xl">
-              <Headphones className="w-6 h-6 text-teal-500" />
+            <div className="bg-gradient-to-br from-[#00e5c0]/20 to-cyan-500/15 p-3 rounded-xl">
+              <Headphones className="w-6 h-6 text-[#00e5c0]" />
             </div>
             <div>
               <h3 className="text-xl font-semibold">AI Tech Support</h3>
-              <p className="text-sm text-gray-400">Chat with support, send emails, create tickets</p>
+              <p className="text-sm text-slate-400">Chat with support, send emails, create tickets</p>
             </div>
           </div>
-          <Link
-            href="/support"
-            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
-          >
+          <Link href="/support" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
             Go to Tech Support →
           </Link>
         </motion.div>
@@ -151,21 +142,18 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.23 }}
           whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-xl p-6 hover:bg-white/[0.05] hover:border-[#ff6b35]/30 transition-all"
         >
           <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 p-3 rounded-xl">
-              <Mic className="w-6 h-6 text-cyan-500" />
+            <div className="bg-gradient-to-br from-amber-500/20 to-[#ff6b35]/15 p-3 rounded-xl">
+              <Mic className="w-6 h-6 text-[#ff6b35]" />
             </div>
             <div>
               <h3 className="text-xl font-semibold">Voice Assistant</h3>
-              <p className="text-sm text-gray-400">Always-on mic — speak and get spoken replies from the same AI pipeline</p>
+              <p className="text-sm text-slate-400">Always-on mic — speak and get spoken replies from the same AI pipeline</p>
             </div>
           </div>
-          <Link
-            href="/voice-assistant"
-            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
-          >
+          <Link href="/voice-assistant" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
             Go to Voice Assistant →
           </Link>
         </motion.div>
@@ -175,25 +163,63 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.24 }}
           whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-xl p-6 hover:bg-white/[0.05] hover:border-[#ff6b35]/30 transition-all"
         >
           <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 p-3 rounded-xl">
-              <Camera className="w-6 h-6 text-emerald-500" />
+            <div className="bg-gradient-to-br from-[#00e5c0]/20 to-teal-500/15 p-3 rounded-xl">
+              <GraduationCap className="w-6 h-6 text-[#00e5c0]" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold">Pose Attendance</h3>
-              <p className="text-sm text-gray-400">Presença por Pose — professor captura pose, alunos imitam</p>
+              <h3 className="text-xl font-semibold">AI Tutor (with Voice)</h3>
+              <p className="text-sm text-slate-400">Ask by text or voice — Weekend Energy Tutor: fun line + real help</p>
             </div>
           </div>
-          <Link
-            href="/pose-attendance"
-            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
-          >
-            Go to Pose Attendance →
+          <Link href="/tutor" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
+            Go to AI Tutor →
           </Link>
         </motion.div>
 
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.25 }}
+          whileHover={{ y: -4, scale: 1.02 }}
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-xl p-6 hover:bg-white/[0.05] hover:border-[#ff6b35]/30 transition-all"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <div className="bg-gradient-to-br from-rose-500/20 to-[#ff6b35]/15 p-3 rounded-xl">
+              <FileWarning className="w-6 h-6 text-rose-400" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold">Bullshit Detect</h3>
+              <p className="text-sm text-slate-400">Detect and filter unreliable or misleading content</p>
+            </div>
+          </div>
+          <Link href="/bullshit-detect" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
+            Go to Bullshit Detect →
+          </Link>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.26 }}
+          whileHover={{ y: -4, scale: 1.02 }}
+          className="bg-white/5 backdrop-blur-md border-2 border-white/10 rounded-2xl p-6 hover:bg-white/[0.07] hover:border-[#00e5c0]/30 transition-all"
+        >
+          <div className="flex items-center gap-4 mb-4">
+            <div className="bg-gradient-to-br from-[#00e5c0]/20 to-emerald-500/15 p-3 rounded-xl">
+              <Camera className="w-6 h-6 text-[#00e5c0]" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold">Pose Attendance</h3>
+              <p className="text-sm text-slate-400">Presença por Pose — professor captura pose, alunos imitam</p>
+            </div>
+          </div>
+          <Link href="/pose-attendance" className="inline-flex items-center text-[#00e5c0] hover:text-[#5efad4] text-sm font-medium">
+            Go to Pose Attendance →
+          </Link>
+        </motion.div>
       </div>
     </DashboardShell>
   );

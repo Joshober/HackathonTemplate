@@ -89,7 +89,7 @@ export default function Home() {
             <motion.span
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="inline-flex items-center bg-[#4F8CFF] hover:bg-[#5A96FF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              className="inline-flex items-center bg-[#ff6b35] hover:bg-[#ff8555] text-black font-heading font-bold px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             >
               Launch Console
             </motion.span>
@@ -103,7 +103,7 @@ export default function Home() {
           <motion.span
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center bg-[#4F8CFF] hover:bg-[#5A96FF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            className="inline-flex items-center bg-[#ff6b35] hover:bg-[#ff8555] text-black font-heading font-bold px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
           >
             Launch Console
           </motion.span>
@@ -123,7 +123,7 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-[#0E1117] border border-white/10 rounded-2xl p-8 shadow-2xl"
+            className="w-full max-w-md bg-[#08050c] border border-white/10 rounded-2xl p-8 shadow-2xl"
           >
             <h3 className="text-xl font-semibold mb-6 text-white">
               {isRegistering ? 'Create account' : 'Sign in'}
@@ -149,7 +149,7 @@ export default function Home() {
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
                     placeholder="Your name"
                   />
                 </div>
@@ -164,7 +164,7 @@ export default function Home() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
                   placeholder="your@email.com"
                 />
               </div>
@@ -179,14 +179,14 @@ export default function Home() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
                   placeholder="••••••••"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#4F8CFF] hover:bg-[#5A96FF] text-white py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
+                className="w-full bg-[#ff6b35] hover:bg-[#ff8555] text-black font-heading font-bold py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
                 {loading ? 'Please wait...' : isRegistering ? 'Sign Up' : 'Login'}
               </button>
@@ -198,7 +198,7 @@ export default function Home() {
                   setIsRegistering(!isRegistering);
                   setError(null);
                 }}
-                className="text-[#4F8CFF] hover:text-[#6BA0FF]"
+                className="text-[#ff6b35] hover:text-[#00e5c0]"
               >
                 {isRegistering ? 'Already have an account? Login' : "Don't have an account? Sign up"}
               </button>
@@ -236,7 +236,7 @@ export default function Home() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setShowEmailLogin(true)}
-            className="bg-[#4F8CFF] hover:bg-[#5A96FF] text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-[#4F8CFF]/30"
+            className="bg-[#ff6b35] hover:bg-[#ff8555] text-black font-heading font-bold px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-[#ff6b35]/30"
           >
             Sign in
           </motion.button>

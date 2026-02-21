@@ -535,7 +535,7 @@ export default function VoiceAssistantPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0E1117] text-white">
+    <div className="min-h-screen bg-[#08050c] text-white">
       <Navbar />
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* One-click entry: runs Start listening logic so browser will show mic prompt (requires user gesture) */}
@@ -543,7 +543,7 @@ export default function VoiceAssistantPage() {
           <button
             type="button"
             onClick={startListening}
-            className="w-full mb-6 py-6 rounded-xl border-2 border-[#4F8CFF]/50 bg-[#4F8CFF]/20 text-white font-medium text-lg hover:bg-[#4F8CFF]/30 hover:border-[#4F8CFF]/70 transition-colors focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+            className="w-full mb-6 py-6 rounded-xl border-2 border-[#ff6b35]/50 bg-[#ff6b35]/20 text-white font-medium text-lg hover:bg-[#ff6b35]/30 hover:border-[#ff6b35]/70 transition-colors focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
           >
             Click to start listening — browser will ask for microphone access
           </button>
@@ -576,7 +576,7 @@ export default function VoiceAssistantPage() {
                 onChange={(e) => setPersonality(e.target.value)}
                 placeholder="e.g. Be funny and use dry humor. Keep replies short."
                 rows={3}
-                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-full focus:outline-none focus:ring-1 focus:ring-[#4F8CFF] resize-y min-h-[80px]"
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-full focus:outline-none focus:ring-1 focus:ring-[#ff6b35] resize-y min-h-[80px]"
               />
             </label>
           </div>
@@ -596,7 +596,7 @@ export default function VoiceAssistantPage() {
                   value={wakePhrase}
                   onChange={(e) => setWakePhrase(e.target.value)}
                   placeholder={DEFAULT_WAKE_PHRASE}
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-48 focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-48 focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -606,7 +606,7 @@ export default function VoiceAssistantPage() {
                   value={sleepPhrase}
                   onChange={(e) => setSleepPhrase(e.target.value)}
                   placeholder={DEFAULT_SLEEP_PHRASE}
-                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-48 focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-48 focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
                 />
               </label>
             </div>
@@ -626,14 +626,14 @@ export default function VoiceAssistantPage() {
                 onChange={(e) => setTestSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
                 placeholder="e.g. What's the weather in Lamoni? or current news"
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
                 disabled={testSearchLoading || status === 'processing' || status === 'speaking'}
               />
               <button
                 type="button"
                 onClick={handleTestSearch}
                 disabled={testSearchLoading || status === 'processing' || status === 'speaking' || !testSearchQuery.trim()}
-                className="px-4 py-2 rounded-lg bg-[#4F8CFF] text-white text-sm font-medium hover:bg-[#5A96FF] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+                className="px-4 py-2 rounded-lg bg-[#ff6b35] text-white text-sm font-medium hover:bg-[#ff8555] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#ff6b35]"
               >
                 {testSearchLoading || status === 'processing' || status === 'speaking' ? 'Searching…' : 'Search & respond'}
               </button>
@@ -647,7 +647,7 @@ export default function VoiceAssistantPage() {
           <div
             className={`flex items-center gap-2 px-4 py-2 rounded-xl border ${
               status === 'listening'
-                ? 'bg-[#4F8CFF]/20 border-[#4F8CFF]/50'
+                ? 'bg-[#ff6b35]/20 border-[#ff6b35]/50'
                 : status === 'processing' || status === 'speaking'
                   ? 'bg-amber-500/20 border-amber-500/50'
                   : 'bg-white/5 border-white/10'
@@ -687,7 +687,7 @@ export default function VoiceAssistantPage() {
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
                 status === 'listening'
                   ? 'bg-white/10 text-gray-300 hover:bg-white/20'
-                  : 'bg-[#4F8CFF] text-white hover:bg-[#5A96FF]'
+                  : 'bg-[#ff6b35] text-white hover:bg-[#ff8555]'
               }`}
             >
               {status === 'listening' ? 'Pause listening' : 'Start listening'}
@@ -699,10 +699,10 @@ export default function VoiceAssistantPage() {
               id="voice"
               value={selectedVoice}
               onChange={(e) => setSelectedVoice(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#4F8CFF]"
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
             >
               {VOICES.map((v) => (
-                <option key={v} value={v} className="bg-[#0E1117]">{v}</option>
+                <option key={v} value={v} className="bg-[#08050c]">{v}</option>
               ))}
             </select>
           </div>
@@ -736,7 +736,7 @@ export default function VoiceAssistantPage() {
                 <div
                   className={`max-w-[85%] rounded-xl px-4 py-2.5 ${
                     msg.role === 'user'
-                      ? 'bg-[#4F8CFF]/20 border border-[#4F8CFF]/30'
+                      ? 'bg-[#ff6b35]/20 border border-[#ff6b35]/30'
                       : 'bg-white/5 border border-white/10 text-gray-200'
                   }`}
                 >

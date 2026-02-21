@@ -6,6 +6,8 @@ import { api } from '@/lib/api';
 import DashboardShell from '@/components/DashboardShell';
 import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
 
+const TUTOR_PERSONALITY = "You're the Weekend Energy Tutor: fun and helpful. Keep explanations clear and engaging.";
+
 const MAX_VIDEO_SECONDS = 20;
 
 const VIDEO_EXTENSIONS = ['.mov', '.mp4', '.webm', '.mpeg', '.mpeg4'];
@@ -62,10 +64,10 @@ interface Message {
   videoDuration?: number;
 }
 
-export default function SupportPage() {
+export default function TutorPage() {
   const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi! I'm your AI tech support. Describe your issue (type, speak, or attach a screenshot). When helpful, I can send you an email summary or create a support ticket—just ask." },
+    { role: 'assistant', content: "Hi! I'm your Weekend Energy Tutor. Ask me anything by text or voice — I'll keep it fun and helpful." },
   ]);
   const [text, setText] = useState('');
   const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
@@ -277,7 +279,8 @@ export default function SupportPage() {
           messages: pipelineMessages,
           tts: false,
           voice: ttsVoice,
-          mode: 'support',
+          mode: 'assistant',
+          personality: TUTOR_PERSONALITY,
         });
         const fullMessage = result.message || 'No response.';
         const assistantMsg: Message = { role: 'assistant', content: fullMessage };
@@ -302,6 +305,16 @@ export default function SupportPage() {
             });
           }
         }
+      } else if (!hasMedia) {
+        const result = await api.chatPipeline({
+          text: inputText,
+          messages: apiMessages,
+          tts: false,
+          voice: ttsVoice,
+          mode: 'assistant',
+          personality: TUTOR_PERSONALITY,
+        });
+        setMessages((prev) => [...prev, { role: 'assistant', content: result.message || 'No response.' }]);
       } else {
         let imagesBase64: string[] | undefined;
         let videoBase64: string | undefined;
@@ -317,7 +330,7 @@ export default function SupportPage() {
           apiMessages,
           'openai/gpt-3.5-turbo',
           imagesBase64,
-          'support',
+          'assistant',
           videoBase64,
           videoMime
         );
@@ -349,9 +362,9 @@ export default function SupportPage() {
     <DashboardShell>
       <div className="flex flex-col max-w-4xl mx-auto w-full">
         <div className="mb-4">
-          <h2 className="text-2xl font-bold mb-1">AI Tech Support</h2>
+          <h2 className="text-2xl font-bold mb-1">AI Tutor (Weekend Energy)</h2>
           <p className="text-gray-400 text-sm">
-            Chat with support (voice, text, or screenshots). The AI can send you an email or create a ticket when you ask.
+            Ask by text or voice — fun and helpful tutoring with optional images.
           </p>
         </div>
 
@@ -418,7 +431,7 @@ export default function SupportPage() {
                 ))}
               </select>
             )}
-            <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe your issue or attach a screenshot…" className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]" />
+            <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask anything…" className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]" />
             <button type="submit" disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)} className="p-3 rounded-lg bg-[#ff6b35] hover:bg-[#ff8555] disabled:opacity-50">
               <Send className="w-5 h-5" />
             </button>
