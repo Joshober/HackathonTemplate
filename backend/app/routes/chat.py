@@ -9,6 +9,7 @@ from openai import OpenAI
 from app.prompts.roast import ROAST_CHAT_SYSTEM
 from app.prompts.support import SUPPORT_SYSTEM
 from app.prompts.assistant_web import ASSISTANT_WEB_SYSTEM
+from app.prompts.bullshit_detect import BULLSHIT_DETECT_SYSTEM
 from app.services.web_search import search_web
 
 bp = Blueprint('chat', __name__)
@@ -371,6 +372,192 @@ def chat():
         }), 500
 
 
+def _run_bullshit_detect(messages, model, headers, timeout_sec=90):
+    """Call OpenRouter with bullshit-detect system; return (analysis, usage)."""
+    payload = {
+        'model': model,
+        'messages': messages,
+        'response_format': {'type': 'json_object'},
+    }
+    response = requests.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        headers=headers,
+        json=payload,
+        timeout=timeout_sec,
+    )
+    if not response.ok:
+        err = response.json() if response.content else {}
+        msg = err.get('error', response.reason)
+        if isinstance(msg, dict):
+            msg = msg.get('message', str(msg))
+        raise ValueError(str(msg))
+    result = response.json()
+    if not result.get('choices'):
+        raise ValueError('No response from model')
+    content = (result['choices'][0].get('message') or {}).get('content') or ''
+    content_clean = content.strip()
+    for prefix in ('```json', '```'):
+        if content_clean.startswith(prefix):
+            content_clean = content_clean[len(prefix):].strip()
+        if content_clean.endswith('```'):
+            content_clean = content_clean[:-3].strip()
+    try:
+        parsed = json.loads(content_clean)
+        analysis = parsed.get('analysis', '') or content
+    except json.JSONDecodeError:
+        analysis = content
+    return analysis, result.get('usage', {})
+
+
+@bp.route('/chat/bullshit-detect', methods=['POST'])
+def bullshit_detect():
+    """
+    Bullshit detection (text only). Body: { "document": "text" }. Returns { "analysis": "..." }.
+    """
+    try:
+        data = request.get_json()
+        if not data or 'document' not in data:
+            return jsonify({'error': 'document is required'}), 400
+        document = (data.get('document') or '').strip()
+        if not document:
+            return jsonify({'error': 'document cannot be empty'}), 400
+
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'OPENROUTER_API_KEY is not configured'}), 500
+
+        messages = [
+            {'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM},
+            {'role': 'user', 'content': f'Analyze this document and respond with the required JSON.\n\n{document}'},
+        ]
+        model = data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-4o-mini'
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': request.headers.get('Origin', ''),
+            'X-Title': 'Bullshit Detector',
+        }
+        analysis, usage = _run_bullshit_detect(messages, model, headers)
+        return jsonify({'analysis': analysis, 'usage': usage}), 200
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Network error: {str(e)}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Internal error: {str(e)}'}), 500
+
+
+@bp.route('/chat/bullshit-detect-pipeline', methods=['POST'])
+def bullshit_detect_pipeline():
+    """
+    Full pipeline: STT (optional) -> bullshit detection (text + images + video) -> TTS (optional).
+    Multipart: audio (optional), text (optional), images[] (optional), video (optional), tts (bool), voice (str).
+    Returns { "analysis": "...", "transcribed_text"?: "...", "audio_base64"?: "...", "audio_format"?: "mp3"|"wav", "usage": {} }.
+    """
+    try:
+        text = (request.form.get('text') or '').strip()
+        tts = request.form.get('tts', 'false').lower() in ('true', '1', 'yes')
+        voice = request.form.get('voice') or 'coral'
+        tts_provider = request.form.get('tts_provider') or None  # 'openai' | 'magic_hour' | None
+
+        # Step 1: Transcribe audio if present
+        audio_file = request.files.get('audio') or request.files.get('file')
+        transcribed_text = None
+        if audio_file and audio_file.filename:
+            transcribed = _transcribe_audio(audio_file)
+            transcribed_text = transcribed
+            text = f'{text} {transcribed}'.strip() if text else transcribed
+
+        # Step 2: Get images
+        images_b64 = []
+        for key in request.files:
+            if key.startswith('images') or key == 'image':
+                f = request.files[key]
+                if f and f.filename and f.content_type and 'image' in f.content_type:
+                    images_b64.append(base64.b64encode(f.read()).decode('utf-8'))
+
+        # Step 3: Get video
+        video_b64 = ''
+        video_mime = 'video/mp4'
+        video_file = request.files.get('video')
+        if video_file and video_file.filename:
+            ct = (video_file.content_type or '').strip().lower()
+            fn = (video_file.filename or '').lower()
+            is_video = 'video' in ct or fn.endswith(('.mov', '.mp4', '.webm', '.mpeg', '.mpeg4'))
+            if is_video:
+                video_b64 = base64.b64encode(video_file.read()).decode('utf-8')
+                video_mime = ct if ct and 'video' in ct else ('video/quicktime' if fn.endswith('.mov') else 'video/mp4')
+
+        has_video = bool(video_b64)
+        has_images = len(images_b64) > 0
+        if not text and not has_images and not has_video:
+            return jsonify({'error': 'Provide audio, text, at least one image, or a video'}), 400
+
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'OPENROUTER_API_KEY is not configured'}), 500
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': request.headers.get('Origin', ''),
+            'X-Title': 'Bullshit Detector',
+        }
+
+        user_content = text or ('(See video)' if has_video else '(See image)')
+        if has_video:
+            content = [
+                {'type': 'text', 'text': f'Analyze this video for bullshit. Respond with JSON: {{"analysis": "..."}}\n\n{user_content}'},
+                {'type': 'video_url', 'video_url': {'url': _video_data_url(video_b64, video_mime)}},
+            ]
+            messages = [{'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM}, {'role': 'user', 'content': content}]
+            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
+            timeout_sec = 120
+        elif has_images:
+            content = [{'type': 'text', 'text': f'Analyze this image for bullshit. Respond with JSON: {{"analysis": "..."}}\n\n{user_content}'}]
+            for b64 in images_b64:
+                content.append({'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}'}})
+            messages = [{'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM}, {'role': 'user', 'content': content}]
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            timeout_sec = 60
+        else:
+            messages = [
+                {'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM},
+                {'role': 'user', 'content': f'Analyze this document and respond with the required JSON.\n\n{user_content}'},
+            ]
+            model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-4o-mini'
+            timeout_sec = 90
+
+        analysis, usage = _run_bullshit_detect(messages, model, headers, timeout_sec)
+
+        out = {'analysis': analysis, 'usage': usage}
+        if transcribed_text is not None:
+            out['transcribed_text'] = transcribed_text
+
+        if tts and analysis:
+            try:
+                tts_provider = request.form.get('tts_provider') or None
+                # Magic Hour works best with short text; cap at 1000 chars for TTS
+                tts_text = analysis[:1000] if len(analysis) > 1000 else analysis
+                if len(tts_text) == 1000 and tts_text[-1] not in ' .!?':
+                    tts_text = tts_text[:tts_text.rfind(' ')].strip() or tts_text
+                audio_bytes, audio_fmt = _text_to_speech(tts_text, voice, provider=tts_provider)
+                out['audio_base64'] = base64.b64encode(audio_bytes).decode('utf-8')
+                out['audio_format'] = audio_fmt
+            except Exception as e:
+                out['tts_error'] = str(e)
+
+        return jsonify(out), 200
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': f'Network error: {str(e)}'}), 502
+    except Exception as e:
+        return jsonify({'error': f'Pipeline error: {str(e)}'}), 500
+
+
 def _transcribe_audio(file_storage) -> str:
     """Transcribe audio file to text using Whisper."""
     api_key = os.getenv('OPENAI_API_KEY')
@@ -390,9 +577,10 @@ def _transcribe_audio(file_storage) -> str:
 OPENAI_VOICES = {'alloy', 'ash', 'ballad', 'cedar', 'coral', 'echo', 'fable', 'marin', 'nova', 'onyx', 'sage', 'shimmer', 'verse'}
 
 
-def _text_to_speech(text: str, voice: str = 'coral') -> bytes:
-    """Convert text to speech. OpenAI TTS for standard voices, Magic Hour for celebrity voices."""
-    if voice in OPENAI_VOICES:
+def _text_to_speech(text: str, voice: str = 'coral', provider: str | None = None) -> tuple[bytes, str]:
+    """Convert text to speech. Returns (audio_bytes, format). format is 'mp3' or 'wav'."""
+    use_openai = (provider == 'openai') or (provider is None and voice in OPENAI_VOICES)
+    if use_openai:
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             raise ValueError('OPENAI_API_KEY not configured')
@@ -403,7 +591,7 @@ def _text_to_speech(text: str, voice: str = 'coral') -> bytes:
             input=text[:4096],
             response_format='mp3',
         )
-        return response.content
+        return (response.content, 'mp3')
 
     # Magic Hour (celebrity voices)
     from app.routes.voice import _generate_magic_hour
@@ -420,7 +608,13 @@ def _text_to_speech(text: str, voice: str = 'coral') -> bytes:
         err = body.get_json() if hasattr(body, 'get_json') else {}
         msg = err.get('error', 'Magic Hour TTS failed')
         raise ValueError(str(msg))
-    return body.data
+    # Get bytes: use get_data() (Werkzeug) since .data may not be populated for Response(iterable)
+    audio_bytes = body.get_data(as_text=False) if hasattr(body, 'get_data') else getattr(body, 'data', b'')
+    if not audio_bytes:
+        raise ValueError('Magic Hour returned no audio data')
+    mimetype = (getattr(body, 'mimetype', None) or '').lower()
+    fmt = 'mp3' if 'mpeg' in mimetype or 'mp3' in mimetype else 'wav'
+    return (audio_bytes, fmt)
 
 
 @bp.route('/chat/pipeline', methods=['POST'])
@@ -546,9 +740,15 @@ def chat_pipeline():
         # Step 5: TTS if requested
         if tts and assistant_message:
             try:
-                audio_bytes = _text_to_speech(assistant_message, voice)
+                tts_provider = request.form.get('tts_provider') or None
+                tts_text = assistant_message
+                if tts_provider == 'magic_hour' and len(tts_text) > 1000:
+                    tts_text = tts_text[:1000]
+                    if tts_text[-1] not in ' .!?':
+                        tts_text = (tts_text[:tts_text.rfind(' ')].strip() or tts_text) if ' ' in tts_text else tts_text
+                audio_bytes, audio_fmt = _text_to_speech(tts_text, voice, provider=tts_provider)
                 out['audio_base64'] = base64.b64encode(audio_bytes).decode('utf-8')
-                out['audio_format'] = 'wav' if voice not in OPENAI_VOICES else 'mp3'
+                out['audio_format'] = audio_fmt
             except Exception as e:
                 out['tts_error'] = str(e)
 

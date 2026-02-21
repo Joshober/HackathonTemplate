@@ -45,8 +45,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-const TTS_VOICES = [
-  // OpenAI
+const OPENAI_TTS_VOICES = [
   { id: 'alloy', label: 'Alloy' },
   { id: 'ash', label: 'Ash' },
   { id: 'ballad', label: 'Ballad' },
@@ -60,7 +59,8 @@ const TTS_VOICES = [
   { id: 'sage', label: 'Sage' },
   { id: 'shimmer', label: 'Shimmer' },
   { id: 'verse', label: 'Verse' },
-  // Magic Hour
+] as const;
+const MAGIC_HOUR_VOICES = [
   { id: 'Elon Musk', label: 'Elon Musk' },
   { id: 'Morgan Freeman', label: 'Morgan Freeman' },
   { id: 'Joe Rogan', label: 'Joe Rogan' },
@@ -99,6 +99,7 @@ export default function ChatPage() {
   const [attachedVideo, setAttachedVideo] = useState<{ file: File; preview: string; duration: number } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<'openai' | 'magic_hour'>('openai');
   const [ttsVoice, setTtsVoice] = useState('coral');
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -314,66 +315,44 @@ export default function ChatPage() {
           .map((m) => ({ role: m.role, content: m.content })),
         { role: 'user' as const, content: inputText || (audio ? '(Voice message)' : currentVideo ? '(See video)' : '(See image)') },
       ];
+      const pipelineMessages = apiMessages.slice(0, -1);
 
-      // Voice messages use pipeline (STT + chat). TTS is done in two halves for faster start and auto-played (no visible player).
-      if (audio) {
-        const pipelineMessages = apiMessages.slice(0, -1);
-        const result = await api.chatPipeline({
-          audio,
-          text: inputText || undefined,
-          images: images.length ? images : undefined,
-          video: currentVideo?.file,
-          messages: pipelineMessages,
-          tts: false,
-          voice: ttsVoice,
-          mode: getEffectiveMode({ images, video: currentVideo }),
-        });
-        const fullMessage = result.message || 'No response.';
-        const assistantMsg: Message = {
-          role: 'assistant',
-          content: fullMessage,
-        };
-        setMessages((prev) => {
-          const next = [...prev];
-          const lastIdx = next.length - 1;
-          if (lastIdx >= 0 && next[lastIdx].role === 'user' && result.transcribed_text) {
-            next[lastIdx] = { ...next[lastIdx], content: result.transcribed_text };
-          }
-          return [...next, assistantMsg];
-        });
+      const result = await api.chatPipeline({
+        audio: audio || undefined,
+        text: inputText || undefined,
+        images: images.length ? images : undefined,
+        video: currentVideo?.file,
+        messages: pipelineMessages,
+        tts: ttsEnabled,
+        voice: ttsVoice,
+        tts_provider: ttsEnabled ? ttsProvider : undefined,
+        mode: getEffectiveMode({ images, video: currentVideo }),
+      });
 
-        if (ttsEnabled && fullMessage.trim()) {
-          const chunks = getParagraphsForTts(fullMessage);
-          if (chunks.length === 0) return;
-          const voiceOpt = { voice: ttsVoice };
-          Promise.all(chunks.map((c) => api.textToSpeech(c, voiceOpt))).then((blobs) => {
-            const playNext = (i: number) => {
-              if (i >= blobs.length) return;
-              playTtsBlob(blobs[i], () => playNext(i + 1));
-            };
-            playNext(0);
-          });
+      const fullMessage = result.message || 'No response.';
+      setMessages((prev) => {
+        const next = [...prev];
+        const lastIdx = next.length - 1;
+        if (lastIdx >= 0 && next[lastIdx].role === 'user' && result.transcribed_text) {
+          next[lastIdx] = { ...next[lastIdx], content: result.transcribed_text };
         }
-      } else {
-        let imagesBase64: string[] | undefined;
-        let videoBase64: string | undefined;
-        let videoMime: string | undefined;
-        if (currentVideo) {
-          videoBase64 = await fileToBase64(currentVideo.file);
-          const f = currentVideo.file;
-          videoMime = f.type?.startsWith('video/') ? f.type : (f.name?.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4');
-        } else if (images.length > 0) {
-          imagesBase64 = await Promise.all(images.map((f) => fileToBase64(f)));
-        }
-        const result = await api.sendChatMessage(
-          apiMessages,
-          'openai/gpt-3.5-turbo',
-          imagesBase64,
-          getEffectiveMode({ images: imagesBase64, video: videoBase64 }),
-          videoBase64,
-          videoMime
-        );
-        setMessages((prev) => [...prev, { role: 'assistant', content: result.message || 'No response.' }]);
+        return [...next, { role: 'assistant' as const, content: fullMessage }];
+      });
+      if (result.tts_error) setError((e) => (e ? e + ' ' : '') + `TTS: ${result.tts_error}`);
+
+      if (ttsEnabled && result.audio_base64) {
+        const mime = result.audio_format === 'wav' ? 'audio/wav' : 'audio/mpeg';
+        const binary = atob(result.audio_base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const audioEl = ttsAudioRef.current || new Audio();
+        if (!ttsAudioRef.current) ttsAudioRef.current = audioEl;
+        audioEl.onended = () => URL.revokeObjectURL(url);
+        audioEl.onerror = () => URL.revokeObjectURL(url);
+        audioEl.src = url;
+        audioEl.play().catch(() => URL.revokeObjectURL(url));
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error';
@@ -509,18 +488,31 @@ export default function ChatPage() {
             </button>
 
             {ttsEnabled && (
-              <select
-                value={ttsVoice}
-                onChange={(e) => setTtsVoice(e.target.value)}
-                className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
-                title="TTS voice"
-              >
-                {TTS_VOICES.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={ttsProvider}
+                  onChange={(e) => {
+                    const p = e.target.value as 'openai' | 'magic_hour';
+                    setTtsProvider(p);
+                    setTtsVoice(p === 'openai' ? 'coral' : 'Morgan Freeman');
+                  }}
+                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+                  title="TTS provider"
+                >
+                  <option value="openai">OpenAI (faster)</option>
+                  <option value="magic_hour">Magic Hour (celebrity)</option>
+                </select>
+                <select
+                  value={ttsVoice}
+                  onChange={(e) => setTtsVoice(e.target.value)}
+                  className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]"
+                  title="TTS voice"
+                >
+                  {(ttsProvider === 'openai' ? OPENAI_TTS_VOICES : MAGIC_HOUR_VOICES).map((v) => (
+                    <option key={v.id} value={v.id}>{v.label}</option>
+                  ))}
+                </select>
+              </>
             )}
 
             <input
@@ -542,7 +534,7 @@ export default function ChatPage() {
 
           <p className="text-xs text-gray-500">
             {getEffectiveMode({ images: attachedImages, video: attachedVideo }) === 'roast' && 'Roast mode: image or video (MOV, MP4, WebM; max 20s). '}
-            {ttsEnabled ? `✓ Voice: ${TTS_VOICES.find((v) => v.id === ttsVoice)?.label || ttsVoice}` : 'Enable speaker icon to hear responses'}
+            {ttsEnabled ? `✓ ${ttsProvider === 'magic_hour' ? 'Magic Hour' : 'OpenAI'} – ${(ttsProvider === 'openai' ? OPENAI_TTS_VOICES : MAGIC_HOUR_VOICES).find((v) => v.id === ttsVoice)?.label || ttsVoice}` : 'Enable speaker icon to hear responses'}
             {' • '}Press mic to speak — auto-sends when you stop talking
           </p>
         </form>

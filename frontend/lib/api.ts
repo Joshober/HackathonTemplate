@@ -367,6 +367,47 @@ export const api = {
     });
   },
 
+  // Bullshit detection (text only): returns analysis only
+  async bullshitDetect(document: string, model?: string): Promise<{ analysis: string; usage?: any }> {
+    return fetchPublic('/api/chat/bullshit-detect', {
+      method: 'POST',
+      body: JSON.stringify({ document, model }),
+    });
+  },
+
+  // Bullshit detection pipeline: voice + text + images + video → analysis, optional TTS
+  async bullshitDetectPipeline(options: {
+    audio?: File;
+    text?: string;
+    images?: File[];
+    video?: File;
+    tts?: boolean;
+    voice?: string;
+    tts_provider?: 'openai' | 'magic_hour';
+    model?: string;
+  }): Promise<{
+    analysis: string;
+    transcribed_text?: string;
+    audio_base64?: string;
+    audio_format?: 'mp3' | 'wav';
+    tts_error?: string;
+    usage?: any;
+  }> {
+    const formData = new FormData();
+    if (options.text) formData.append('text', options.text);
+    formData.append('tts', String(options.tts ?? false));
+    if (options.voice) formData.append('voice', options.voice);
+    if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
+    if (options.model) formData.append('model', options.model);
+    if (options.audio) formData.append('audio', options.audio);
+    if (options.images?.length) options.images.forEach((f) => formData.append('images', f));
+    if (options.video) formData.append('video', options.video);
+    return fetchPublic('/api/chat/bullshit-detect-pipeline', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
   // Chat Pipeline: STT -> Chat (text+images+video) -> TTS (same features as Chatbot: mode, video for roast)
   async chatPipeline(options: {
     audio?: File;
@@ -376,6 +417,7 @@ export const api = {
     messages?: Array<{ role: string; content: string }>;
     tts?: boolean;
     voice?: string;
+    tts_provider?: 'openai' | 'magic_hour';
     mode?: 'assistant' | 'roast' | 'support';
     model?: string;
   }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: any }> {
@@ -386,6 +428,7 @@ export const api = {
     }
     formData.append('tts', String(options.tts ?? false));
     if (options.voice) formData.append('voice', options.voice);
+    if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
     if (options.mode) formData.append('mode', options.mode);
     if (options.model) formData.append('model', options.model);
     if (options.audio) formData.append('audio', options.audio);

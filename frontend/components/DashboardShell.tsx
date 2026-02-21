@@ -3,13 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'motion/react';
-import { LayoutDashboard, User, ArrowLeft, Brain, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, User, ArrowLeft, Brain, MessageCircle, FileWarning } from 'lucide-react';
 import { logout } from '@/lib/auth';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Overview', href: '/dashboard' },
   { icon: User, label: 'Profile', href: '/profile' },
   { icon: MessageCircle, label: 'Chat Pipeline', href: '/chat' },
+  { icon: FileWarning, label: 'Bullshit Detect', href: '/bullshit-detect' },
 ];
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
