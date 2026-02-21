@@ -82,6 +82,7 @@ export default function BullshitDetectPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userInputSummary, setUserInputSummary] = useState<string | null>(null);
+  const [readAloud, setReadAloud] = useState('');
   const [analysis, setAnalysis] = useState('');
   const [transcribedText, setTranscribedText] = useState<string | null>(null);
 
@@ -233,6 +234,7 @@ export default function BullshitDetectPage() {
         voice: ttsVoice,
         tts_provider: ttsEnabled ? ttsProvider : undefined,
       });
+      setReadAloud(result.read_aloud || '');
       setAnalysis(result.analysis || '');
       if (result.transcribed_text) setTranscribedText(result.transcribed_text);
       if (result.tts_error) setError((e) => (e ? e + ' ' : '') + `TTS: ${result.tts_error}`);
@@ -389,7 +391,7 @@ export default function BullshitDetectPage() {
           )}
         </div>
 
-        {(userInputSummary !== null || analysis) && (
+        {(userInputSummary !== null || readAloud || analysis) && (
           <div className="space-y-4">
             {userInputSummary !== null && (
               <div className="bg-white/5 border border-white/10 rounded-xl p-4">
@@ -400,9 +402,15 @@ export default function BullshitDetectPage() {
                 )}
               </div>
             )}
+            {readAloud && (
+              <div className="bg-amber-500/10 backdrop-blur border border-amber-500/40 rounded-xl p-5 mb-4">
+                <h2 className="text-sm font-semibold text-amber-400 mb-2">Summary (read aloud)</h2>
+                <div className="text-amber-200/90 text-sm whitespace-pre-wrap">{readAloud}</div>
+              </div>
+            )}
             {analysis && (
               <div className="bg-white/5 backdrop-blur border border-amber-500/30 rounded-xl p-6">
-                <h2 className="text-lg font-semibold text-amber-400 mb-3">Bullshit detection</h2>
+                <h2 className="text-lg font-semibold text-amber-400 mb-3">Full analysis</h2>
                 <div className="text-gray-300 text-sm whitespace-pre-wrap">{analysis}</div>
               </div>
             )}

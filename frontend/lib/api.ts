@@ -367,8 +367,8 @@ export const api = {
     });
   },
 
-  // Bullshit detection (text only): returns analysis only
-  async bullshitDetect(document: string, model?: string): Promise<{ analysis: string; usage?: any }> {
+  // Bullshit detection (text only): returns read_aloud summary + analysis
+  async bullshitDetect(document: string, model?: string): Promise<{ read_aloud: string; analysis: string; usage?: any }> {
     return fetchPublic('/api/chat/bullshit-detect', {
       method: 'POST',
       body: JSON.stringify({ document, model }),
@@ -386,6 +386,7 @@ export const api = {
     tts_provider?: 'openai' | 'magic_hour';
     model?: string;
   }): Promise<{
+    read_aloud: string;
     analysis: string;
     transcribed_text?: string;
     audio_base64?: string;

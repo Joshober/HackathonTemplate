@@ -420,7 +420,9 @@ def chat():
 
 
 def _run_bullshit_detect(messages, model, headers, timeout_sec=90):
-    """Call OpenRouter with bullshit-detect system; return (analysis, usage)."""
+    """Call OpenRouter with bullshit-detect system; return (data, usage).
+    data has 'read_aloud' (short sarcastic summary for TTS) and 'analysis' (full written commentary).
+    """
     payload = {
         'model': model,
         'messages': messages,
@@ -450,16 +452,21 @@ def _run_bullshit_detect(messages, model, headers, timeout_sec=90):
             content_clean = content_clean[:-3].strip()
     try:
         parsed = json.loads(content_clean)
-        analysis = parsed.get('analysis', '') or content
+        read_aloud = (parsed.get('read_aloud') or '').strip()
+        analysis = (parsed.get('analysis') or '').strip() or content
+        if not read_aloud and analysis:
+            read_aloud = analysis[:300] if len(analysis) > 300 else analysis
+        data = {'read_aloud': read_aloud, 'analysis': analysis}
     except json.JSONDecodeError:
-        analysis = content
-    return analysis, result.get('usage', {})
+        data = {'read_aloud': content[:300] if len(content) > 300 else content, 'analysis': content}
+    return data, result.get('usage', {})
 
 
+# --- Bullshit Detect (JP/BSfilter): separate feature, does not replace main chat or pipeline ---
 @bp.route('/chat/bullshit-detect', methods=['POST'])
 def bullshit_detect():
     """
-    Bullshit detection (text only). Body: { "document": "text" }. Returns { "analysis": "..." }.
+    Bullshit detection (text only). Body: { "document": "text" }. Returns { "read_aloud": "...", "analysis": "..." }.
     """
     try:
         data = request.get_json()
@@ -484,8 +491,8 @@ def bullshit_detect():
             'HTTP-Referer': request.headers.get('Origin', ''),
             'X-Title': 'Bullshit Detector',
         }
-        analysis, usage = _run_bullshit_detect(messages, model, headers)
-        return jsonify({'analysis': analysis, 'usage': usage}), 200
+        data, usage = _run_bullshit_detect(messages, model, headers)
+        return jsonify({'read_aloud': data['read_aloud'], 'analysis': data['analysis'], 'usage': usage}), 200
 
     except ValueError as e:
         return jsonify({'error': str(e)}), 500
@@ -500,7 +507,7 @@ def bullshit_detect_pipeline():
     """
     Full pipeline: STT (optional) -> bullshit detection (text + images + video) -> TTS (optional).
     Multipart: audio (optional), text (optional), images[] (optional), video (optional), tts (bool), voice (str).
-    Returns { "analysis": "...", "transcribed_text"?: "...", "audio_base64"?: "...", "audio_format"?: "mp3"|"wav", "usage": {} }.
+    Returns { "read_aloud": "...", "analysis": "...", "transcribed_text"?: "...", "audio_base64"?: "...", "audio_format"?: "mp3"|"wav", "usage": {} }.
     """
     try:
         text = (request.form.get('text') or '').strip()
@@ -555,14 +562,14 @@ def bullshit_detect_pipeline():
         user_content = text or ('(See video)' if has_video else '(See image)')
         if has_video:
             content = [
-                {'type': 'text', 'text': f'Analyze this video for bullshit. Respond with JSON: {{"analysis": "..."}}\n\n{user_content}'},
+                {'type': 'text', 'text': f'Analyze this video for bullshit. Respond with JSON: {{"read_aloud": "...", "analysis": "..."}}\n\n{user_content}'},
                 {'type': 'video_url', 'video_url': {'url': _video_data_url(video_b64, video_mime)}},
             ]
             messages = [{'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM}, {'role': 'user', 'content': content}]
             model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
             timeout_sec = 120
         elif has_images:
-            content = [{'type': 'text', 'text': f'Analyze this image for bullshit. Respond with JSON: {{"analysis": "..."}}\n\n{user_content}'}]
+            content = [{'type': 'text', 'text': f'Analyze this image for bullshit. Respond with JSON: {{"read_aloud": "...", "analysis": "..."}}\n\n{user_content}'}]
             for b64 in images_b64:
                 content.append({'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}'}})
             messages = [{'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM}, {'role': 'user', 'content': content}]
@@ -576,19 +583,20 @@ def bullshit_detect_pipeline():
             model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-4o-mini'
             timeout_sec = 90
 
-        analysis, usage = _run_bullshit_detect(messages, model, headers, timeout_sec)
+        data, usage = _run_bullshit_detect(messages, model, headers, timeout_sec)
+        read_aloud, analysis = data['read_aloud'], data['analysis']
 
-        out = {'analysis': analysis, 'usage': usage}
+        out = {'read_aloud': read_aloud, 'analysis': analysis, 'usage': usage}
         if transcribed_text is not None:
             out['transcribed_text'] = transcribed_text
 
-        if tts and analysis:
+        if tts and (read_aloud or analysis):
             try:
                 tts_provider = request.form.get('tts_provider') or None
-                # Magic Hour works best with short text; cap at 1000 chars for TTS
-                tts_text = analysis[:1000] if len(analysis) > 1000 else analysis
-                if len(tts_text) == 1000 and tts_text[-1] not in ' .!?':
-                    tts_text = tts_text[:tts_text.rfind(' ')].strip() or tts_text
+                # Use short sarcastic summary for TTS when available
+                tts_text = read_aloud if read_aloud else (analysis[:1000] if len(analysis) > 1000 else analysis)
+                if len(tts_text) > 1000:
+                    tts_text = tts_text[:tts_text.rfind(' ')].strip() if tts_text.rfind(' ') > 500 else tts_text[:1000]
                 audio_bytes, audio_fmt = _text_to_speech(tts_text, voice, provider=tts_provider)
                 out['audio_base64'] = base64.b64encode(audio_bytes).decode('utf-8')
                 out['audio_format'] = audio_fmt
