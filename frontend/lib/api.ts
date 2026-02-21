@@ -43,7 +43,7 @@ async function getAccessToken(): Promise<string | null> {
       }
       // Don't log other errors either - just return null
     }
-  } catch (error) {
+  } catch {
     // Network errors - return null silently
     return null;
   }
@@ -141,7 +141,7 @@ export const api = {
     return fetchPublic('/api/auth/login');
   },
 
-  async loginEmailPassword(email: string, password: string): Promise<{ user: any; message: string }> {
+  async loginEmailPassword(email: string, password: string): Promise<{ user: Record<string, unknown>; message: string }> {
     return fetchPublic('/api/auth/login', {
       method: 'POST',
       headers: {
@@ -151,7 +151,7 @@ export const api = {
     });
   },
 
-  async register(email: string, password: string, name?: string): Promise<{ user: any; message: string }> {
+  async register(email: string, password: string, name?: string): Promise<{ user: Record<string, unknown>; message: string }> {
     return fetchPublic('/api/auth/register', {
       method: 'POST',
       headers: {
@@ -165,7 +165,7 @@ export const api = {
     return fetchPublic('/api/auth/logout', { method: 'POST' });
   },
 
-  async getCurrentUser(): Promise<any> {
+  async getCurrentUser(): Promise<Record<string, unknown>> {
     return fetchWithAuth('/api/auth/me');
   },
 
@@ -293,7 +293,7 @@ export const api = {
     mode?: 'assistant' | 'roast' | 'support',
     videoBase64?: string,
     videoMime?: string
-  ): Promise<{ message: string; usage?: any }> {
+  ): Promise<{ message: string; usage?: Record<string, unknown> }> {
     const body: {
       messages: typeof messages;
       model?: string;
@@ -368,7 +368,7 @@ export const api = {
   },
 
   // Bullshit detection (text only): returns read_aloud summary + analysis
-  async bullshitDetect(document: string, model?: string): Promise<{ read_aloud: string; analysis: string; usage?: any }> {
+  async bullshitDetect(document: string, model?: string): Promise<{ read_aloud: string; analysis: string; usage?: Record<string, unknown> }> {
     return fetchPublic('/api/chat/bullshit-detect', {
       method: 'POST',
       body: JSON.stringify({ document, model }),
@@ -392,7 +392,7 @@ export const api = {
     audio_base64?: string;
     audio_format?: 'mp3' | 'wav';
     tts_error?: string;
-    usage?: any;
+    usage?: Record<string, unknown>;
   }> {
     const formData = new FormData();
     if (options.text) formData.append('text', options.text);
@@ -426,7 +426,11 @@ export const api = {
     /** Optional user location for "restaurants near me" etc. */
     latitude?: number;
     longitude?: number;
-  }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: any }> {
+    /** Optional library occupancy count (from page load) for "how many people in the library" */
+    libraryCount?: number;
+    /** When 'voice-assistant', backend uses the Voice Assistant prompt (for /voice-assistant page). */
+    source?: 'voice-assistant';
+  }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: Record<string, unknown> }> {
     const formData = new FormData();
     if (options.text) formData.append('text', options.text);
     if (options.messages?.length) {
@@ -436,11 +440,15 @@ export const api = {
     if (options.voice) formData.append('voice', options.voice);
     if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
     if (options.mode) formData.append('mode', options.mode);
+    if (options.source) formData.append('source', options.source);
     if (options.model) formData.append('model', options.model);
     if (options.personality != null && options.personality.trim()) formData.append('personality', options.personality.trim());
     if (options.latitude != null && options.longitude != null) {
       formData.append('latitude', String(options.latitude));
       formData.append('longitude', String(options.longitude));
+    }
+    if (options.libraryCount != null && options.libraryCount >= 0) {
+      formData.append('library_count', String(options.libraryCount));
     }
     if (options.audio) formData.append('audio', options.audio);
     if (options.images?.length) {
@@ -451,6 +459,14 @@ export const api = {
       method: 'POST',
       body: formData,
     });
+  },
+
+  /** Library occupancy count from sensor (backend). */
+  async getLibraryCount(): Promise<{ count: number } | { error: string }> {
+    const res = await fetch(`${API_URL}/api/librarycount`, { method: 'GET', credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: (data as { error?: string }).error || `Error ${res.status}` };
+    return data as { count: number } | { error: string };
   },
 
   // Text-to-Speech API (OpenAI TTS - pipeline backend)

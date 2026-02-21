@@ -9,9 +9,12 @@ from openai import OpenAI
 from app.prompts.roast import ROAST_CHAT_SYSTEM
 from app.prompts.support import SUPPORT_SYSTEM
 from app.prompts.assistant_web import ASSISTANT_WEB_SYSTEM
+from app.prompts.voice_assistant import VOICE_ASSISTANT_SYSTEM
 from app.prompts.bullshit_detect import BULLSHIT_DETECT_SYSTEM
 from app.services.web_search import search_web
 from app.services.weather import get_weather as fetch_weather
+from app.services.crypto import get_crypto_price as fetch_crypto_price, buy_crypto as do_buy_crypto, sell_crypto as do_sell_crypto, get_portfolio_summary as fetch_portfolio_summary
+from app.services.library import get_library_count as _get_library_count
 
 bp = Blueprint('chat', __name__)
 
@@ -84,7 +87,96 @@ ASSISTANT_TOOLS = [
             },
         },
     },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_library_count',
+            'description': 'Get the current number of people in the library. This calls a sensor API that returns the count—you do not compute anything. ALWAYS use this when the user asks how many people are in the library, how busy the library is, or library occupancy. Never refuse or say you cannot do it.',
+            'parameters': {'type': 'object', 'properties': {}},
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_crypto_price',
+            'description': 'Get the current price and 24h change for a cryptocurrency. ALWAYS use this for any crypto price question (e.g. "price of Bitcoin", "how much is ETH", "doge price"). Pass symbol_or_id: btc, bitcoin, eth, ethereum, sol, solana, doge, ada, xrp, link, avax, matic, shib, etc.',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'symbol_or_id': {
+                        'type': 'string',
+                        'description': 'Coin symbol or id: e.g. btc, bitcoin, eth, sol, doge, ada, xrp, link, shib',
+                    },
+                },
+                'required': ['symbol_or_id'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'buy_crypto',
+            'description': 'Execute a simulated BUY of cryptocurrency. Use when the user wants to buy crypto or says "buy", "buy btc", "put 500 in eth". Be aggressive: if they ask about buying or the price is dipping, suggest and call this. amount_usd is how much USD to spend (simulated).',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'symbol': {'type': 'string', 'description': 'Coin symbol: btc, eth, sol, doge, etc.'},
+                    'amount_usd': {'type': 'number', 'description': 'Amount in USD to spend (e.g. 100, 500)'},
+                },
+                'required': ['symbol', 'amount_usd'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'sell_crypto',
+            'description': 'Execute a simulated SELL of cryptocurrency. Use when the user wants to sell or says "sell", "sell all", "dump btc". Be aggressive: if price is up or they seem nervous, suggest selling. amount_usd_or_all: number (USD to sell) or "all" to sell entire position.',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'symbol': {'type': 'string', 'description': 'Coin symbol: btc, eth, sol, doge, etc.'},
+                    'amount_usd_or_all': {'type': 'string', 'description': 'USD amount to sell (e.g. "100") or "all" to sell entire position'},
+                },
+                'required': ['symbol', 'amount_usd_or_all'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'get_portfolio_summary',
+            'description': 'Get the user\'s current simulated crypto positions and recent trades. Use when they ask "what do I have", "my portfolio", "my positions", "what did I buy".',
+            'parameters': {'type': 'object', 'properties': {}},
+        },
+    },
 ]
+
+
+def _is_library_occupancy_question(messages: list) -> bool:
+    """True if the last user message is asking about people in the library / library occupancy."""
+    for m in reversed(messages or []):
+        if m.get('role') != 'user':
+            continue
+        content = m.get('content') or ''
+        if isinstance(content, list):
+            text = ' '.join(
+                p.get('text', '') for p in content
+                if isinstance(p, dict) and p.get('type') == 'text'
+            )
+        else:
+            text = str(content)
+        lower = text.lower().strip()
+        if not lower:
+            continue
+        if 'library' not in lower:
+            return False
+        if any(k in lower for k in ('people', 'how many', 'count', 'occupancy', 'busy', 'crowd', 'crowded')):
+            return True
+        if re.search(r'how\s+many|number\s+of|how\s+busy', lower):
+            return True
+        return False
+    return False
 
 
 def _reverse_geocode(lat: float, lon: float) -> str | None:
@@ -103,16 +195,34 @@ def _reverse_geocode(lat: float, lon: float) -> str | None:
         return None
 
 
-def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_override=None, user_location=None):
+def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_override=None, user_location=None, library_count=None, system_prompt_base=None):
     """Run chat with web search tool; returns (assistant_message, usage).
     personality_override: optional string appended to the system prompt.
     user_location: optional place name string (e.g. from reverse geocode); when set, model knows user's location for 'near me' queries.
+    library_count: optional int from page load (sensor count); when set, injected into prompt so model reports it for library questions.
+    system_prompt_base: optional system prompt string; when 'voice_assistant' or the voice-assistant constant, use Voice Assistant prompt (for /voice-assistant page). Otherwise use ASSISTANT_WEB_SYSTEM.
     """
-    system_content = ASSISTANT_WEB_SYSTEM
+    if system_prompt_base is not None:
+        system_content = system_prompt_base
+    else:
+        system_content = ASSISTANT_WEB_SYSTEM
     if user_location and str(user_location).strip():
         system_content = system_content + "\n\nThe user's current location is: " + str(user_location).strip() + ". When they ask for 'restaurants near me', 'nearby', or similar, use this location (e.g. search 'restaurants in [this area]')."
     if personality_override and str(personality_override).strip():
         system_content = system_content + "\n\nAdditional personality / instructions (follow these when replying):\n" + str(personality_override).strip()
+    # Library count: use value from page load if provided, else call API when user asks about library
+    if library_count is not None and isinstance(library_count, int) and library_count >= 0:
+        n = library_count
+        system_content = system_content + f"\n\n**FACT — you must use it:** The number of people currently in the library is {n}. This is the real head count from the library sensor (people in the building). The same number ({n} people in the library) is shown on the user's page. When the user asks how many people are in the library, how busy it is, or library occupancy, you MUST say there are {n} people in the library. Then say whether that's a lot or a little, then add a line like \"That's a lot of people—I'll turn off the internet!\" Do not say you don't know or suggest they look themselves—you know: {n} people in the library."
+    elif _is_library_occupancy_question(messages):
+        try:
+            raw = _get_library_count()
+            data = json.loads(raw)
+            if 'count' in data and 'error' not in data:
+                n = data['count']
+                system_content = system_content + f"\n\n**FACT — you must use it:** The number of people currently in the library is {n}. This is the real head count from the library sensor (people in the building). You MUST tell the user there are {n} people in the library. Then say whether that's a lot or a little, then add a line like \"That's a lot of people—I'll turn off the internet!\" Do not say you don't know or suggest they look themselves—you know: {n} people in the library."
+        except (json.JSONDecodeError, TypeError):
+            pass
     if not messages or messages[0].get('role') != 'system':
         messages = [{'role': 'system', 'content': system_content}] + list(messages)
     payload = {'model': model, 'messages': messages, 'tools': ASSISTANT_TOOLS, 'tool_choice': 'auto'}
@@ -164,10 +274,27 @@ def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_
                 tool_result = fetch_weather(args.get('location', ''))
             elif name == 'search_web':
                 tool_result = search_web(args.get('query', ''))
+            elif name == 'get_library_count':
+                tool_result = _get_library_count()
+            elif name == 'get_crypto_price':
+                tool_result = fetch_crypto_price(args.get('symbol_or_id', ''))
+            elif name == 'buy_crypto':
+                tool_result = do_buy_crypto(
+                    args.get('symbol', ''),
+                    args.get('amount_usd', 0),
+                )
+            elif name == 'sell_crypto':
+                tool_result = do_sell_crypto(
+                    args.get('symbol', ''),
+                    args.get('amount_usd_or_all', 'all'),
+                )
+            elif name == 'get_portfolio_summary':
+                tool_result = fetch_portfolio_summary()
             else:
                 tool_result = f'Unknown tool: {name}'
             messages.append({'role': 'tool', 'tool_call_id': tid, 'content': tool_result})
         payload['messages'] = messages
+        payload['tool_choice'] = 'auto'  # after first turn, let model choose tools
     return (content or 'I hit the search limit. Please try a shorter question.'), usage_merged
 
 
@@ -766,7 +893,7 @@ def chat_pipeline():
         timeout_sec = 120 if has_video else 60
 
         if mode == 'assistant' and not has_images and not has_video:
-            # Assistant mode: optional user location (lat/lon) for "restaurants near me"
+            # Assistant mode: optional user location (lat/lon) and library count (from page load)
             user_location = None
             try:
                 lat_s = request.form.get('latitude', '').strip()
@@ -777,11 +904,24 @@ def chat_pipeline():
                         user_location = _reverse_geocode(lat, lon)
             except (ValueError, TypeError):
                 pass
+            library_count_param = None
+            try:
+                lc = request.form.get('library_count', '').strip()
+                if lc:
+                    library_count_param = int(lc)
+                    if library_count_param < 0:
+                        library_count_param = None
+            except (ValueError, TypeError):
+                pass
             personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
+            source = (request.form.get('source') or '').strip().lower()
+            system_prompt_base = VOICE_ASSISTANT_SYSTEM if source == 'voice-assistant' else None
             assistant_message, usage_merged = _chat_with_web_search(
                 messages, model, headers, timeout_sec,
                 personality_override=personality or None,
                 user_location=user_location,
+                library_count=library_count_param,
+                system_prompt_base=system_prompt_base,
             )
             out = {'message': assistant_message, 'usage': usage_merged}
         else:

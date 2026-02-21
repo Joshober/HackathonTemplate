@@ -97,14 +97,37 @@ function isLikelyNoise(text: string): boolean {
   return false;
 }
 
+// Web Speech API types (not in all TS libs)
 declare global {
+  interface SpeechRecognitionEvent extends Event {
+    resultIndex: number;
+    results: SpeechRecognitionResultList;
+  }
+  interface SpeechRecognitionErrorEvent extends Event {
+    error: string;
+  }
+  interface SpeechRecognitionInstance extends EventTarget {
+    start(): void;
+    stop(): void;
+    abort(): void;
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((event: SpeechRecognitionEvent) => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+    onend: (() => void) | null;
+  }
+  interface SpeechRecognitionConstructor {
+    new (): SpeechRecognitionInstance;
+  }
+  var SpeechRecognition: SpeechRecognitionConstructor;
   interface Window {
-    SpeechRecognition?: typeof SpeechRecognition;
-    webkitSpeechRecognition?: typeof SpeechRecognition;
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
   }
 }
 
-function getSpeechRecognition(): typeof SpeechRecognition | null {
+function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   if (typeof window === 'undefined') return null;
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
@@ -172,7 +195,9 @@ export default function VoiceAssistantPage() {
   const [testSearchLoading, setTestSearchLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const recognitionRef = useRef<InstanceType<typeof SpeechRecognition> | null>(null);
+  const [libraryCount, setLibraryCount] = useState<number | null>(null);
+  const [libraryCountLoading, setLibraryCountLoading] = useState(true);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isBusyRef = useRef(false);
   const isPausedRef = useRef(false);
@@ -184,6 +209,7 @@ export default function VoiceAssistantPage() {
   const sleepPhraseRef = useRef(DEFAULT_SLEEP_PHRASE);
   const personalityRef = useRef('');
   const userLocationRef = useRef<{ lat: number; lon: number } | null>(null);
+  const libraryCountRef = useRef<number | null>(null);
   const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTranscriptRef = useRef('');
   const currentPlayingRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
@@ -202,6 +228,7 @@ export default function VoiceAssistantPage() {
   sleepPhraseRef.current = sleepPhrase;
   personalityRef.current = personality;
   userLocationRef.current = userLocation;
+  libraryCountRef.current = libraryCount;
   isBusyRef.current = status === 'processing' || status === 'speaking'; // ignore mic input while thinking or while TTS is playing (avoid hearing assistant output)
 
   const scrollToBottom = useCallback(() => {
@@ -251,6 +278,40 @@ export default function VoiceAssistantPage() {
     );
   }, []);
 
+  // Fetch and cache library count on load (for "how many people in the library") — same pattern as location
+  useEffect(() => {
+    const STORAGE_KEY = 'voice_assistant_library_count';
+    const CACHE_MS = 2 * 60 * 1000; // 2 min
+    const fetchCount = async () => {
+      setLibraryCountLoading(true);
+      try {
+        const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+        if (cached) {
+          const { count, ts } = JSON.parse(cached) as { count: number; ts: number };
+          if (typeof count === 'number' && count >= 0 && Date.now() - (ts || 0) < CACHE_MS) {
+            setLibraryCount(count);
+            setLibraryCountLoading(false);
+            return;
+          }
+        }
+        const result = await api.getLibraryCount();
+        if ('count' in result && typeof result.count === 'number' && result.count >= 0) {
+          setLibraryCount(result.count);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ count: result.count, ts: Date.now() }));
+          } catch {
+            // ignore
+          }
+        }
+      } catch {
+        // ignore; library count is optional
+      } finally {
+        setLibraryCountLoading(false);
+      }
+    };
+    fetchCount();
+  }, []);
+
   const sendToPipeline = useCallback(async (text: string) => {
     if (!text.trim()) return;
     interruptCurrentPlayback(currentPlayingRef);
@@ -260,14 +321,17 @@ export default function VoiceAssistantPage() {
     const voice = selectedVoiceRef.current;
     try {
       const loc = userLocationRef.current;
+      const libCount = libraryCountRef.current;
       const response = await api.chatPipeline({
         text: text.trim(),
         messages: currentMessages,
         tts: true,
         voice,
         mode: 'assistant',
+        source: 'voice-assistant',
         personality: personalityRef.current.trim() || undefined,
         ...(loc && { latitude: loc.lat, longitude: loc.lon }),
+        ...(libCount != null && libCount >= 0 && { libraryCount: libCount }),
       });
       const assistantContent = response.message || 'I didn’t get that.';
       setMessages((prev) => [
@@ -325,8 +389,6 @@ export default function VoiceAssistantPage() {
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       if (isPausedRef.current || isBusyRef.current) return;
       const awake = isAwakeRef.current;
-      const wake = wakePhraseRef.current;
-      const sleep = sleepPhraseRef.current;
       let finalTranscript = '';
       let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -447,6 +509,8 @@ export default function VoiceAssistantPage() {
     };
   }, [sendToPipeline]);
 
+  // Reserved for future "Request microphone" button
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const requestMic = useCallback(async () => {
     setError(null);
     try {
@@ -562,6 +626,17 @@ export default function VoiceAssistantPage() {
             Location not available ({locationError}). Allow location in your browser for &quot;restaurants near me&quot; to work.
           </p>
         )}
+        <p className="text-gray-400 text-sm mb-2 flex flex-wrap items-center gap-2">
+          <span className="font-medium text-white">People in the library right now:</span>
+          {libraryCountLoading ? (
+            <span className="text-gray-500">Loading…</span>
+          ) : libraryCount != null ? (
+            <span className="tabular-nums font-semibold text-[#ff6b35]">{libraryCount}</span>
+          ) : (
+            <span className="text-gray-500">—</span>
+          )}
+          <span className="text-gray-500 text-xs">(sensor count — the assistant uses this when you ask)</span>
+        </p>
 
         <details className="mb-4 text-sm text-gray-500 border border-white/10 rounded-lg bg-white/5">
           <summary className="px-4 py-2 cursor-pointer hover:text-gray-400 select-none">

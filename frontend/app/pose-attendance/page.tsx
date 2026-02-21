@@ -2,9 +2,10 @@
 
 import '@/lib/patchTfConsole';
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/DashboardShell';
 import { motion } from 'motion/react';
-import { Camera, Copy, Check, Users, GraduationCap, Sparkles } from 'lucide-react';
+import { Camera, Copy, Check, Users, GraduationCap, Sparkles, Link2 } from 'lucide-react';
 import {
   extractKeypoints,
   detectPose,
@@ -55,12 +56,31 @@ const POSE_PRESETS = [
   { id: 'academic-despair', label: 'Academic despair', emoji: '😫' },
 ];
 
+/** Parse pose-only from URL-safe base64 (no image). Used for share links. */
+function parsePoseFromUrl(code: string): PoseKeypoints | null {
+  try {
+    const json = atob(code.replace(/-/g, '+').replace(/_/g, '/'));
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed) && parsed.length >= 33 * 3) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Encode pose-only for URL (keeps link short). */
+function encodePoseForUrl(pose: PoseKeypoints): string {
+  return btoa(JSON.stringify(pose)).replace(/\+/g, '-').replace(/\//g, '_');
+}
+
 export default function PoseAttendancePage() {
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>('professor');
   const [referencePose, setReferencePose] = useState<PoseKeypoints | null>(null);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [shareCode, setShareCode] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [cringeLevel, setCringeLevel] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [tips, setTips] = useState<string[]>([]);
@@ -70,6 +90,7 @@ export default function PoseAttendancePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [studentPasteCode, setStudentPasteCode] = useState('');
+  const hasAppliedUrlPoseRef = useRef(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -182,6 +203,37 @@ export default function PoseAttendancePage() {
       setError('Invalid code.');
     }
   }, [parseShareCode]);
+
+  // Auto-load pose from URL so students only need to open the teacher's link (no paste)
+  useEffect(() => {
+    if (hasAppliedUrlPoseRef.current) return;
+    const poseParam = searchParams.get('pose');
+    const codeParam = searchParams.get('code');
+    if (poseParam) {
+      const pose = parsePoseFromUrl(poseParam);
+      if (pose) {
+        hasAppliedUrlPoseRef.current = true;
+        setMode('student');
+        setReferencePose(pose);
+        setReferenceImage(null);
+        setError(null);
+        setPresenceConfirmed(false);
+        consecutiveGoodFramesRef.current = 0;
+      }
+    } else if (codeParam) {
+      const data = parseShareCode(codeParam);
+      if (data) {
+        hasAppliedUrlPoseRef.current = true;
+        setMode('student');
+        setReferencePose(data.pose);
+        setReferenceImage(data.image);
+        setShareCode(codeParam);
+        setError(null);
+        setPresenceConfirmed(false);
+        consecutiveGoodFramesRef.current = 0;
+      }
+    }
+  }, [searchParams, parseShareCode]);
 
   // Loop de detecção para modo student
   useEffect(() => {
@@ -396,7 +448,30 @@ export default function PoseAttendancePage() {
                     </div>
                   )}
                   <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <p className="text-sm text-gray-400 mb-2">Code to share:</p>
+                    <p className="text-sm text-gray-400 mb-2">Share with students (no code to type):</p>
+                    <div className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?mode=student&pose=${encodePoseForUrl(referencePose)}` : ''}
+                        className="flex-1 px-3 py-2 bg-black/30 rounded-lg text-sm font-mono truncate"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const link = `${window.location.origin}${window.location.pathname}?mode=student&pose=${encodePoseForUrl(referencePose)}`;
+                          navigator.clipboard.writeText(link);
+                          setCopiedLink(true);
+                          setTimeout(() => setCopiedLink(false), 2000);
+                        }}
+                        className="px-4 py-2 bg-fuchsia-500/30 text-fuchsia-300 rounded-lg hover:bg-fuchsia-500/40 flex items-center gap-2"
+                      >
+                        {copiedLink ? <Check className="w-4 h-4 text-green-400" /> : <Link2 className="w-4 h-4" />}
+                        {copiedLink ? 'Copied!' : 'Copy link'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">Students open this link — no need to enter a code.</p>
+                    <p className="text-sm text-gray-400 mb-2">Or share code to paste:</p>
                     <div className="flex gap-2">
                     <input
                       type="text"
@@ -448,8 +523,8 @@ export default function PoseAttendancePage() {
           <div className="grid md:grid-cols-2 gap-6">
             {/* Lado esquerdo: referência do professor + câmera do aluno */}
             <div className="space-y-4">
-              {/* Imagem fixa do professor fazendo a pose */}
-              {referenceImage && (
+              {/* Imagem fixa do professor fazendo a pose, or message when loaded from link */}
+              {referenceImage ? (
                 <div className="bg-white/5 backdrop-blur-md border-2 border-fuchsia-500/40 rounded-xl overflow-hidden">
                   <div className="bg-fuchsia-500/10 px-4 py-2 text-sm font-medium text-fuchsia-300">
                     Teacher&apos;s pose — copy this
@@ -491,7 +566,16 @@ export default function PoseAttendancePage() {
                     })()}
                   </div>
                 </div>
-              )}
+              ) : referencePose ? (
+                <div className="bg-white/5 backdrop-blur-md border-2 border-fuchsia-500/40 rounded-xl overflow-hidden">
+                  <div className="bg-fuchsia-500/10 px-4 py-2 text-sm font-medium text-fuchsia-300">
+                    Pose loaded from link
+                  </div>
+                  <div className="aspect-video bg-black/30 flex items-center justify-center p-6 text-center">
+                    <p className="text-gray-400">Get in frame and match the pose. Use the cringe meter on the right!</p>
+                  </div>
+                </div>
+              ) : null}
               {/* Vídeo do aluno */}
               <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden">
                 <div className="aspect-video bg-black/50 flex items-center justify-center relative overflow-hidden">
