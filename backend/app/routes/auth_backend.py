@@ -236,7 +236,8 @@ def login_email_password():
             
             return jsonify({
                 'user': user_info,
-                'message': 'Login successful'
+                'message': 'Login successful',
+                'accessToken': access_token,
             }), 200
         except Exception as e:
             print(f"Token decode error: {str(e)}")

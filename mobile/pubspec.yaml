@@ -1,0 +1,30 @@
+name: hackathon_mobile
+description: Claude Home™ - Flutter mobile app clone of the Next.js frontend.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  dio: ^5.4.0
+  flutter_secure_storage: ^9.0.0
+  go_router: ^13.0.0
+  provider: ^6.1.1
+  record: ^5.0.4
+  audioplayers: ^5.2.1
+  image_picker: ^1.0.7
+  file_picker: ^6.1.1
+  path_provider: ^2.1.2
+  path: ^1.8.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
