@@ -7,7 +7,7 @@ bp = Blueprint('library', __name__)
 
 # Hardcoded sensor API URLs (no env)
 LIBRARY_NGROK_URL = 'https://warner-unthrashed-nonvascularly.ngrok-free.dev/api/ble/count'
-LIBRARY_LOCAL_URL = 'http://192.168.137.201/api/ble/count'
+LIBRARY_LOCAL_URL = 'http://192.168.137.147/api/ble/count'
 LIBRARY_FALLBACK_COUNT = 14
 
 

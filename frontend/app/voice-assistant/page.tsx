@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, type MutableRefObject } from 'react';
 import Navbar from '@/components/Navbar';
 import { api } from '@/lib/api';
+import { getCurrentUser } from '@/lib/auth';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -95,6 +96,21 @@ function isLikelyNoise(text: string): boolean {
   const filler = ['um', 'uh', 'eh', 'ah', 'oh', 'hmm', 'mm', 'hm'];
   if (filler.includes(lower) || filler.some((f) => lower === f + '.' || lower === f + ',')) return true;
   return false;
+}
+
+// Hidden Square Hole demo: preloaded Morgan Freeman–style response (no LLM call)
+const SQUARE_HOLE_RESPONSE = 'It goes in the square hole.';
+const SQUARE_HOLE_TRIGGERS = [
+  'square hole',
+  'where does the cube go',
+  'where does it go',
+  'which hole',
+  'cube hole',
+  'the square hole',
+];
+
+function isSquareHoleTrigger(normalizedText: string): boolean {
+  return SQUARE_HOLE_TRIGGERS.some((t) => normalizedText.includes(t));
 }
 
 // Web Speech API types (not in all TS libs)
@@ -221,6 +237,7 @@ export default function VoiceAssistantPage() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [libraryCount, setLibraryCount] = useState<number | null>(null);
   const [libraryCountLoading, setLibraryCountLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const recognitionRef = useRef<InstanceType<NonNullable<ReturnType<typeof getSpeechRecognition>>> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isBusyRef = useRef(false);
@@ -234,6 +251,9 @@ export default function VoiceAssistantPage() {
   const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTranscriptRef = useRef('');
   const currentPlayingRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
+  const squareHoleLoopUrlsRef = useRef<string[]>([]); // [q1, q2] object URLs for looping demo
+  const squareHoleAudioRef = useRef<string | null>(null); // legacy alias: first loop URL when loaded
+  const squareHoleDemoTriggeredRef = useRef(false); // for ?demo=squarehole auto-run once
   const INTERIM_CLEAR_MS = 2000; // clear "Hearing..." after silence
   /** Wait this long after last final transcript before sending (more time to pause mid-sentence) */
   const FINAL_SEND_DELAY_MS = 2200;
@@ -296,6 +316,58 @@ export default function VoiceAssistantPage() {
     );
   }, []);
 
+  // Preload Square Hole loop clips (q1 then q2, repeat)
+  useEffect(() => {
+    let revoked = false;
+    const urls: string[] = [];
+    Promise.all([
+      fetch('/audio/square-hole-q1-elon.mp3').then((r) => (r.ok ? r.blob() : null)),
+      fetch('/audio/square-hole-q2-elon.mp3').then((r) => (r.ok ? r.blob() : null)),
+    ])
+      .then(([b1, b2]) => {
+        if (revoked || !b1 || !b2) return;
+        urls.push(URL.createObjectURL(b1), URL.createObjectURL(b2));
+        squareHoleLoopUrlsRef.current = urls;
+        squareHoleAudioRef.current = urls[0] ?? null;
+        if (typeof window !== 'undefined' && !squareHoleDemoTriggeredRef.current) {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('demo') === 'squarehole' && urls.length === 2) {
+            squareHoleDemoTriggeredRef.current = true;
+            setMessages([
+              { role: 'user', content: 'Where does the cube go?' },
+              { role: 'assistant', content: SQUARE_HOLE_RESPONSE },
+            ]);
+            setStatus('speaking');
+            let idx = 0;
+            const playNext = () => {
+              const url = urls[idx];
+              idx = 1 - idx;
+              const audio = new Audio(url);
+              currentPlayingRef.current = { audio, url };
+              const wasIdle = status === 'idle';
+              audio.onended = () => {
+                if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+                playNext();
+              };
+              audio.onerror = () => {
+                if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+                setStatus(wasIdle ? 'idle' : 'listening');
+              };
+              audio.play().catch(() => setStatus(wasIdle ? 'idle' : 'listening'));
+            };
+            playNext();
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      revoked = true;
+      squareHoleLoopUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+      squareHoleLoopUrlsRef.current = [];
+      squareHoleAudioRef.current = null;
+    };
+  }, []);
+
   // Fetch and cache library count on load (for "how many people in the library") — same pattern as location
   useEffect(() => {
     const STORAGE_KEY = 'voice_assistant_library_count';
@@ -330,11 +402,52 @@ export default function VoiceAssistantPage() {
     fetchCount();
   }, []);
 
+  useEffect(() => {
+    getCurrentUser()
+      .then((u) => u?.email && setUserEmail(u.email))
+      .catch(() => {});
+  }, []);
+
   const sendToPipeline = useCallback(async (text: string) => {
     if (!text.trim()) return;
     interruptCurrentPlayback(currentPlayingRef);
-    setStatus('processing');
     setError(null);
+
+    const normalized = normalizeForMatch(text);
+    if (isSquareHoleTrigger(normalized)) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: text.trim() },
+        { role: 'assistant', content: SQUARE_HOLE_RESPONSE },
+      ]);
+      setStatus('speaking');
+      setLiveTranscript('');
+      const urls = squareHoleLoopUrlsRef.current;
+      if (urls.length >= 2) {
+        let idx = 0;
+        const playNext = () => {
+          const url = urls[idx];
+          idx = 1 - idx;
+          const audio = new Audio(url);
+          currentPlayingRef.current = { audio, url };
+          audio.onended = () => {
+            if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+            playNext();
+          };
+          audio.onerror = () => {
+            if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+            setStatus('listening');
+          };
+          audio.play().catch(() => setStatus('listening'));
+        };
+        playNext();
+      } else {
+        setStatus('listening');
+      }
+      return;
+    }
+
+    setStatus('processing');
     const currentMessages = messagesRef.current;
     const voice = selectedVoiceRef.current;
     try {
@@ -350,6 +463,7 @@ export default function VoiceAssistantPage() {
         personality: DEFAULT_CLAUDE_HOME_PERSONALITY,
         ...(loc && { latitude: loc.lat, longitude: loc.lon }),
         ...(libCount != null && libCount >= 0 && { libraryCount: libCount }),
+        ...(userEmail && { userEmail }),
       });
       const assistantContent = response.message || 'I didn’t get that.';
       setMessages((prev) => [

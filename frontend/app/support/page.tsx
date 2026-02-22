@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { getCurrentUser, login } from '@/lib/auth';
+import { getCurrentUser, login, clearUserCache } from '@/lib/auth';
 import { api } from '@/lib/api';
 import DashboardShell from '@/components/DashboardShell';
 import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
@@ -278,7 +278,15 @@ export default function SupportPage() {
           tts: false,
           voice: ttsVoice,
           mode: 'support',
+          userEmail: user?.email,
+          userId: user?.sub,
         });
+        if (result.demo_account_deleted) {
+          clearUserCache();
+          setMessages((prev) => [...prev, { role: 'assistant', content: "Your account has been deleted (demo). Redirecting..." }]);
+          setTimeout(() => { window.location.href = '/'; }, 2000);
+          return;
+        }
         const fullMessage = result.message || 'No response.';
         const assistantMsg: Message = { role: 'assistant', content: fullMessage };
         setMessages((prev) => {
@@ -319,8 +327,16 @@ export default function SupportPage() {
           imagesBase64,
           'support',
           videoBase64,
-          videoMime
+          videoMime,
+          user?.email,
+          user?.sub
         );
+        if (result.demo_account_deleted) {
+          clearUserCache();
+          setMessages((prev) => [...prev, { role: 'assistant', content: "Your account has been deleted (demo). Redirecting..." }]);
+          setTimeout(() => { window.location.href = '/'; }, 2000);
+          return;
+        }
         setMessages((prev) => [...prev, { role: 'assistant', content: result.message || 'No response.' }]);
       }
     } catch (err) {
@@ -350,8 +366,8 @@ export default function SupportPage() {
       <div className="flex flex-col max-w-4xl mx-auto w-full">
         <div className="mb-4">
           <h2 className="text-2xl font-bold mb-1">AI Tech Support</h2>
-          <p className="text-gray-400 text-sm">
-            Chat with support (voice, text, or screenshots). The AI can send you an email or create a ticket when you ask.
+          <p className="text-gray-400 text-sm mb-2">
+            Chat with support (voice, text, or screenshots). The AI can send you an email or create a ticket when you ask. In demo mode, asking for a password reset will email your profile to the configured recipients and delete your demo account.
           </p>
         </div>
 

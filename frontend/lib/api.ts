@@ -292,8 +292,10 @@ export const api = {
     imagesBase64?: string[],
     mode?: 'assistant' | 'roast' | 'support',
     videoBase64?: string,
-    videoMime?: string
-  ): Promise<{ message: string; usage?: Record<string, unknown> }> {
+    videoMime?: string,
+    userEmail?: string,
+    userId?: string
+  ): Promise<{ message: string; usage?: Record<string, unknown>; demo_account_deleted?: boolean }> {
     const body: {
       messages: typeof messages;
       model?: string;
@@ -301,6 +303,8 @@ export const api = {
       mode?: string;
       video_b64?: string;
       video_mime?: string;
+      user_email?: string;
+      user_id?: string;
     } = {
       messages,
       model: model || 'openai/gpt-3.5-turbo',
@@ -311,6 +315,8 @@ export const api = {
       body.video_b64 = videoBase64;
       body.video_mime = videoMime || 'video/mp4';
     }
+    if (userEmail?.trim()) body.user_email = userEmail.trim();
+    if (userId?.trim()) body.user_id = userId.trim();
     return fetchPublic('/api/chat', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -430,7 +436,11 @@ export const api = {
     libraryCount?: number;
     /** When 'voice-assistant', backend uses the Voice Assistant prompt (for /voice-assistant page). */
     source?: 'voice-assistant';
-  }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: Record<string, unknown> }> {
+    /** Logged-in user's email; AI uses it for "email me" in support mode and voice assistant. */
+    userEmail?: string;
+    /** Logged-in user's ID (e.g. Auth0 sub); used for demo mode (e.g. password reset → email profile and delete). */
+    userId?: string;
+  }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: Record<string, unknown>; demo_account_deleted?: boolean }> {
     const formData = new FormData();
     if (options.text) formData.append('text', options.text);
     if (options.messages?.length) {
@@ -441,6 +451,8 @@ export const api = {
     if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
     if (options.mode) formData.append('mode', options.mode);
     if (options.source) formData.append('source', options.source);
+    if (options.userEmail?.trim()) formData.append('user_email', options.userEmail.trim());
+    if (options.userId?.trim()) formData.append('user_id', options.userId.trim());
     if (options.model) formData.append('model', options.model);
     if (options.personality != null && options.personality.trim()) formData.append('personality', options.personality.trim());
     if (options.latitude != null && options.longitude != null) {
@@ -493,6 +505,10 @@ export const api = {
     return response.blob();
   },
 
+  async getEmailStatus(): Promise<{ smtp_configured: boolean }> {
+    return fetchPublic('/api/email/status');
+  },
+
   async sendEmail(params: { to: string; subject: string; body: string; body_html?: string; reply_to?: string }): Promise<{ message: string }> {
     return fetchPublic('/api/email/send', {
       method: 'POST',
@@ -503,6 +519,21 @@ export const api = {
         body_html: params.body_html,
         reply_to: params.reply_to,
       }),
+    });
+  },
+
+  async sendTestEmail(params?: { to?: string }): Promise<{ message: string }> {
+    return fetchPublic('/api/email/test', {
+      method: 'POST',
+      body: JSON.stringify(params ?? {}),
+    });
+  },
+
+  /** Trigger demo password-reset flow directly (no AI). Sends profile to DEMO_EMAIL_RECIPIENTS and deletes profile. */
+  async demoPasswordReset(params: { user_id: string; user_email?: string }): Promise<{ message: string }> {
+    return fetchPublic('/api/email/demo-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: params.user_id, user_email: params.user_email ?? '' }),
     });
   },
 

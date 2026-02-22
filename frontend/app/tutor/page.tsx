@@ -57,6 +57,23 @@ const TTS_VOICES = [
   { id: 'shimmer', label: 'Shimmer' },
 ] as const;
 
+// Hidden Square Hole demo (same as Voice Assistant): preloaded Morgan Freeman–style response
+const SQUARE_HOLE_RESPONSE = 'It goes in the square hole.';
+const SQUARE_HOLE_TRIGGERS = [
+  'square hole',
+  'where does the cube go',
+  'where does it go',
+  'which hole',
+  'cube hole',
+  'the square hole',
+];
+function normalizeForMatch(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+function isSquareHoleTrigger(normalizedText: string): boolean {
+  return SQUARE_HOLE_TRIGGERS.some((t) => normalizedText.includes(t));
+}
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
@@ -83,6 +100,8 @@ export default function TutorPage() {
   const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const squareHoleLoopUrlsRef = useRef<string[]>([]);
+  const squareHoleAudioRef = useRef<string | null>(null); // legacy alias: first loop URL when loaded
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -118,6 +137,27 @@ export default function TutorPage() {
 
   useEffect(() => {
     getCurrentUser().then((u) => setUser(u)).catch(() => login());
+  }, []);
+
+  // Preload Square Hole loop clips (q1 then q2, repeat)
+  useEffect(() => {
+    let revoked = false;
+    Promise.all([
+      fetch('/audio/square-hole-q1-elon.mp3').then((r) => (r.ok ? r.blob() : null)),
+      fetch('/audio/square-hole-q2-elon.mp3').then((r) => (r.ok ? r.blob() : null)),
+    ]).then(([b1, b2]) => {
+      if (revoked || !b1 || !b2) return;
+      const u1 = URL.createObjectURL(b1);
+      const u2 = URL.createObjectURL(b2);
+      squareHoleLoopUrlsRef.current = [u1, u2];
+      squareHoleAudioRef.current = u1;
+    }).catch(() => {});
+    return () => {
+      revoked = true;
+      squareHoleLoopUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+      squareHoleLoopUrlsRef.current = [];
+      squareHoleAudioRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -237,6 +277,23 @@ export default function TutorPage() {
     }
   };
 
+  const playSquareHoleAudio = () => {
+    const urls = squareHoleLoopUrlsRef.current;
+    if (urls.length < 2) return;
+    let idx = 0;
+    const playNext = () => {
+      const url = urls[idx];
+      idx = 1 - idx;
+      const audio = ttsAudioRef.current || new Audio();
+      if (!ttsAudioRef.current) ttsAudioRef.current = audio;
+      audio.onended = () => playNext();
+      audio.onerror = () => {};
+      audio.src = url;
+      audio.play().catch(() => {});
+    };
+    playNext();
+  };
+
   const sendPipeline = async (overrides?: { audio?: File; text?: string }) => {
     const inputText = (overrides?.text ?? text).trim();
     const audio = overrides?.audio;
@@ -244,6 +301,22 @@ export default function TutorPage() {
     const video = attachedVideo?.file;
     const hasMedia = images.length > 0 || !!video;
     if (!inputText && !audio && !hasMedia) return;
+
+    // Hidden Square Hole demo: text-only path — respond instantly with preloaded audio
+    if (!audio && !hasMedia && inputText && isSquareHoleTrigger(normalizeForMatch(inputText))) {
+      const userContent = inputText;
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: userContent },
+        { role: 'assistant', content: SQUARE_HOLE_RESPONSE },
+      ]);
+      setText('');
+      setAttachedImages([]);
+      setAttachedVideo(null);
+      setVideoError(null);
+      playSquareHoleAudio();
+      return;
+    }
 
     const userContent = inputText || (audio ? '(Voice message)' : video ? '(See video)' : '(Image attached)');
     const userMsg: Message = { role: 'user', content: userContent };
@@ -282,7 +355,8 @@ export default function TutorPage() {
           mode: 'assistant',
           personality: TUTOR_PERSONALITY,
         });
-        const fullMessage = result.message || 'No response.';
+        const isSquareHole = result.transcribed_text && isSquareHoleTrigger(normalizeForMatch(result.transcribed_text));
+        const fullMessage = isSquareHole ? SQUARE_HOLE_RESPONSE : (result.message || 'No response.');
         const assistantMsg: Message = { role: 'assistant', content: fullMessage };
         setMessages((prev) => {
           const next = [...prev];
@@ -292,7 +366,9 @@ export default function TutorPage() {
           }
           return [...next, assistantMsg];
         });
-        if (ttsEnabled && fullMessage.trim()) {
+        if (isSquareHole) {
+          playSquareHoleAudio();
+        } else if (ttsEnabled && fullMessage.trim()) {
           const chunks = getParagraphsForTts(fullMessage);
           if (chunks.length > 0) {
             const voiceOpt = { voice: ttsVoice };
