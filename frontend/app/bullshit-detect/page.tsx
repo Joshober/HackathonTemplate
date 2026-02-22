@@ -85,6 +85,7 @@ export default function BullshitDetectPage() {
   const [readAloud, setReadAloud] = useState('');
   const [analysis, setAnalysis] = useState('');
   const [transcribedText, setTranscribedText] = useState<string | null>(null);
+  const [lastTtsUrl, setLastTtsUrl] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -92,6 +93,12 @@ export default function BullshitDetectPage() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastTtsUrlRef = useRef<string | null>(null);
+  lastTtsUrlRef.current = lastTtsUrl;
+
+  useEffect(() => () => {
+    if (lastTtsUrlRef.current) URL.revokeObjectURL(lastTtsUrlRef.current);
+  }, []);
 
   const startRecording = async () => {
     setError(null);
@@ -246,12 +253,17 @@ export default function BullshitDetectPage() {
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         const blob = new Blob([bytes], { type: mime });
         const url = URL.createObjectURL(blob);
+        if (lastTtsUrlRef.current) URL.revokeObjectURL(lastTtsUrlRef.current);
+        setLastTtsUrl(url);
         const audioEl = ttsAudioRef.current || new Audio();
         if (!ttsAudioRef.current) ttsAudioRef.current = audioEl;
-        audioEl.onended = () => URL.revokeObjectURL(url);
-        audioEl.onerror = () => URL.revokeObjectURL(url);
+        audioEl.onended = () => {};
+        audioEl.onerror = () => {};
         audioEl.src = url;
-        audioEl.play().catch(() => URL.revokeObjectURL(url));
+        audioEl.play().catch(() => {});
+      } else {
+        if (lastTtsUrlRef.current) URL.revokeObjectURL(lastTtsUrlRef.current);
+        setLastTtsUrl(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed.');
@@ -263,6 +275,14 @@ export default function BullshitDetectPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     sendPipeline({ text });
+  };
+
+  const replayTts = () => {
+    if (!lastTtsUrl) return;
+    const audioEl = ttsAudioRef.current || new Audio();
+    if (!ttsAudioRef.current) ttsAudioRef.current = audioEl;
+    audioEl.src = lastTtsUrl;
+    audioEl.play().catch(() => {});
   };
 
   return (
@@ -404,7 +424,20 @@ export default function BullshitDetectPage() {
             )}
             {readAloud && (
               <div className="bg-amber-500/10 backdrop-blur border border-amber-500/40 rounded-xl p-5 mb-4">
-                <h2 className="text-sm font-semibold text-amber-400 mb-2">Summary (read aloud)</h2>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h2 className="text-sm font-semibold text-amber-400">Summary (read aloud)</h2>
+                  {lastTtsUrl && (
+                    <button
+                      type="button"
+                      onClick={replayTts}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/30 hover:bg-amber-500/50 text-amber-200 text-sm font-medium transition-colors"
+                      title="Play audio again"
+                    >
+                      <Volume2 className="w-4 h-4" />
+                      Play again
+                    </button>
+                  )}
+                </div>
                 <div className="text-amber-200/90 text-sm whitespace-pre-wrap">{readAloud}</div>
               </div>
             )}
