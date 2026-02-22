@@ -11,6 +11,7 @@ from app.prompts.support import SUPPORT_SYSTEM
 from app.prompts.assistant_web import ASSISTANT_WEB_SYSTEM
 from app.prompts.voice_assistant import VOICE_ASSISTANT_SYSTEM
 from app.prompts.bullshit_detect import BULLSHIT_DETECT_SYSTEM
+from app.prompts.tutor import SYSTEM as TUTOR_SYSTEM, build_user_prompt as build_tutor_user_prompt
 from app.services.web_search import search_web
 from app.services.weather import get_weather as fetch_weather
 from app.services.crypto import get_crypto_price as fetch_crypto_price, buy_crypto as do_buy_crypto, sell_crypto as do_sell_crypto, get_portfolio_summary as fetch_portfolio_summary
@@ -472,6 +473,113 @@ def _build_roast_messages_video(video_b64: str, video_mime: str, user_text=None)
         {'role': 'system', 'content': ROAST_CHAT_SYSTEM},
         {'role': 'user', 'content': content},
     ]
+
+
+def _parse_tutor_response(text: str) -> dict:
+    """Parse FUN: and HELP: from tutor response. Returns { fun, help } (help = list of steps)."""
+    fun = ''
+    help_steps = []
+    if not text:
+        return {'fun': fun, 'help': help_steps}
+    # FUN: ... (until HELP: or end)
+    fun_match = re.search(r'FUN:\s*(.+?)(?=HELP:|\Z)', text, re.DOTALL | re.IGNORECASE)
+    if fun_match:
+        fun = _normalize_text(fun_match.group(1))
+    # HELP: then lines starting with -
+    help_match = re.search(r'HELP:\s*(.+)', text, re.DOTALL | re.IGNORECASE)
+    if help_match:
+        block = help_match.group(1).strip()
+        for line in block.split('\n'):
+            line = line.strip()
+            if line.startswith('-'):
+                help_steps.append(_normalize_text(line[1:].strip()))
+            elif line and not line.startswith('#'):
+                help_steps.append(_normalize_text(line))
+    return {'fun': fun, 'help': help_steps}
+
+
+def _build_tutor_user_content(weekday: str, local_time: str, question: str, images_b64=None, video_b64=None, video_mime=None):
+    """Build user message for tutor: text only or multimodal (text + images/video)."""
+    has_media = (images_b64 and len(images_b64) > 0) or (video_b64 and len(video_b64) > 0)
+    text = build_tutor_user_prompt(weekday, local_time, question or '(See attached)', has_media=has_media)
+    if not has_media:
+        return text
+    content = [{'type': 'text', 'text': text}]
+    if video_b64:
+        content.append({'type': 'video_url', 'video_url': {'url': _video_data_url(video_b64, video_mime or 'video/mp4')}})
+    if images_b64:
+        for b64 in images_b64:
+            content.append({'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}'}})
+    return content
+
+
+@bp.route('/tutor', methods=['POST'])
+def tutor():
+    """Weekend Energy AI Tutor: FUN (roast) + HELP. Supports optional images and video."""
+    try:
+        data = request.get_json() or {}
+        question = (data.get('question') or '').strip()
+        images_b64 = data.get('images') or []
+        if not isinstance(images_b64, list):
+            images_b64 = []
+        video_b64 = (data.get('video_b64') or '').strip()
+        video_mime = (data.get('video_mime') or 'video/mp4').strip()
+        has_images = len(images_b64) > 0
+        has_video = len(video_b64) > 0
+        if not question and not has_images and not has_video:
+            return jsonify({'error': 'Question or at least one image/video is required'}), 400
+
+        weekday = (data.get('weekday') or '').strip() or 'Unknown'
+        local_time = (data.get('time') or data.get('local_time') or '').strip() or 'Unknown'
+
+        user_content = _build_tutor_user_content(weekday, local_time, question, images_b64 if has_images else None, video_b64 if has_video else None, video_mime)
+        messages = [
+            {'role': 'system', 'content': TUTOR_SYSTEM},
+            {'role': 'user', 'content': user_content},
+        ]
+        if has_video:
+            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
+            timeout_sec = 120
+        elif has_images:
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            timeout_sec = 60
+        else:
+            model = os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-3.5-turbo'
+            timeout_sec = 60
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'OPENROUTER_API_KEY not configured'}), 500
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': request.headers.get('Origin', ''),
+            'X-Title': 'Weekend Energy Tutor',
+        }
+        response = requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers=headers,
+            json={'model': model, 'messages': messages},
+            timeout=timeout_sec,
+        )
+        if not response.ok:
+            err = response.json() if response.content else {}
+            msg = err.get('error', response.reason)
+            if isinstance(msg, dict):
+                msg = msg.get('message', str(msg))
+            return jsonify({'error': str(msg)}), response.status_code
+
+        result = response.json()
+        raw = (result.get('choices') or [{}])[0].get('message', {}).get('content', '') or ''
+        parsed = _parse_tutor_response(raw)
+        return jsonify({
+            'fun': parsed['fun'],
+            'help': parsed['help'],
+            'raw': raw,
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @bp.route('/chat', methods=['POST'])
 def chat():

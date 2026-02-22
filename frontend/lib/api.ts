@@ -355,6 +355,31 @@ export const api = {
     });
   },
 
+  // Weekend Energy AI Tutor (auth) — FUN + HELP; optional images/video
+  async askTutor(
+    question: string,
+    options?: { weekday?: string; time?: string; images?: string[]; video_b64?: string; video_mime?: string }
+  ): Promise<{ fun: string; help: string[]; raw?: string }> {
+    const now = new Date();
+    const weekday = options?.weekday ?? now.toLocaleDateString('en-US', { weekday: 'long' });
+    const time = options?.time ?? now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const body: { question: string; weekday: string; time: string; images?: string[]; video_b64?: string; video_mime?: string } = {
+      question,
+      weekday,
+      time,
+    };
+    if (options?.images?.length) body.images = options.images;
+    if (options?.video_b64) {
+      body.video_b64 = options.video_b64;
+      body.video_mime = options.video_mime || 'video/mp4';
+    }
+    return fetchWithAuth('/api/tutor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  },
+
   // Voice-to-Text API (Whisper - pipeline backend)
   async transcribeAudio(file: File, options?: { language?: string; model?: string }): Promise<{ text: string }> {
     const formData = new FormData();

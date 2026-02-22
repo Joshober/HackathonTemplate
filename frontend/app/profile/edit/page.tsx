@@ -51,7 +51,7 @@ export default function EditProfilePage() {
 
   if (isLoading || loading || !user) {
     return (
-      <div className="min-h-screen bg-[#08050c] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0c0712] flex items-center justify-center">
         <div className="text-gray-400">Loading...</div>
       </div>
     );
@@ -70,7 +70,7 @@ export default function EditProfilePage() {
       <div className="mb-6">
         <Link
           href="/profile"
-          className="text-[#ff6b35] hover:text-[#ff8555] text-sm font-medium mb-4 inline-block"
+          className="text-orange-400 hover:text-teal-400 text-sm font-medium mb-4 inline-block"
         >
           ← Back to Profile
         </Link>

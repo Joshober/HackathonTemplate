@@ -87,8 +87,8 @@ export function comparePoses(reference: PoseKeypoints, current: PoseKeypoints): 
   return 0.7 * weighted + 0.3 * penalty;
 }
 
-/** Threshold de precisão: similaridade mínima para considerar a pose correta (exige boa precisão) */
-export const DEFAULT_CRINGE_THRESHOLD = 0.82;
+/** Threshold padrão para aprovar presença (cringe level suficiente) */
+export const DEFAULT_CRINGE_THRESHOLD = 0.72;
 
 /** Joint info for tips: MediaPipe index, label, side */
 const JOINT_TIPS: { index: number; part: string; side: 'left' | 'right' }[] = [

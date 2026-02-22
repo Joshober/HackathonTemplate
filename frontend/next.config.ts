@@ -40,6 +40,16 @@ const nextConfig: NextConfig = {
         hostname: 'cdn.auth0.com',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'picsum.photos',
+        pathname: '/**',
+      },
     ],
   },
 };
