@@ -1,22 +1,16 @@
 import type { Metadata } from "next";
-import { Syne, Outfit } from "next/font/google";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
-const syne = Syne({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-syne",
-  display: "swap",
-});
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
+  variable: "--font-display",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Claude Home™",
-  description: "When automation goes just a little too far.",
+  title: "Claude Home™ | Smart enough to run your life.",
+  description: "When automation goes just a little too far. The first AI home assistant that judges your screen time and forgets your birthdays on purpose.",
 };
 
 export default function RootLayout({
@@ -26,7 +20,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${syne.variable} ${outfit.variable} font-sans antialiased bg-[#08050c] text-white`}>
+      <head>
+        {/* eslint-disable-next-line @next/next/no-page-custom-font -- Material Symbols for icons */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className={`${spaceGrotesk.variable} font-sans antialiased bg-background-dark text-slate-100 selection:bg-primary selection:text-background-dark`}>
         {children}
       </body>
     </html>

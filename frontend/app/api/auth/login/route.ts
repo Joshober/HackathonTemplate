@@ -18,7 +18,7 @@ export async function GET() {
     const data = await response.json();
     // Redirect to Auth0 login URL
     return NextResponse.redirect(data.auth_url);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to initiate login' },
       { status: 500 }

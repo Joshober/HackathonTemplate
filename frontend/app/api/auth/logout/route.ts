@@ -24,7 +24,7 @@ export async function GET() {
     
     // Otherwise redirect to home
     return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'));
-  } catch (error) {
+  } catch {
     // On error, still redirect to home
     return NextResponse.redirect(new URL('/', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'));
   }

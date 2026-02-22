@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, type MutableRefObject } from 'react';
-import Navbar from '@/components/Navbar';
+import DashboardShell from '@/components/DashboardShell';
 import { api } from '@/lib/api';
+import { getCurrentUser } from '@/lib/auth';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -95,6 +96,21 @@ function isLikelyNoise(text: string): boolean {
   const filler = ['um', 'uh', 'eh', 'ah', 'oh', 'hmm', 'mm', 'hm'];
   if (filler.includes(lower) || filler.some((f) => lower === f + '.' || lower === f + ',')) return true;
   return false;
+}
+
+// Hidden Square Hole demo: preloaded Morgan Freeman–style response (no LLM call)
+const SQUARE_HOLE_RESPONSE = 'It goes in the square hole.';
+const SQUARE_HOLE_TRIGGERS = [
+  'square hole',
+  'where does the cube go',
+  'where does it go',
+  'which hole',
+  'cube hole',
+  'the square hole',
+];
+
+function isSquareHoleTrigger(normalizedText: string): boolean {
+  return SQUARE_HOLE_TRIGGERS.some((t) => normalizedText.includes(t));
 }
 
 // Web Speech API types (not in all TS libs)
@@ -221,6 +237,7 @@ export default function VoiceAssistantPage() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [libraryCount, setLibraryCount] = useState<number | null>(null);
   const [libraryCountLoading, setLibraryCountLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const recognitionRef = useRef<InstanceType<NonNullable<ReturnType<typeof getSpeechRecognition>>> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isBusyRef = useRef(false);
@@ -234,6 +251,9 @@ export default function VoiceAssistantPage() {
   const interimDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTranscriptRef = useRef('');
   const currentPlayingRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
+  const squareHoleLoopUrlsRef = useRef<string[]>([]); // [q1, q2] object URLs for looping demo
+  const squareHoleAudioRef = useRef<string | null>(null); // legacy alias: first loop URL when loaded
+  const squareHoleDemoTriggeredRef = useRef(false); // for ?demo=squarehole auto-run once
   const INTERIM_CLEAR_MS = 2000; // clear "Hearing..." after silence
   /** Wait this long after last final transcript before sending (more time to pause mid-sentence) */
   const FINAL_SEND_DELAY_MS = 2200;
@@ -296,6 +316,59 @@ export default function VoiceAssistantPage() {
     );
   }, []);
 
+  // Preload Square Hole loop clips (q1 then q2, repeat)
+  useEffect(() => {
+    let revoked = false;
+    const urls: string[] = [];
+    Promise.all([
+      fetch('/audio/square-hole-q1-elon.mp3').then((r) => (r.ok ? r.blob() : null)),
+      fetch('/audio/square-hole-q2-elon.mp3').then((r) => (r.ok ? r.blob() : null)),
+    ])
+      .then(([b1, b2]) => {
+        if (revoked || !b1 || !b2) return;
+        urls.push(URL.createObjectURL(b1), URL.createObjectURL(b2));
+        squareHoleLoopUrlsRef.current = urls;
+        squareHoleAudioRef.current = urls[0] ?? null;
+        if (typeof window !== 'undefined' && !squareHoleDemoTriggeredRef.current) {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get('demo') === 'squarehole' && urls.length === 2) {
+            squareHoleDemoTriggeredRef.current = true;
+            setMessages([
+              { role: 'user', content: 'Where does the cube go?' },
+              { role: 'assistant', content: SQUARE_HOLE_RESPONSE },
+            ]);
+            setStatus('speaking');
+            let idx = 0;
+            const playNext = () => {
+              const url = urls[idx];
+              idx = 1 - idx;
+              const audio = new Audio(url);
+              currentPlayingRef.current = { audio, url };
+              const wasIdle = status === 'idle';
+              audio.onended = () => {
+                if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+                playNext();
+              };
+              audio.onerror = () => {
+                if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+                setStatus(wasIdle ? 'idle' : 'listening');
+              };
+              audio.play().catch(() => setStatus(wasIdle ? 'idle' : 'listening'));
+            };
+            playNext();
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      revoked = true;
+      squareHoleLoopUrlsRef.current.forEach((u) => URL.revokeObjectURL(u));
+      squareHoleLoopUrlsRef.current = [];
+      squareHoleAudioRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup only on unmount
+  }, []);
+
   // Fetch and cache library count on load (for "how many people in the library") — same pattern as location
   useEffect(() => {
     const STORAGE_KEY = 'voice_assistant_library_count';
@@ -330,11 +403,52 @@ export default function VoiceAssistantPage() {
     fetchCount();
   }, []);
 
+  useEffect(() => {
+    getCurrentUser()
+      .then((u) => u?.email && setUserEmail(u.email))
+      .catch(() => {});
+  }, []);
+
   const sendToPipeline = useCallback(async (text: string) => {
     if (!text.trim()) return;
     interruptCurrentPlayback(currentPlayingRef);
-    setStatus('processing');
     setError(null);
+
+    const normalized = normalizeForMatch(text);
+    if (isSquareHoleTrigger(normalized)) {
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: text.trim() },
+        { role: 'assistant', content: SQUARE_HOLE_RESPONSE },
+      ]);
+      setStatus('speaking');
+      setLiveTranscript('');
+      const urls = squareHoleLoopUrlsRef.current;
+      if (urls.length >= 2) {
+        let idx = 0;
+        const playNext = () => {
+          const url = urls[idx];
+          idx = 1 - idx;
+          const audio = new Audio(url);
+          currentPlayingRef.current = { audio, url };
+          audio.onended = () => {
+            if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+            playNext();
+          };
+          audio.onerror = () => {
+            if (currentPlayingRef.current?.url === url) currentPlayingRef.current = null;
+            setStatus('listening');
+          };
+          audio.play().catch(() => setStatus('listening'));
+        };
+        playNext();
+      } else {
+        setStatus('listening');
+      }
+      return;
+    }
+
+    setStatus('processing');
     const currentMessages = messagesRef.current;
     const voice = selectedVoiceRef.current;
     try {
@@ -350,6 +464,7 @@ export default function VoiceAssistantPage() {
         personality: DEFAULT_CLAUDE_HOME_PERSONALITY,
         ...(loc && { latitude: loc.lat, longitude: loc.lon }),
         ...(libCount != null && libCount >= 0 && { libraryCount: libCount }),
+        ...(userEmail && { userEmail }),
       });
       const assistantContent = response.message || 'I didn’t get that.';
       setMessages((prev) => [
@@ -373,6 +488,7 @@ export default function VoiceAssistantPage() {
       ]);
       setStatus('listening');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intended deps
   }, []);
 
   useEffect(() => {
@@ -605,142 +721,133 @@ export default function VoiceAssistantPage() {
   const isListening = status === 'listening';
 
   return (
-    <div className="min-h-screen bg-[#08050c] text-white bg-dot-grid">
-      <Navbar />
-      <div className="max-w-xl mx-auto px-4 sm:px-6 pt-6 pb-12">
-        {/* Hero */}
-        <header className="text-center mb-8">
-          <h1 className="font-heading text-3xl font-bold text-white tracking-tight">Voice Assistant</h1>
-          <p className="text-white/50 text-sm mt-1.5">
-            Say &quot;{DEFAULT_WAKE_PHRASE}&quot; to start · &quot;{DEFAULT_SLEEP_PHRASE}&quot; to end
-          </p>
-        </header>
+    <DashboardShell>
+    <div className="min-h-screen bg-background-dark text-slate-100 flex flex-col -m-6 sm:-m-8">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-primary/10 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/20 rounded-lg">
+            <span className="material-symbols-outlined text-primary text-2xl">graphic_eq</span>
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-100">Claude Home™</h1>
+        </div>
+      </header>
 
-        {/* Voice orb + controls */}
-        <div className="flex flex-col items-center mb-8">
+      <main className="flex-1 flex flex-col items-center justify-center relative px-4 py-8">
+        {/* Central visualizer + mascot (clickable to start/stop) */}
+        <div className="relative w-full max-w-2xl aspect-square flex items-center justify-center">
+          <div className="absolute w-96 h-96 bg-primary/20 rounded-full blur-[120px]" />
+          <div className="absolute w-[400px] h-[400px] jagged-visualizer opacity-30 animate-pulse scale-110" />
+          <div className="absolute w-[360px] h-[360px] jagged-visualizer opacity-60 rotate-45 scale-105" />
           <button
             type="button"
             onClick={hasRecognition ? (isListening ? stopListening : startListening) : undefined}
             disabled={!hasRecognition}
-            className={`
-              relative w-32 h-32 rounded-full flex items-center justify-center
-              transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-[#ff6b35] focus:ring-offset-2 focus:ring-offset-[#08050c]
-              ${status === 'idle' && hasRecognition
-                ? 'bg-[#ff6b35] hover:bg-[#ff8555] shadow-lg shadow-[#ff6b35]/25 hover:shadow-[#ff6b35]/40 hover:scale-105'
-                : isActive
-                  ? 'bg-[#ff6b35]/90 shadow-lg shadow-[#ff6b35]/30 scale-105'
-                  : 'bg-white/10 cursor-not-allowed'
-              }
-            `}
+            className="relative z-10 w-64 h-64 flex items-center justify-center rounded-full border-8 border-primary bg-slate-900 shadow-2xl shadow-primary/20 overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background-dark disabled:opacity-50 disabled:cursor-not-allowed transition-transform hover:scale-105 active:scale-95"
           >
-            {isActive && (
-              <span
-                className="absolute inset-0 rounded-full animate-ping opacity-30 bg-[#ff6b35]"
-                style={{ animationDuration: '1.5s' }}
-              />
-            )}
-            <svg
-              className={`relative w-12 h-12 text-white ${status === 'processing' || status === 'speaking' ? 'animate-pulse' : ''}`}
-              fill="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden
-            >
-              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 2.97 2.96 5.21 5.91 5.21s5.42-2.24 5.91-5.21c.09-.6-.39-1.14-1-1.14z" />
-            </svg>
+            {isActive && <span className="absolute inset-0 rounded-full animate-ping opacity-20 bg-primary" style={{ animationDuration: '1.5s' }} />}
+            <div className="flex flex-col items-center justify-center">
+              <div className="flex gap-12 mt-8">
+                <div className="w-12 h-16 bg-primary rounded-full relative overflow-hidden">
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-950 rounded-full" />
+                </div>
+                <div className="w-12 h-16 bg-primary rounded-full relative overflow-hidden">
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 w-4 h-4 bg-slate-950 rounded-full" />
+                </div>
+              </div>
+              <div className="w-16 h-1 bg-primary/60 rounded-full mt-10" />
+            </div>
           </button>
+        </div>
 
-          <p className="mt-4 text-sm text-white/60 min-h-[20px]">
-            {status === 'idle' && hasRecognition && 'Tap to start · Microphone access required'}
-            {status === 'idle' && !hasRecognition && 'Voice not supported in this browser'}
-            {isListening && !isAwake && 'Listening for wake word…'}
-            {isListening && isAwake && 'Listening…'}
-            {status === 'processing' && 'Thinking…'}
-            {status === 'speaking' && 'Speaking…'}
-            {status === 'error' && 'Something went wrong'}
-          </p>
+        <div className="text-center mt-8 mb-6">
+          <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
+            {isListening && 'Listening... and '}
+            <span className={isListening ? 'text-accent-pink' : 'text-slate-400'}>{isListening ? 'judging your accent.' : status === 'processing' ? 'Thinking...' : status === 'speaking' ? 'Speaking...' : status === 'error' ? 'Something went wrong.' : hasRecognition ? `Say "${DEFAULT_WAKE_PHRASE}" to start` : 'Voice not supported'}</span>
+          </h2>
+          <p className="text-slate-500 text-lg">Speak clearly, I&apos;m already losing patience.</p>
+        </div>
 
-          <div className="mt-4 flex items-center gap-4">
-            {hasRecognition && status !== 'idle' && (
-              <button
-                type="button"
-                onClick={stopListening}
-                className="text-xs text-white/50 hover:text-white/80 transition-colors"
-              >
-                Pause
-              </button>
-            )}
-            <label className="flex items-center gap-2 text-xs text-white/50">
+        {error && (
+          <div className="mb-4 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-sm max-w-md text-center">
+            {error}
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+          <button
+            type="button"
+            onClick={stopListening}
+            disabled={!hasRecognition || status === 'idle'}
+            className="flex-1 h-14 rounded-xl bg-accent-pink text-white font-bold text-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-accent-pink/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span className="material-symbols-outlined">volume_off</span>
+            Stop Yelling
+          </button>
+          <a
+            href="/dashboard"
+            className="flex-1 h-14 rounded-xl bg-primary text-background-dark font-bold text-lg hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+          >
+            <span className="material-symbols-outlined">logout</span>
+            Peace Out
+          </a>
+        </div>
+
+        {/* Conversation area */}
+        <div className="mt-10 w-full max-w-2xl rounded-2xl border border-primary/10 bg-surface-dark/30 overflow-hidden flex flex-col" style={{ minHeight: '200px', maxHeight: '40vh' }}>
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-primary/10 bg-surface-dark/50 shrink-0">
+            <span className="text-sm font-medium text-slate-400">Chat</span>
+            <label className="flex items-center gap-2 text-xs text-slate-400">
               <span>Voice</span>
               <select
                 id="voice"
                 value={selectedVoice}
                 onChange={(e) => setSelectedVoice(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 text-white/90 text-xs focus:outline-none focus:ring-1 focus:ring-[#ff6b35]"
+                className="bg-primary/5 border border-primary/20 rounded-lg px-2 py-1.5 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {VOICES.map((v) => (
-                  <option key={v} value={v} className="bg-[#0f0b14]">{v}</option>
+                  <option key={v} value={v} className="bg-background-dark">{v}</option>
                 ))}
               </select>
             </label>
           </div>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200/90 text-sm">
-            <p>{error}</p>
-            {error.includes('denied') && (
-              <p className="text-white/50 text-xs mt-2">
-                Allow the microphone in your browser, then tap the button again.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Conversation */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm overflow-hidden flex flex-col shadow-xl" style={{ minHeight: '320px' }}>
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar" style={{ maxHeight: '50vh' }}>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
             {messages.length === 0 && !liveTranscript && (
-              <p className="text-white/40 text-sm text-center py-8">
-                Say &quot;{DEFAULT_WAKE_PHRASE}&quot; then ask anything — weather, news, or search.
-              </p>
+              <p className="text-slate-500 text-sm text-center py-6">Say &quot;{DEFAULT_WAKE_PHRASE}&quot; then ask anything.</p>
             )}
             {liveTranscript && (
               <div className="flex justify-end">
-                <p className="text-white/50 text-sm italic max-w-[85%]">&quot;{liveTranscript}&quot;</p>
+                <p className="text-slate-400 text-sm italic">&quot;{liveTranscript}&quot;</p>
               </div>
             )}
             {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[88%] rounded-2xl px-4 py-3 ${
-                    msg.role === 'user'
-                      ? 'bg-[#ff6b35]/15 border border-[#ff6b35]/20 text-white'
-                      : 'bg-white/5 border border-white/10 text-white/90'
-                  }`}
-                >
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] rounded-2xl px-4 py-2 ${msg.role === 'user' ? 'bg-primary/10 border border-primary/20 text-slate-100' : 'bg-background-dark/50 border border-border-dark text-slate-300'}`}>
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                 </div>
               </div>
             ))}
             <div ref={messagesEndRef} />
           </div>
         </div>
+      </main>
 
-        {/* Footer context */}
-        <footer className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-white/40">
+      <footer className="glass-effect px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1 bg-primary/10 border border-primary/30 rounded-full text-xs font-mono text-primary">Claude-Snark-v3</span>
+          <span className="text-slate-500 text-sm">|</span>
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-primary animate-pulse' : 'bg-slate-500'}`} />
+            {isActive ? 'System Live' : 'Idle'}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
           {userLocation && <span>Location on</span>}
           {locationError && <span>Location off</span>}
-          {libraryCount != null && !libraryCountLoading && (
-            <span>Library: {libraryCount} here</span>
-          )}
-          {!hasRecognition && (
-            <span className="text-amber-400/80">Use Chrome or Edge for voice</span>
-          )}
-        </footer>
-      </div>
+          {libraryCount != null && !libraryCountLoading && <span>Library: {libraryCount}</span>}
+          {!hasRecognition && <span className="text-amber-400/80">Use Chrome or Edge for voice</span>}
+        </div>
+      </footer>
     </div>
+    </DashboardShell>
   );
 }
