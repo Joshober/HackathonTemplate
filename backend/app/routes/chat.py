@@ -636,10 +636,10 @@ def _parse_tutor_response(text: str) -> dict:
     return {'fun': fun, 'help': help_steps}
 
 
-def _build_tutor_user_content(weekday: str, local_time: str, question: str, images_b64=None, video_b64=None, video_mime=None):
+def _build_tutor_user_content(weekday: str, local_time: str, question: str, images_b64=None, video_b64=None, video_mime=None, month: str = ""):
     """Build user message for tutor: text only or multimodal (text + images/video)."""
     has_media = (images_b64 and len(images_b64) > 0) or (video_b64 and len(video_b64) > 0)
-    text = build_tutor_user_prompt(weekday, local_time, question or '(See attached)', has_media=has_media)
+    text = build_tutor_user_prompt(weekday, local_time, question or '(See attached)', has_media=has_media, month=month or "")
     if not has_media:
         return text
     content = [{'type': 'text', 'text': text}]
@@ -669,8 +669,9 @@ def tutor():
 
         weekday = (data.get('weekday') or '').strip() or 'Unknown'
         local_time = (data.get('time') or data.get('local_time') or '').strip() or 'Unknown'
+        month = (data.get('month') or '').strip() or ''
 
-        user_content = _build_tutor_user_content(weekday, local_time, question, images_b64 if has_images else None, video_b64 if has_video else None, video_mime)
+        user_content = _build_tutor_user_content(weekday, local_time, question, images_b64 if has_images else None, video_b64 if has_video else None, video_mime, month=month)
         messages = [
             {'role': 'system', 'content': TUTOR_SYSTEM},
             {'role': 'user', 'content': user_content},

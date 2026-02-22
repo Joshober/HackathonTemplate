@@ -364,15 +364,17 @@ export const api = {
   // Weekend Energy AI Tutor (auth) — FUN + HELP; optional images/video
   async askTutor(
     question: string,
-    options?: { weekday?: string; time?: string; images?: string[]; video_b64?: string; video_mime?: string }
+    options?: { weekday?: string; time?: string; month?: string; images?: string[]; video_b64?: string; video_mime?: string }
   ): Promise<{ fun: string; help: string[]; raw?: string }> {
     const now = new Date();
     const weekday = options?.weekday ?? now.toLocaleDateString('en-US', { weekday: 'long' });
     const time = options?.time ?? now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    const body: { question: string; weekday: string; time: string; images?: string[]; video_b64?: string; video_mime?: string } = {
+    const month = options?.month ?? now.toLocaleDateString('en-US', { month: 'long' });
+    const body: { question: string; weekday: string; time: string; month?: string; images?: string[]; video_b64?: string; video_mime?: string } = {
       question,
       weekday,
       time,
+      month,
     };
     if (options?.images?.length) body.images = options.images;
     if (options?.video_b64) {
