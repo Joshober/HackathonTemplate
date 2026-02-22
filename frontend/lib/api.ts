@@ -554,6 +554,25 @@ export const api = {
     const q = params?.limit != null ? `?limit=${params.limit}` : '';
     return fetchPublic(`/api/tickets${q}`);
   },
+
+  async createPoseSession(poses: Array<{ pose: number[]; image: string | null }>): Promise<{ password: string }> {
+    return fetchWithAuth('/api/pose-sessions', {
+      method: 'POST',
+      body: JSON.stringify({ poses }),
+    });
+  },
+
+  async getPoseSession(password: string): Promise<{ poses: Array<{ pose: number[]; image: string | null }> }> {
+    const res = await fetch(`${API_URL}/api/pose-sessions/${encodeURIComponent(password.trim())}`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Invalid password' }));
+      throw new Error(err.error || 'Invalid password');
+    }
+    return res.json();
+  },
 };
 
 // Roast AI types (aligned with backend JSON)
