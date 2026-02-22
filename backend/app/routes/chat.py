@@ -18,6 +18,23 @@ from app.services.library import get_library_count as _get_library_count
 
 bp = Blueprint('chat', __name__)
 
+
+def _pdf_first_page_to_base64(pdf_bytes: bytes):
+    """Convert first page of PDF to JPEG base64 for vision API. Returns None on failure."""
+    try:
+        import fitz
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if len(doc) == 0:
+            doc.close()
+            return None
+        page = doc[0]
+        pix = page.get_pixmap(dpi=150)
+        img_bytes = pix.tobytes("png")
+        doc.close()
+        return base64.b64encode(img_bytes).decode("utf-8")
+    except Exception:
+        return None
+
 # Tool definition for web search (OpenRouter/OpenAI-style)
 def _normalize_text(s: str) -> str:
     """Collapse whitespace to single space and strip."""
@@ -650,13 +667,21 @@ def bullshit_detect_pipeline():
             transcribed_text = transcribed
             text = f'{text} {transcribed}'.strip() if text else transcribed
 
-        # Step 2: Get images
+        # Step 2: Get images (and PDF: first page converted to image)
         images_b64 = []
         for key in request.files:
             if key.startswith('images') or key == 'image':
                 f = request.files[key]
-                if f and f.filename and f.content_type and 'image' in f.content_type:
+                if not f or not f.filename:
+                    continue
+                ct = (f.content_type or '').strip().lower()
+                fn = (f.filename or '').lower()
+                if 'image' in ct:
                     images_b64.append(base64.b64encode(f.read()).decode('utf-8'))
+                elif ct == 'application/pdf' or fn.endswith('.pdf'):
+                    pdf_b64 = _pdf_first_page_to_base64(f.read())
+                    if pdf_b64:
+                        images_b64.append(pdf_b64)
 
         # Step 3: Get video
         video_b64 = ''
@@ -822,13 +847,21 @@ def chat_pipeline():
             transcribed_text = transcribed
             text = f'{text} {transcribed}'.strip() if text else transcribed
 
-        # Step 2: Get images
+        # Step 2: Get images (and PDF: first page converted to image)
         images_b64 = []
         for key in request.files:
             if key.startswith('images') or key == 'image':
                 f = request.files[key]
-                if f and f.filename and f.content_type and 'image' in f.content_type:
+                if not f or not f.filename:
+                    continue
+                ct = (f.content_type or '').strip().lower()
+                fn = (f.filename or '').lower()
+                if 'image' in ct:
                     images_b64.append(base64.b64encode(f.read()).decode('utf-8'))
+                elif ct == 'application/pdf' or fn.endswith('.pdf'):
+                    pdf_b64 = _pdf_first_page_to_base64(f.read())
+                    if pdf_b64:
+                        images_b64.append(pdf_b64)
 
         # Step 2b: Get video (single file, for roast); accept MOV (video/quicktime) and others
         video_b64 = ''
@@ -878,6 +911,10 @@ def chat_pipeline():
 
         if mode == 'support':
             messages = [{'role': 'system', 'content': SUPPORT_SYSTEM}] + messages
+        elif mode == 'assistant' and (has_images or has_video):
+            personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
+            if personality:
+                messages = [{'role': 'system', 'content': personality}] + messages
 
         api_key = os.getenv('OPENROUTER_API_KEY')
         if not api_key:

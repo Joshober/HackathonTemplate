@@ -68,7 +68,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
   };
 
   const inputClass =
-    'w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50';
+    'w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50';
   const labelClass = 'block text-sm font-medium text-gray-300 mb-1';
 
   return (
@@ -97,7 +97,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
               type="file"
               accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
               onChange={handleImageChange}
-              className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#ff6b35]/20 file:text-[#ff6b35] hover:file:bg-[#ff6b35]/30"
+              className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/20 file:text-primary hover:file:bg-primary/30"
             />
             <p className="mt-1 text-xs text-gray-500">PNG, JPG, GIF or WEBP. Max 5MB.</p>
           </div>
@@ -137,7 +137,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-[#ff6b35] hover:bg-[#ff8555] text-white px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
+          className="flex-1 bg-primary hover:bg-primary/90 text-background-dark px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/50"
         >
           {loading ? 'Saving...' : profile?._id ? 'Update Profile' : 'Create Profile'}
         </button>

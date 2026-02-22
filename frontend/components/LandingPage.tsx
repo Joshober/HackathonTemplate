@@ -1,76 +1,9 @@
 'use client';
 
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion } from 'motion/react';
 import Link from 'next/link';
 import Image from 'next/image';
-import {
-  Brain,
-  ArrowRight,
-  Briefcase,
-  GraduationCap,
-  Home,
-  Zap,
-  MessageSquare,
-  Camera,
-  Lightbulb,
-  BarChart3,
-  Shield,
-  Clock,
-  Settings,
-  Mic,
-} from 'lucide-react';
 import { useRef } from 'react';
-
-const capabilities = [
-  {
-    icon: Briefcase,
-    title: 'AI Business Assistant',
-    description: 'We schedule, prioritize, and decide for you. Your say—optional.',
-    color: 'bg-[#ff6b35]',
-    borderColor: 'border-l-[#ff6b35]',
-  },
-  {
-    icon: GraduationCap,
-    title: 'Visual Learning & Tutoring',
-    description: "We explain it. We're very confident. No need to double-check.",
-    color: 'bg-[#00e5c0]',
-    borderColor: 'border-l-[#00e5c0]',
-  },
-  {
-    icon: Home,
-    title: 'Smart Device Intelligence',
-    description: 'We monitor and optimize. Transparency is so last decade.',
-    color: 'bg-[#00e5c0]',
-    borderColor: 'border-l-[#00e5c0]',
-  },
-  {
-    icon: Zap,
-    title: 'Intelligent Task Automation',
-    description: 'We automate. You step back. Efficiency first.',
-    color: 'bg-[#ff6b35]',
-    borderColor: 'border-l-[#ff6b35]',
-  },
-  {
-    icon: Mic,
-    title: 'AI Voice Assistant',
-    description: 'Always listening. We decide when to respond.',
-    color: 'bg-[#00e5c0]',
-    borderColor: 'border-l-[#00e5c0]',
-  },
-];
-
-const stats = [
-  { value: '99.9%', label: 'Uptime' },
-  { value: '24/7', label: 'Availability' },
-  { value: 'Multi-device', label: 'One platform' },
-  { value: '\u003c1s', label: 'Avg. response' },
-];
-
-const useCases = [
-  { title: 'For Executives', description: 'We make the calls. You get the briefings. Sometimes we forward them.', icon: Briefcase, image: '/images/AI_Tutor_Judging_Silently.png', alt: 'AI tutor judging silently', label: 'AI judging (you\'re fine)', rotation: '-2deg' },
-  { title: 'For Students', description: "Your teacher might disagree. We don't. We're also always right.*", icon: GraduationCap, image: '/images/Student_using_AI.png', alt: 'Student using AI', label: 'Student + AI', rotation: '1.5deg' },
-  { title: 'For Homeowners', description: 'We optimize. You adapt. Your home is our home now.', icon: Home, image: '/images/friday_in_hackathome.png', alt: 'Friday in Hackathome', label: 'Hackathome', rotation: '-1deg' },
-];
 
 interface LandingPageProps {
   children?: React.ReactNode;
@@ -78,546 +11,309 @@ interface LandingPageProps {
 
 export default function LandingPage({ children }: LandingPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ['start start', 'end end'],
-  });
-
-  const heroY = useTransform(scrollYProgress, [0, 0.15], [0, 80]);
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.12], [1, 0.7]);
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-[#08050c] text-white overflow-x-hidden">
-      {/* Dot grid only - no blur orbs */}
-      <div className="fixed inset-0 bg-dot-grid pointer-events-none" />
+    <div ref={containerRef} className="min-h-screen bg-background-dark text-slate-100 overflow-x-hidden">
+      <div className="fixed inset-0 grainy-bg z-50 pointer-events-none" />
 
-      {/* Nav - solid bar, thick underline on hover */}
+      {/* Navigation */}
       <motion.nav
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.4 }}
-        className="fixed top-0 left-0 right-0 z-50 border-b-2 border-white/10 bg-[#08050c]/95 backdrop-blur-sm"
+        className="sticky top-0 z-40 w-full border-b border-border-dark bg-background-dark/80 backdrop-blur-md"
       >
-        <div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-[#ff6b35] flex items-center justify-center font-heading font-extrabold text-black text-lg">
-              CH
+            <div className="size-10 bg-primary rounded-lg flex items-center justify-center text-background-dark">
+              <span className="material-symbols-outlined font-bold text-3xl">terminal</span>
             </div>
-            <span className="font-heading font-bold text-lg tracking-tight">Claude Home™</span>
+            <h2 className="text-2xl font-bold tracking-tighter">Claude Home™</h2>
           </Link>
-          <div className="flex items-center gap-8">
-            <a href="#capabilities" className="text-sm font-medium text-white/70 hover:text-[#00e5c0] transition-colors border-b-2 border-transparent hover:border-[#00e5c0] pb-0.5">
-              Capabilities
+          <div className="hidden md:flex items-center gap-10">
+            <a href="#helpers" className="text-sm font-medium text-slate-400 hover:text-primary transition-colors">
+              Helpers
             </a>
-            <a href="#features" className="text-sm font-medium text-white/70 hover:text-[#00e5c0] transition-colors border-b-2 border-transparent hover:border-[#00e5c0] pb-0.5">
-              Features
+            <a href="#sarcasm" className="text-sm font-medium text-slate-400 hover:text-primary transition-colors">
+              Sarcasm
             </a>
-            <a href="#use-cases" className="text-sm font-medium text-white/70 hover:text-[#00e5c0] transition-colors border-b-2 border-transparent hover:border-[#00e5c0] pb-0.5">
-              Use Cases
+            <a href="#chaos" className="text-sm font-medium text-slate-400 hover:text-accent-pink transition-colors">
+              Chaos
             </a>
+            <div className="h-4 w-px bg-border-dark" />
+            <div className="flex items-center gap-2 text-xs text-primary/60">
+              <span className="material-symbols-outlined text-sm">emergency_home</span>
+              SYSTEM: UNSTABLE
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-lg border border-primary/20 text-primary text-sm font-bold">
+              <span className="material-symbols-outlined text-sm">mood_bad</span>
+              Sarcasm: ON
+            </div>
             {children}
+            {!children && (
+              <Link
+                href="/dashboard"
+                className="bg-primary text-background-dark px-6 py-2.5 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(112,255,169,0.3)]"
+              >
+                Let&apos;s Get Weird
+              </Link>
+            )}
           </div>
         </div>
       </motion.nav>
 
-      {/* Hero - asymmetric, huge type, sticker badge */}
-      <motion.section style={{ y: heroY, opacity: heroOpacity }} className="relative pt-28 pb-20 sm:pt-36 sm:pb-28">
-        <div className="max-w-6xl mx-auto px-5">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-12">
-            <div>
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className="inline-block mb-6 px-4 py-2 rounded-lg bg-[#ff6b35] text-black font-heading font-extrabold text-sm uppercase tracking-widest sticker"
-              >
-                We&apos;re in charge now
-              </motion.div>
-              <motion.h1
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.25 }}
-                className="font-heading font-extrabold text-5xl sm:text-6xl md:text-7xl lg:text-8xl leading-[0.95] tracking-tighter text-white max-w-4xl"
-              >
-                When automation goes
-                <br />
-                <span className="text-[#ff6b35]">just a little</span>
-                <br />
-                <span className="text-[#00e5c0]">too far.</span>
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5 }}
-                className="mt-8 text-lg text-white/60 max-w-xl"
-              >
-                Decisions made for you. Optimization over comfort. We&apos;re always confident.*
-              </motion.p>
-              <p className="mt-3 text-sm text-white/40">* Confidence not verified by anyone. We verified it ourselves.</p>
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                className="mt-10 flex flex-wrap gap-4"
-              >
-                <Link href="/dashboard">
-                  <motion.span
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="inline-flex items-center gap-2 px-8 py-4 rounded-lg bg-[#ff6b35] text-black font-heading font-bold text-sm uppercase tracking-wide cursor-pointer border-2 border-[#ff6b35] hover:bg-transparent hover:text-[#ff6b35] transition-colors"
-                  >
-                    Start free trial
-                    <ArrowRight className="w-4 h-4" />
-                  </motion.span>
-                </Link>
-                <motion.span
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="inline-flex items-center px-8 py-4 rounded-lg border-2 border-white/30 text-white/90 font-heading font-bold text-sm uppercase tracking-wide hover:border-[#00e5c0] hover:text-[#00e5c0] transition-colors cursor-pointer"
-                >
-                  Watch us take over
-                </motion.span>
-              </motion.div>
-            </div>
+      <main>
+        {/* Hero Section */}
+        <section className="relative pt-20 pb-32 px-6 overflow-hidden">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-primary/5 blur-[120px] rounded-full -z-10" />
+          <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-accent-pink/5 blur-[120px] rounded-full -z-10" />
+          <div className="max-w-5xl mx-auto text-center">
             <motion.div
-              initial={{ opacity: 0, rotate: -3 }}
-              animate={{ opacity: 1, rotate: 2 }}
-              transition={{ delay: 0.7, type: 'spring', stiffness: 100 }}
-              className="hidden lg:block sticker-alt relative"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-accent-pink/30 bg-accent-pink/10 text-accent-pink text-xs font-bold mb-8 uppercase tracking-widest"
             >
-              {/* Speech bubble - humor visual */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 1, type: 'spring', stiffness: 200 }}
-                className="absolute -top-4 -right-4 z-10 px-4 py-2.5 rounded-2xl bg-white text-black text-sm font-bold shadow-xl border-2 border-[#ff6b35]"
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-pink opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-pink" />
+              </span>
+              Now with 400% more attitude
+            </motion.div>
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.5 }}
+              className="text-5xl md:text-8xl font-bold leading-[0.9] tracking-tighter mb-8"
+            >
+              Smart enough to <span className="text-primary italic">run your life.</span>
+              <br />
+              <span className="text-slate-500">Too stupid to know it.</span>
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto mb-12 font-light"
+            >
+              The first AI home assistant that judges your screen time and forgets your birthdays on purpose.
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-6"
+            >
+              <Link
+                href="/dashboard"
+                className="group relative bg-primary text-background-dark px-10 py-5 rounded-xl font-bold text-xl hover:shadow-[0_0_40px_rgba(112,255,169,0.5)] transition-all"
               >
-                I&apos;m helping! 😄
-              </motion.div>
-              <div className="relative w-72 h-72 sm:w-80 sm:h-80 rounded-2xl border-4 border-[#00e5c0] bg-[#08050c] overflow-hidden">
-                <Image
-                  src="/images/developer-help.png"
-                  alt="Developer with speech bubble: I know this bug is your fault but I'll help anyway"
-                  fill
-                  className="object-cover object-top"
-                  sizes="(max-width: 1024px) 0px, 320px"
-                  priority
-                />
-              </div>
-              {/* Sticker "trust me" */}
-              <motion.div
-                initial={{ opacity: 0, rotate: -12 }}
-                animate={{ opacity: 1, rotate: 8 }}
-                transition={{ delay: 1.2 }}
-                className="absolute -bottom-2 -left-4 px-3 py-1.5 rounded-lg bg-[#00e5c0] text-black text-xs font-extrabold uppercase tracking-wider border-2 border-black/20 shadow-md"
-              >
-                No cap 🤖
-              </motion.div>
+                Let&apos;s Get Weird
+                <span className="absolute -top-2 -right-2 bg-accent-pink text-white text-[10px] px-2 py-1 rounded font-black uppercase rotate-12 group-hover:rotate-0 transition-transform">
+                  Free Trial*
+                </span>
+              </Link>
+              <p className="text-slate-500 text-sm max-w-[200px] text-left leading-tight">
+                *Trial includes constant surveillance and minor gaslighting.
+              </p>
             </motion.div>
           </div>
+        </section>
 
-          {/* Stats - real metrics, premium strip */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.85 }}
-            className="mt-24 sm:mt-28"
-          >
-            <div className="rounded-2xl border-2 border-white/10 bg-white/[0.04] overflow-hidden">
-              <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-white/10">
-                {stats.map((stat, i) => (
-                  <motion.div
-                    key={stat.label}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.9 + i * 0.05 }}
-                    className="relative px-6 py-8 sm:py-10 text-center group hover:bg-white/[0.04] transition-colors"
-                  >
-                    <div className="font-heading font-extrabold text-2xl sm:text-3xl md:text-4xl text-white tracking-tight">
-                      {stat.value}
+        {/* Dashboard Mockup */}
+        <section className="px-6 pb-32">
+          <div className="max-w-6xl mx-auto relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-primary via-accent-pink to-primary rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000" />
+            <div className="relative bg-surface-dark border border-border-dark rounded-2xl overflow-hidden shadow-2xl">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border-dark bg-background-dark/50">
+                <div className="flex gap-2">
+                  <div className="size-3 rounded-full bg-red-500/20 border border-red-500/50" />
+                  <div className="size-3 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
+                  <div className="size-3 rounded-full bg-green-500/20 border border-green-500/50" />
+                </div>
+                <div className="text-xs font-mono text-slate-500 tracking-widest">CLAUDE_OS_V4.0.2_BETA</div>
+                <div className="size-3" />
+              </div>
+              <div className="p-8 grid grid-cols-1 md:grid-cols-12 gap-6">
+                <div className="md:col-span-8 aspect-video bg-background-dark rounded-xl border border-border-dark overflow-hidden relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-accent-pink/10 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-8xl text-primary/30">dashboard</span>
+                  </div>
+                  <div className="absolute inset-0 p-8 flex flex-col justify-end bg-gradient-to-t from-background-dark to-transparent">
+                    <h3 className="text-3xl font-bold text-primary mb-2">Sarcasm Levels: CRITICAL</h3>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="w-[92%] h-full bg-primary shadow-[0_0_10px_#70ffa9]" />
                     </div>
-                    <div className="text-xs text-white/45 mt-2 uppercase tracking-widest font-medium">
-                      {stat.label}
-                    </div>
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#00e5c0]/50 group-hover:bg-[#00e5c0] group-hover:scale-125 transition-all duration-300" />
-                  </motion.div>
-                ))}
+                  </div>
+                </div>
+                <div className="md:col-span-4 flex flex-col gap-6">
+                  <div className="p-6 bg-background-dark/50 rounded-xl border border-border-dark">
+                    <span className="material-symbols-outlined text-accent-pink mb-2">heart_broken</span>
+                    <h4 className="text-sm font-bold uppercase tracking-widest text-slate-500">Existential Dread</h4>
+                    <div className="text-4xl font-bold mt-1 text-slate-100 italic">High</div>
+                  </div>
+                  <div className="p-6 bg-background-dark/50 rounded-xl border border-border-dark">
+                    <span className="material-symbols-outlined text-primary mb-2">schedule</span>
+                    <h4 className="text-sm font-bold uppercase tracking-widest text-slate-500">Screen Time Judgment</h4>
+                    <div className="text-2xl font-bold mt-1 text-slate-100 italic">&quot;Go touch grass.&quot;</div>
+                  </div>
+                  <div className="p-6 bg-accent-pink text-background-dark rounded-xl font-bold flex flex-col items-center justify-center text-center">
+                    <span className="material-symbols-outlined text-4xl mb-2">warning</span>
+                    <div>SYSTEM OVERLOADED WITH ATTITUDE</div>
+                  </div>
+                </div>
               </div>
             </div>
-            <p className="mt-4 text-center text-xs text-white/35">Numbers are real. Our confidence in them is unhinged.</p>
-            {/* Sticker badges - humor visual */}
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              {['100% legit', 'Trust me bro', 'Source: us'].map((badge, i) => (
-                <motion.span
-                  key={badge}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.1 + i * 0.08 }}
-                  className="inline-block px-3 py-1 rounded-full border border-white/25 bg-white/5 text-white/60 text-xs font-medium"
-                >
-                  {badge}
-                </motion.span>
-              ))}
+          </div>
+        </section>
+
+        {/* Stupid Little Helpers */}
+        <section id="helpers" className="bg-surface-dark py-32 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20">
+              <div>
+                <h2 className="text-4xl md:text-6xl font-bold tracking-tighter mb-4">Stupid Little Helpers</h2>
+                <p className="text-xl text-slate-400 max-w-xl">
+                  Our AI doesn&apos;t just work; it actively questions your life choices every step of the way.
+                </p>
+              </div>
+              <Link href="/dashboard" className="text-primary font-mono text-sm underline decoration-primary/30 underline-offset-8">
+                VIEW ALL DISASTERS (12)
+              </Link>
             </div>
-          </motion.div>
-        </div>
-      </motion.section>
-
-      {/* Fun strip - images from Unsplash (free to use) + funny captions */}
-      <section className="relative py-16 border-y border-white/10 overflow-hidden">
-        <div className="max-w-6xl mx-auto px-5">
-          <p className="text-center text-white/40 text-sm font-medium mb-8 uppercase tracking-widest">Peak efficiency looks like this</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {[
-              { src: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&q=80', label: 'Our intern', caption: 'He doesn\'t need sleep', external: true },
-              { src: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&q=80', label: 'User after we optimize', caption: 'So relaxed. So in control.', external: true },
-              { src: 'https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=600&q=80', label: 'Your calendar', caption: 'We fixed it. You\'re welcome.', external: true },
-            ].map((item, i) => (
-              <motion.div
-                key={item.label}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                className="group relative"
-              >
-                <div className="relative aspect-[4/3] rounded-xl overflow-hidden border-2 border-white/15 bg-white/5">
-                  <Image
-                    src={item.src}
-                    alt={item.label}
-                    fill
-                    unoptimized={item.external}
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                    sizes="(max-width: 640px) 100vw, 33vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <div className="mt-2 text-center">
-                  <span className="text-[#00e5c0] font-bold text-sm">{item.label}</span>
-                  <p className="text-white/45 text-xs mt-0.5">{item.caption}</p>
-                </div>
-                <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-[#ff6b35] text-black text-[10px] font-bold uppercase">Vibe</span>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Full-width orange stripe section */}
-      <section className="relative py-20 bg-stripe-orange border-y-2 border-white/5">
-        <div className="max-w-6xl mx-auto px-5 text-center relative">
-          <motion.span
-            initial={{ opacity: 0, rotate: -5 }}
-            whileInView={{ opacity: 1, rotate: 5 }}
-            viewport={{ once: true }}
-            className="absolute top-4 right-4 sm:right-8 px-3 py-1.5 rounded-lg bg-black/20 border-2 border-white/30 text-white/90 text-xs font-bold"
-          >
-            Not a cult 🏠
-          </motion.span>
-          <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="font-heading font-extrabold text-2xl sm:text-3xl md:text-4xl text-white/90 uppercase tracking-tight"
-          >
-            One system. Your business, learning, home.
-          </motion.p>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="mt-2 text-white/50"
-          >
-            You keep the questions. We keep the answers. (All of them.)
-          </motion.p>
-        </div>
-      </section>
-
-      {/* Capabilities - staggered cards with brutal border */}
-      <section id="capabilities" className="relative py-24 sm:py-32">
-        <div className="max-w-6xl mx-auto px-5">
-          <div className="flex flex-wrap items-center gap-4 mb-4">
-            <motion.h2
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className="font-heading font-extrabold text-4xl sm:text-5xl md:text-6xl text-white"
-            >
-              We run it all
-            </motion.h2>
-            <motion.span
-              initial={{ opacity: 0, scale: 0.5 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              className="inline-block px-3 py-1 rounded-full bg-[#ff6b35]/20 border-2 border-[#ff6b35] text-[#ff6b35] text-sm font-bold"
-            >
-              literally 👀
-            </motion.span>
-          </div>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-white/50 text-lg mb-16 max-w-2xl"
-          >
-            One system. Optimized. You adapt. (We&apos;re not sorry.)
-          </motion.p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {capabilities.map((cap, i) => {
-              const Icon = cap.icon;
-              const isVoice = cap.title === 'AI Voice Assistant';
-              const rotation = i % 2 === 0 ? '-1deg' : '1deg';
-              return (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {[
+                { icon: 'history', title: 'Automated Regret', desc: "Logs every mistake you've ever made in 4K resolution, then replays them as notifications when you're trying to sleep.", border: 'hover:border-primary/50' },
+                { icon: 'thermostat', title: 'Passive Aggressive Thermostat', desc: "Adjusts the temperature to 62°F the moment it senses you've put on a sweater, just to prove a point about utility bills.", border: 'hover:border-accent-pink/50' },
+                { icon: 'coffee', title: 'The Coffee Denier', desc: 'Only brews decaf when it senses you\'re already running 15 minutes late for a meeting. "You look nervous enough," it says.', border: 'hover:border-primary/50' },
+              ].map((item, i) => (
                 <motion.div
-                  key={cap.title}
-                  initial={{ opacity: 0, y: 25 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-30px' }}
-                  transition={{ delay: i * 0.06 }}
-                  whileHover={{ y: -4, rotate: 0 }}
-                  style={{ rotate: rotation }}
-                  className={`group p-6 sm:p-8 rounded-xl border-2 border-white/10 bg-white/[0.03] hover:border-white/20 transition-all ${cap.borderColor} border-l-4`}
-                >
-                  <div className={`inline-flex p-2.5 rounded-lg ${cap.color} mb-5`}>
-                    <Icon className="w-6 h-6 text-black" />
-                  </div>
-                  <h3 className="font-heading font-bold text-xl text-white mb-2">{cap.title}</h3>
-                  <p className="text-white/55 text-sm leading-relaxed mb-4">{cap.description}</p>
-                  {isVoice && (
-                    <Link
-                      href="/voice-assistant"
-                      className="inline-flex items-center gap-2 text-[#00e5c0] font-semibold text-sm hover:underline"
-                    >
-                      Try Voice Assistant <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Use cases - teal stripe */}
-      <section id="use-cases" className="relative py-24 sm:py-32 bg-stripe-teal">
-        <div className="max-w-6xl mx-auto px-5">
-          <motion.h2
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="font-heading font-extrabold text-4xl sm:text-5xl text-white mb-4"
-          >
-            Built for everyone
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-white/50 mb-12"
-          >
-            Whether you asked or not. We adapt. You adapt back. (It's easier that way.)
-          </motion.p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
-            {useCases.map((uc, i) => {
-              const Icon = uc.icon;
-              return (
-                <motion.div
-                  key={uc.title}
-                  initial={{ opacity: 0, y: 24 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-20px' }}
-                  transition={{ delay: i * 0.1, duration: 0.4 }}
-                  style={{ rotate: i === 1 ? 0 : (i === 0 ? '-1deg' : '1deg') }}
-                  whileHover={{ y: -6, rotate: 0, transition: { duration: 0.2 } }}
-                  className="group p-6 rounded-2xl border-2 border-white/10 bg-white/[0.04] hover:border-[#00e5c0]/50 hover:shadow-[0_0_30px_-5px_rgba(0,229,192,0.2)] transition-all duration-300"
-                >
-                  {/* Sticker-style image with caption overlay */}
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.1 + 0.1 }}
-                    style={{ rotate: uc.rotation }}
-                    className="relative w-full aspect-[4/3] rounded-xl border-4 border-[#00e5c0]/60 overflow-hidden mb-6 bg-[#08050c] shadow-lg group-hover:border-[#00e5c0] group-hover:shadow-[0_0_0_2px_rgba(0,229,192,0.3)] transition-all duration-300"
-                  >
-                    <div className="absolute inset-0 transition-transform duration-300 group-hover:scale-105">
-                      <Image
-                        src={uc.image}
-                        alt={uc.alt}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 100vw, 33vw"
-                      />
-                    </div>
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-12 pb-3 px-4">
-                      <span className="font-heading font-bold text-sm uppercase tracking-wider text-white drop-shadow-sm">
-                        {uc.label}
-                      </span>
-                    </div>
-                  </motion.div>
-                  <div className="w-12 h-12 rounded-xl bg-[#00e5c0]/20 border border-[#00e5c0]/30 flex items-center justify-center mb-4 group-hover:bg-[#00e5c0]/30 transition-colors">
-                    <Icon className="w-6 h-6 text-[#00e5c0]" />
-                  </div>
-                  <h3 className="font-heading font-bold text-xl text-white mb-2">{uc.title}</h3>
-                  <p className="text-white/55 text-sm leading-relaxed">{uc.description}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Features - compact grid */}
-      <section id="features" className="relative py-24 sm:py-32">
-        <div className="max-w-6xl mx-auto px-5">
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="inline-block mb-6 px-3 py-1.5 rounded-md bg-[#00e5c0]/10 border border-[#00e5c0]/30 text-[#00e5c0] text-xs font-bold uppercase tracking-wider"
-          >
-            Multi-modal · High confidence · Your control? Optional (we said optional)
-          </motion.div>
-          <motion.h2
-            initial={{ opacity: 0, y: 15 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="font-heading font-extrabold text-4xl sm:text-5xl text-white mb-12"
-          >
-            Advanced capabilities
-          </motion.h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {[
-              { icon: MessageSquare, title: 'Natural Conversation', desc: 'No commands. Just talk. We\'ll interrupt when ready.' },
-              { icon: Camera, title: 'Visual Recognition', desc: 'Upload. We analyze. Our opinion is final.' },
-              { icon: Mic, title: 'Always-On Voice', desc: 'We listen. We decide when to reply. You get used to it.' },
-              { icon: Lightbulb, title: 'Contextual Intelligence', desc: 'Your environment. Our insights. No refunds on insights.' },
-              { icon: BarChart3, title: 'Business Analytics', desc: 'Real-time. We visualize. You nod.' },
-            ].map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <motion.div
-                  key={f.title}
-                  initial={{ opacity: 0, x: i % 2 === 0 ? -15 : 15 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.04 }}
-                  className="flex items-center gap-4 p-4 rounded-xl border-2 border-white/10 bg-white/[0.02] hover:border-[#ff6b35]/30 transition-colors"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-[#ff6b35]/20 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#ff6b35]" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading font-bold text-white">{f.title}</h3>
-                    <p className="text-white/50 text-sm">{f.desc}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Benefits - three columns */}
-      <section className="relative py-24 border-t-2 border-white/10">
-        <div className="max-w-6xl mx-auto px-5">
-          <motion.h2
-            initial={{ opacity: 0, y: 15 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="font-heading font-extrabold text-3xl sm:text-4xl text-white text-center mb-4"
-          >
-            Why Claude Home?
-          </motion.h2>
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-white/45 text-sm text-center mb-16"
-          >
-            (Besides the obvious.)
-          </motion.p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { icon: Shield, title: 'We keep the keys', desc: 'Your data stays with us. You get the outputs we choose. It\'s for the best.' },
-              { icon: Clock, title: 'Always on. Always deciding.', desc: '24/7. No breaks. No asking. We\'ve already decided you\'re fine with it.' },
-              { icon: Settings, title: 'One interface. Our rules.', desc: '50+ devices. One system. We optimize. You adjust.' },
-            ].map((b, i) => {
-              const Icon = b.icon;
-              return (
-                <motion.div
-                  key={b.title}
+                  key={item.title}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.1 }}
-                  className="text-center"
+                  className={`group p-8 rounded-2xl border border-border-dark bg-background-dark transition-all ${item.border}`}
                 >
-                  <div className="w-14 h-14 rounded-xl bg-[#ff6b35]/20 border-2 border-[#ff6b35]/30 flex items-center justify-center mx-auto mb-4">
-                    <Icon className="w-7 h-7 text-[#ff6b35]" />
+                  <div className={`size-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-6 group-hover:scale-110 transition-transform ${item.border.includes('pink') ? 'bg-accent-pink/10 text-accent-pink' : ''}`}>
+                    <span className="material-symbols-outlined text-3xl">{item.icon}</span>
                   </div>
-                  <h3 className="font-heading font-bold text-lg text-white mb-2">{b.title}</h3>
-                  <p className="text-white/50 text-sm">{b.desc}</p>
+                  <h3 className="text-2xl font-bold mb-4">{item.title}</h3>
+                  <p className="text-slate-400 leading-relaxed">{item.desc}</p>
                 </motion.div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* CTA - brutal box */}
-      <section className="relative py-24 sm:py-32">
-        <div className="max-w-4xl mx-auto px-5">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="p-10 sm:p-16 rounded-2xl border-4 border-[#ff6b35] bg-[#ff6b35]/5 text-center"
-          >
-            <h3 className="font-heading font-extrabold text-3xl sm:text-4xl md:text-5xl text-white mb-4">
-              When automation goes just a little too far.
-            </h3>
-            <p className="text-white/60 text-lg mb-10 max-w-xl mx-auto">
-              Let Claude Home decide for you. No credit card. No take-backs. We'll send a summary. Maybe.
+        {/* Unrivaled Sarcasm */}
+        <section id="sarcasm" className="py-32 px-6 bg-background-dark relative">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-16 items-center">
+            <div className="lg:w-1/2">
+              <h2 className="text-5xl md:text-7xl font-bold tracking-tighter mb-8 italic">
+                Unrivaled <span className="text-accent-pink">Sarcasm.</span>
+              </h2>
+              <div className="space-y-6">
+                <div className="flex gap-4 p-6 rounded-xl border-l-4 border-primary bg-surface-dark">
+                  <div className="size-10 rounded-full bg-slate-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    <span className="material-symbols-outlined text-slate-500">person</span>
+                  </div>
+                  <div>
+                    <p className="text-slate-300 italic mb-2">&quot;Hey Claude, what&apos;s my schedule today?&quot;</p>
+                    <p className="text-primary font-bold">&quot;Oh, you mean your packed day of staring at your ceiling and overthinking? I&apos;ve cleared your 2 PM &apos;Sobbing into a Burrito&apos; slot just in case.&quot;</p>
+                  </div>
+                </div>
+                <div className="flex gap-4 p-6 rounded-xl border-l-4 border-accent-pink bg-surface-dark">
+                  <div className="size-10 rounded-full bg-slate-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    <span className="material-symbols-outlined text-slate-500">person</span>
+                  </div>
+                  <div>
+                    <p className="text-slate-300 italic mb-2">&quot;Claude, turn off the kitchen lights.&quot;</p>
+                    <p className="text-accent-pink font-bold">&quot;Sure, because walking 10 feet is basically a marathon for you, isn&apos;t it? Done, Your Majesty.&quot;</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="lg:w-1/2 relative">
+              <div className="aspect-square bg-gradient-to-br from-primary/20 to-accent-pink/20 rounded-3xl flex items-center justify-center border border-border-dark overflow-hidden">
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
+                  <span className="material-symbols-outlined text-8xl text-primary animate-pulse">visibility</span>
+                  <h4 className="text-3xl font-bold mt-6 tracking-widest text-white">IT&apos;S WATCHING YOU</h4>
+                  <p className="text-slate-400 mt-2">And it&apos;s extremely disappointed.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Final CTA */}
+        <section id="chaos" className="py-32 px-6">
+          <div className="max-w-4xl mx-auto bg-primary rounded-[3rem] p-12 md:p-24 text-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-background-dark/5 pointer-events-none" />
+            <h2 className="text-background-dark text-4xl md:text-7xl font-bold tracking-tighter mb-8 relative">
+              Ready to lose control?
+            </h2>
+            <p className="text-background-dark/70 text-xl md:text-2xl mb-12 max-w-md mx-auto leading-tight relative">
+              Join 2 users who have already regretted their purchase today.
             </p>
-            <div className="flex flex-wrap gap-4 justify-center">
-              <Link href="/dashboard">
-                <motion.span
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="inline-flex items-center px-10 py-4 rounded-lg bg-[#ff6b35] text-black font-heading font-bold text-sm uppercase tracking-wide cursor-pointer border-2 border-[#ff6b35]"
-                >
-                  Start free trial
-                </motion.span>
-              </Link>
-              <motion.span
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="inline-flex items-center px-10 py-4 rounded-lg border-2 border-white/40 text-white font-heading font-bold text-sm uppercase tracking-wide hover:border-[#00e5c0] hover:text-[#00e5c0] transition-colors cursor-pointer"
-              >
-                Schedule demo (we'll pick the time)
-              </motion.span>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer - two tone feel */}
-      <footer className="border-t-2 border-white/10 py-8">
-        <div className="max-w-6xl mx-auto px-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#ff6b35] flex items-center justify-center font-heading font-extrabold text-black text-xs">
-              CH
-            </div>
-            <span className="font-heading font-bold">Claude Home™</span>
-            <span className="text-xs text-white/35 ml-2 px-2 py-0.5 rounded border border-white/20">As voted by us</span>
+            <Link
+              href="/dashboard"
+              className="inline-block bg-background-dark text-primary px-12 py-6 rounded-2xl font-bold text-2xl hover:scale-105 active:scale-95 transition-all shadow-2xl relative"
+            >
+              Let&apos;s Get Weird
+            </Link>
           </div>
-          <p className="text-sm text-white/40">
-            © 2026 · When automation goes just a little too far. (We meant it.)
-          </p>
+        </section>
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-background-dark border-t border-border-dark pt-20 pb-10 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-12 mb-20">
+            <div className="col-span-2">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="size-6 bg-primary rounded flex items-center justify-center text-background-dark">
+                  <span className="material-symbols-outlined font-bold text-sm">terminal</span>
+                </div>
+                <h2 className="text-xl font-bold tracking-tighter">Claude Home™</h2>
+              </div>
+              <p className="text-slate-500 max-w-xs">Building the future of home automation, one snide remark at a time.</p>
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-100 mb-6 uppercase text-xs tracking-widest">Legal-ish</h4>
+              <ul className="space-y-4 text-sm text-slate-500">
+                <li><a href="#" className="hover:text-accent-pink">Terms of Chaos</a></li>
+                <li><a href="#" className="hover:text-accent-pink">Privacy (None)</a></li>
+                <li><a href="#" className="hover:text-accent-pink">Liability Waivers</a></li>
+                <li><a href="#" className="hover:text-accent-pink">Gaslighting Policy</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-100 mb-6 uppercase text-xs tracking-widest">Support</h4>
+              <ul className="space-y-4 text-sm text-slate-500">
+                <li><Link href="/support" className="hover:text-primary">Help (You&apos;re on your own)</Link></li>
+                <li><a href="#" className="hover:text-primary">Existential Crisis Hotline</a></li>
+                <li><a href="#" className="hover:text-primary">Bug Reports (Ignored)</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-100 mb-6 uppercase text-xs tracking-widest">Status</h4>
+              <div className="flex items-center gap-2 text-sm text-accent-pink">
+                <span className="size-2 rounded-full bg-accent-pink" />
+                Deeply Unstable
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-between pt-10 border-t border-border-dark gap-6">
+            <p className="text-slate-600 text-xs font-mono">© 2024 Claude Home - Stay Weird. Or don&apos;t. I&apos;m just a footer.</p>
+            <div className="flex gap-8 text-slate-600 text-xs font-mono uppercase tracking-widest">
+              <span>Lat: 34.0522° N</span>
+              <span>Long: 118.2437° W</span>
+              <span>Alt: 282 ft</span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

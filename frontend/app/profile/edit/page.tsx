@@ -70,7 +70,7 @@ export default function EditProfilePage() {
       <div className="mb-6">
         <Link
           href="/profile"
-          className="text-[#ff6b35] hover:text-[#ff8555] text-sm font-medium mb-4 inline-block"
+          className="text-primary hover:text-primary/80 text-sm font-medium mb-4 inline-block"
         >
           ← Back to Profile
         </Link>

@@ -91,7 +91,7 @@ export default function ProfilePage() {
           <p className="text-gray-400 mb-4">You haven&apos;t created a profile yet.</p>
           <button
             onClick={() => setEditing(true)}
-            className="bg-[#ff6b35] hover:bg-[#ff8555] text-white px-6 py-2.5 rounded-xl font-medium transition-colors"
+            className="bg-primary hover:bg-primary/90 text-background-dark px-6 py-2.5 rounded-xl font-medium transition-colors"
           >
             Create Profile
           </button>
@@ -128,7 +128,7 @@ export default function ProfilePage() {
       <div className="max-w-4xl">
         <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl overflow-hidden">
           {/* Profile Header */}
-          <div className="bg-gradient-to-br from-[#ff6b35]/20 to-[#ff6b35]/5 border-b border-white/10 px-8 py-12">
+          <div className="bg-gradient-to-br from-primary/20 to-primary/5 border-b border-white/10 px-8 py-12">
             <div className="flex items-center gap-6 flex-wrap">
               {profile.profileImageUrl ? (
                 <div className="relative w-32 h-32 rounded-full overflow-hidden border-4 border-white/20 flex-shrink-0">
@@ -140,7 +140,7 @@ export default function ProfilePage() {
                   />
                 </div>
               ) : (
-                <div className="w-32 h-32 rounded-full bg-[#ff6b35]/30 flex items-center justify-center flex-shrink-0 text-4xl font-bold text-white">
+                <div className="w-32 h-32 rounded-full bg-primary/30 flex items-center justify-center flex-shrink-0 text-4xl font-bold text-white">
                   {profile.displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -150,7 +150,7 @@ export default function ProfilePage() {
               </div>
               <button
                 onClick={() => setEditing(true)}
-                className="bg-[#ff6b35] hover:bg-[#ff8555] text-white px-6 py-2.5 rounded-xl font-medium transition-colors"
+                className="bg-primary hover:bg-primary/90 text-background-dark px-6 py-2.5 rounded-xl font-medium transition-colors"
               >
                 Edit Profile
               </button>
@@ -198,7 +198,7 @@ export default function ProfilePage() {
             <div className="mt-8 flex gap-4">
               <Link
                 href="/dashboard"
-                className="bg-[#ff6b35] hover:bg-[#ff8555] text-white px-6 py-2.5 rounded-xl font-medium transition-colors inline-block"
+                className="bg-primary hover:bg-primary/90 text-background-dark px-6 py-2.5 rounded-xl font-medium transition-colors inline-block"
               >
                 Dashboard
               </Link>
