@@ -64,19 +64,6 @@ function getVideoDuration(file: File): Promise<number> {
   });
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64 || '');
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 const TTS_VOICES = [
   { id: 'alloy', label: 'Alloy' },
   { id: 'coral', label: 'Coral' },
@@ -444,7 +431,7 @@ export default function TutorPage() {
               const fallback = await api.sendChatMessage(fallbackMessages, 'openai/gpt-3.5-turbo', undefined, 'assistant');
               setMessages((prev) => [...prev, { role: 'assistant', content: fallback.message || 'No response.' }]);
               setError(null);
-            } catch (fallbackErr) {
+            } catch {
               setError(errMsg);
               setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${errMsg}` }]);
             }
@@ -556,6 +543,7 @@ export default function TutorPage() {
                     {m.imagePreviews && m.imagePreviews.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-3">
                         {m.imagePreviews.map((src, j) => (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img key={`img-${i}-${j}`} src={src} alt="Attached" className="max-w-full max-h-56 min-h-[80px] rounded-lg object-contain border border-primary/20 bg-black/20" />
                         ))}
                       </div>
@@ -614,6 +602,7 @@ export default function TutorPage() {
               <div className="flex flex-wrap gap-2 mb-2">
                 {!attachedVideo && attachedImages.map((img, i) => (
                   <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
                     <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
                   </div>

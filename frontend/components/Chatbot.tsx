@@ -334,6 +334,7 @@ export default function Chatbot() {
                   {(message.imagePreviews?.length ?? (message.imagePreview ? 1 : 0)) > 0 && (
                     <div className="flex flex-wrap gap-2 mb-2">
                       {(message.imagePreviews ?? (message.imagePreview ? [message.imagePreview] : [])).map((src, j) => (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img key={j} src={src} alt="Attached" className="rounded-lg max-h-32 object-cover border border-white/20" />
                       ))}
                     </div>
@@ -393,6 +394,7 @@ export default function Chatbot() {
               <div className="flex flex-wrap gap-2 mb-2">
                 {attachedImages.map((img, i) => (
                   <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.preview} alt="" className="h-14 w-14 rounded-lg object-cover border border-white/10" />
                     <button
                       type="button"

@@ -43,7 +43,7 @@ export async function GET(request: Request) {
 
     const userData = await userResponse.json();
     return NextResponse.json(userData);
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: 'Failed to get profile' },
       { status: 500 }

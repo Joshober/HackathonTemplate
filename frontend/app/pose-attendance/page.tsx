@@ -12,7 +12,7 @@ import {
   detectPoseFromImage,
   type PoseKeypoints,
 } from '@/lib/poseDetection';
-import { comparePoses, DEFAULT_CRINGE_THRESHOLD, getPoseTips } from '@/lib/poseComparison';
+import { comparePoses, getPoseTips, CRINGE_THRESHOLD } from '@/lib/poseComparison';
 
 /** Extract face position and size from pose keypoints. MediaPipe: 0=nose, 2=left_eye, 5=right_eye, 7=left_ear, 8=right_ear */
 function getFaceFromKeypoints(keypoints: PoseKeypoints): { x: number; y: number; size: number } | null {
@@ -39,12 +39,6 @@ type Mode = 'professor' | 'student';
 
 const REQUIRED_POSES = 3;
 
-const FEEDBACK_SUCCESS = [
-  "You nailed the professor's weirdness!",
-  'Maximum cringe achieved.',
-  "That's the spirit!",
-  'Pose complete! Next one...',
-];
 const FEEDBACK_FAIL = [
   "You look confident, but wrong.",
   "Try harder, you're not cringe enough.",
@@ -105,7 +99,7 @@ export default function PoseAttendancePage() {
   const [tips, setTips] = useState<string[]>([]);
   const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
   const [kickedFromRoom, setKickedFromRoom] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(10);
+  const [timeRemaining, setTimeRemaining] = useState(20);
   const [faceOverlay, setFaceOverlay] = useState<{ x: number; y: number; size: number } | null>(null);
   const [faceEmojiMessage, setFaceEmojiMessage] = useState<{ emoji: string; text: string }>({ emoji: '🤡', text: "You're a rockstar!" });
   const [isLoading, setIsLoading] = useState(false);
@@ -124,11 +118,11 @@ export default function PoseAttendancePage() {
   const isDetectingRef = useRef(false);
   const consecutiveGoodFramesRef = useRef(0);
 
-  /** Frames of similarity >= threshold required to complete each pose (hold longer = ~1.5s at 30fps) */
-  const SUSTAINED_FRAMES = 45;
+  /** Frames of similarity >= threshold required to complete each pose (hold ~1.7s at 30fps for stricter lock-in) */
+  const SUSTAINED_FRAMES = 50;
 
-  /** Seconds per pose — if time runs out, student is kicked */
-  const POSE_TIMEOUT_SECONDS = 10;
+  /** Total seconds for all 3 poses — one countdown, no reset per pose; if time runs out, student is kicked */
+  const TOTAL_TIME_SECONDS = 20;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const generateShareCode = useCallback((poses: PoseWithImage[]) => {
@@ -168,12 +162,22 @@ export default function PoseAttendancePage() {
   }, []);
 
   const captureReferencePose = useCallback(async () => {
-    if (!videoRef.current || videoRef.current.readyState < 2) return;
+    const video = videoRef.current;
+    if (!video || video.readyState < 2 || video.videoWidth === 0) return;
     if (referencePoses.length >= REQUIRED_POSES) return;
     setIsLoading(true);
     setError(null);
     try {
-      const video = videoRef.current;
+      // Wait for a fresh frame so the snapshot isn't blank or stale (give camera time to show body)
+      await new Promise<void>((resolve) => {
+        const rvfc = 'requestVideoFrameCallback' in video ? (video as HTMLVideoElement & { requestVideoFrameCallback: (cb: () => void) => number }).requestVideoFrameCallback : null;
+        if (typeof rvfc === 'function') {
+          rvfc.call(video, () => resolve());
+        } else {
+          setTimeout(resolve, 150);
+        }
+      });
+      await new Promise((r) => setTimeout(r, 200));
       const result = await detectPoseFromImage(video);
       const keypoints = result ? extractKeypoints(result) : null;
       if (keypoints) {
@@ -193,7 +197,7 @@ export default function PoseAttendancePage() {
           setShareCode(generateShareCode(updated));
         }
       } else {
-        setError('No pose detected. Try again with your body visible.');
+        setError('No pose detected. Stand in frame with your full body visible, then try again.');
       }
     } catch (e) {
       setError('Error detecting pose.');
@@ -277,7 +281,7 @@ export default function PoseAttendancePage() {
         if (keypoints) {
           const similarity = comparePoses(referencePose, keypoints);
           setCringeLevel(Math.round(similarity * 100));
-          if (similarity >= DEFAULT_CRINGE_THRESHOLD) {
+          if (similarity >= CRINGE_THRESHOLD) {
             consecutiveGoodFramesRef.current += 1;
             setTips([]);
             if (consecutiveGoodFramesRef.current >= SUSTAINED_FRAMES) {
@@ -326,10 +330,10 @@ export default function PoseAttendancePage() {
     };
   }, [mode, referencePose, referencePoses.length, currentPoseIndex, kickedFromRoom]);
 
-  // Countdown timer per pose: 10s — if time runs out, kick
+  // Single 20s countdown for all 3 poses — no reset when advancing; if time runs out, kick
   useEffect(() => {
     if (mode !== 'student' || referencePoses.length === 0 || kickedFromRoom) return;
-    setTimeRemaining(POSE_TIMEOUT_SECONDS);
+    setTimeRemaining(TOTAL_TIME_SECONDS);
     timerRef.current = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
@@ -351,13 +355,13 @@ export default function PoseAttendancePage() {
         timerRef.current = null;
       }
     };
-  }, [mode, referencePoses.length, currentPoseIndex, kickedFromRoom]);
+  }, [mode, referencePoses.length, kickedFromRoom]);
 
   // When entering professor or student mode, turn on camera
   useEffect(() => {
     startCamera();
     return () => stopCamera();
-  }, [mode]);
+  }, [mode, startCamera, stopCamera]);
 
   useEffect(() => {
     return () => stopCamera();
@@ -370,7 +374,7 @@ export default function PoseAttendancePage() {
     setCringeLevel(0);
     setFeedback(null);
     setTips([]);
-    setTimeRemaining(POSE_TIMEOUT_SECONDS);
+    setTimeRemaining(TOTAL_TIME_SECONDS);
     consecutiveGoodFramesRef.current = 0;
   }, []);
 
@@ -499,6 +503,7 @@ export default function PoseAttendancePage() {
                       <div className="flex gap-2 p-4 overflow-x-auto">
                         {referencePoses.map((p, i) => (
                           p.image && (
+                            // eslint-disable-next-line @next/next/no-img-element -- data URL from canvas capture
                             <img
                               key={i}
                               src={p.image}
@@ -595,6 +600,7 @@ export default function PoseAttendancePage() {
                     Teacher&apos;s pose {currentPoseIndex + 1}/{REQUIRED_POSES} — copy this
                   </div>
                   <div className="aspect-video bg-black/30 flex items-center justify-center relative overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={referenceImage}
                       alt="Teacher's pose to copy"
@@ -725,7 +731,7 @@ export default function PoseAttendancePage() {
                     <div className="flex items-center gap-2 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
                       <Clock className="w-5 h-5 text-amber-500" />
                       <span className="text-amber-400 font-medium">{timeRemaining}s</span>
-                      <span className="text-amber-500/80 text-sm">left for pose {currentPoseIndex + 1}/{REQUIRED_POSES}</span>
+                      <span className="text-amber-500/80 text-sm">total left • pose {currentPoseIndex + 1}/{REQUIRED_POSES}</span>
                     </div>
                   )}
                   <div>
@@ -735,7 +741,7 @@ export default function PoseAttendancePage() {
                         className={`h-full rounded-full ${
                           kickedFromRoom
                             ? 'bg-red-500'
-                            : cringeLevel >= DEFAULT_CRINGE_THRESHOLD * 100
+                            : cringeLevel >= CRINGE_THRESHOLD * 100
                               ? 'bg-green-500'
                               : cringeLevel >= 50
                                 ? 'bg-amber-500'

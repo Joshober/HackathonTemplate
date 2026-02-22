@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import { api } from '@/lib/api';
-import { FileWarning, Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
+import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
 
 const MAX_VIDEO_SECONDS = 20;
 const VIDEO_EXTENSIONS = ['.mov', '.mp4', '.webm', '.mpeg', '.mpeg4'];
@@ -343,6 +343,7 @@ export default function BullshitDetectPage() {
               <div className="flex flex-wrap gap-2">
                 {!attachedVideo && attachedImages.map((img, i) => (
                   <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
                     <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
                   </div>
@@ -418,6 +419,7 @@ export default function BullshitDetectPage() {
                     {lastInputImagePreviews.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {lastInputImagePreviews.map((src, j) => (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img key={j} src={src} alt="" className="max-w-full max-h-48 rounded-lg object-cover border border-primary/20" />
                         ))}
                       </div>

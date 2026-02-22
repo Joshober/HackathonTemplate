@@ -79,6 +79,7 @@ export default function ItemList() {
                   <div className="flex flex-wrap gap-2">
                     {item.imageUrls.slice(0, 3).map((url, index) => (
                       <div key={index} className="relative w-20 h-20 rounded overflow-hidden border border-gray-300">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={url}
                           alt={`${item.title} image ${index + 1}`}

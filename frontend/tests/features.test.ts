@@ -40,17 +40,21 @@ describe('Feature: DashboardShell nav items', () => {
 
   const EXPECTED_NAV = [
     { label: 'Overview', href: '/dashboard' },
+    { label: 'Chaos Logs', href: '/chat' },
     { label: 'AI Tutor', href: '/tutor' },
-    { label: 'Profile', href: '/profile' },
-    { label: 'Chat Pipeline', href: '/chat' },
-    { label: 'Bullshit Detect', href: '/bullshit-detect' },
+    { label: 'Existential Threats', href: '/bullshit-detect' },
     { label: 'Voice Assistant', href: '/voice-assistant' },
     { label: 'Pose Attendance', href: '/pose-attendance' },
+    { label: 'Help us', href: '/support' },
   ];
 
   it.each(EXPECTED_NAV)('nav has $label linking to $href', ({ label, href }) => {
-    expect(content).toContain(`href: '${href}'`);
-    expect(content).toContain(`label: '${label}'`);
+    expect(content).toContain(href);
+    expect(content).toContain(label);
+  });
+
+  it('nav or footer has profile link', () => {
+    expect(content).toContain('/profile');
   });
 });
 

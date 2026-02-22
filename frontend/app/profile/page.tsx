@@ -17,6 +17,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     loadUser();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   const loadUser = async () => {
@@ -37,6 +38,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (user) loadProfile();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadProfile is stable, user is the trigger
   }, [user]);
 
   const loadProfile = async () => {

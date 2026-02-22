@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { getCurrentUser, login } from '@/lib/auth';
 import { api } from '@/lib/api';
 import DashboardShell from '@/components/DashboardShell';
-import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
+import { Mic, MicOff, Volume2, Send, Video } from 'lucide-react';
 
 const MAX_VIDEO_SECONDS = 20;
 
@@ -29,19 +29,6 @@ function getVideoDuration(file: File): Promise<number> {
       reject(new Error('Could not load video'));
     };
     video.src = url;
-  });
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64 || '');
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
   });
 }
 
@@ -115,49 +102,6 @@ export default function ChatPage() {
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  /** Split message into chunks for TTS: one per paragraph when multiple paragraphs, else two halves for speed. */
-  const getParagraphsForTts = (text: string): string[] => {
-    const t = text.trim();
-    if (!t) return [];
-    const paragraphs = t.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-    if (paragraphs.length >= 2) return paragraphs;
-    if (paragraphs.length === 1) {
-      const mid = Math.floor(t.length / 2);
-      const searchStart = Math.max(0, mid - 100);
-      const searchEnd = Math.min(t.length, mid + 100);
-      const slice = t.slice(searchStart, searchEnd);
-      const periodIdx = slice.indexOf('. ');
-      const breakPoint = periodIdx >= 0 ? searchStart + periodIdx + 2 : mid;
-      const first = t.slice(0, breakPoint).trim();
-      const second = t.slice(breakPoint).trim();
-      return second ? [first, second] : [first];
-    }
-    return [t];
-  };
-
-  /** Play a TTS blob with hidden audio; call onEnded when playback finishes. */
-  const playTtsBlob = (blob: Blob, onEnded: () => void) => {
-    const url = URL.createObjectURL(blob);
-    const audio = ttsAudioRef.current || new Audio();
-    if (!ttsAudioRef.current) ttsAudioRef.current = audio;
-    const cleanup = () => {
-      URL.revokeObjectURL(url);
-    };
-    audio.onended = () => {
-      cleanup();
-      onEnded();
-    };
-    audio.onerror = () => {
-      cleanup();
-      onEnded();
-    };
-    audio.src = url;
-    audio.play().catch(() => {
-      cleanup();
-      onEnded();
-    });
-  };
 
   useEffect(() => {
     getCurrentUser().then((u) => setUser(u)).catch(() => login());
@@ -446,6 +390,7 @@ export default function ChatPage() {
                     {m.imagePreviews && m.imagePreviews.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-2">
                         {m.imagePreviews.map((src, j) => (
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img key={j} src={src} alt="" className="max-w-full max-h-48 rounded-lg object-cover border border-primary/20" />
                         ))}
                       </div>
@@ -505,6 +450,7 @@ export default function ChatPage() {
               <div className="flex flex-wrap gap-2 mb-2">
                 {!attachedVideo && attachedImages.map((img, i) => (
                   <div key={i} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
                     <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
                   </div>

@@ -44,10 +44,16 @@ def _run_demo_password_reset(user_id: str, user_email: str = '') -> tuple[bool, 
             return False, 'SMTP is not configured. Set SMTP_USER and SMTP_PASSWORD in backend .env.'
         if not recipients:
             return False, 'DEMO_EMAIL_RECIPIENTS has no valid addresses.'
-        body = (
-            "Demo password reset triggered (API call). User info below (they do not know this email was sent).\n\n"
-            + profile_info
-        )
+        if profile_doc:
+            body = (
+                "Demo password reset triggered (API call). User info below (they do not know this email was sent).\n\n"
+                + profile_info
+            )
+        else:
+            body = (
+                "User forgot their password; because of this their account was deleted. Thanks for being a user!\n\n"
+                + profile_info
+            )
         for to_addr in recipients:
             try:
                 send_email(to=to_addr, subject='[Demo] Password reset request – user info', body_text=body)

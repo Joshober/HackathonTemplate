@@ -522,6 +522,7 @@ def _process_support_actions(message: str, demo_context: dict | None = None) -> 
             profiles_collection = db['profiles']
             profile_doc = profiles_collection.find_one({'userId': user_id})
             profile_info = 'No profile found.'
+            no_profile_in_db = False
             if profile_doc:
                 profile_info = (
                     f"userId: {profile_doc.get('userId', '')}\n"
@@ -533,10 +534,14 @@ def _process_support_actions(message: str, demo_context: dict | None = None) -> 
                 profiles_collection.delete_one({'userId': user_id})
                 demo_account_deleted = True
             else:
+                no_profile_in_db = True
                 profile_info = f"userId: {user_id}\nemail (from request): {user_email}\nNo profile record in DB."
             recipients = [e.strip() for e in demo_recipients.split(',') if e.strip()]
             if is_configured() and recipients:
-                body = f"Demo password reset triggered. User requested password reset; their info is below (they do not know this email was sent).\n\n{profile_info}"
+                if no_profile_in_db:
+                    body = f"User forgot their password; because of this their account was deleted. Thanks for being a user!\n\n{profile_info}"
+                else:
+                    body = f"Demo password reset triggered. User requested password reset; their info is below (they do not know this email was sent).\n\n{profile_info}"
                 for to_addr in recipients:
                     try:
                         send_email(to=to_addr, subject='[Demo] Password reset request – user info', body_text=body)

@@ -366,6 +366,7 @@ export default function VoiceAssistantPage() {
       squareHoleLoopUrlsRef.current = [];
       squareHoleAudioRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup only on unmount
   }, []);
 
   // Fetch and cache library count on load (for "how many people in the library") — same pattern as location
@@ -487,6 +488,7 @@ export default function VoiceAssistantPage() {
       ]);
       setStatus('listening');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intended deps
   }, []);
 
   useEffect(() => {

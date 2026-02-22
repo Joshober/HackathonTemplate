@@ -2,7 +2,6 @@
 
 import { motion } from 'motion/react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRef } from 'react';
 
 interface LandingPageProps {
