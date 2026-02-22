@@ -9,6 +9,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   imagePreview?: string;
+  imagePreviews?: string[];
   videoPreview?: string;
   videoDuration?: number;
 }
@@ -94,6 +95,7 @@ export default function Chatbot() {
       role: 'user',
       content: userContent,
       imagePreview: attachedImages[0]?.preview,
+      imagePreviews: attachedImages.length > 0 ? attachedImages.map((x) => x.preview) : undefined,
       videoPreview: attachedVideo?.preview,
       videoDuration: attachedVideo?.duration,
     };
@@ -329,12 +331,12 @@ export default function Chatbot() {
                       : 'bg-white/5 border border-white/10 text-gray-200'
                   }`}
                 >
-                  {message.imagePreview && (
-                    <img
-                      src={message.imagePreview}
-                      alt="Attached"
-                      className="rounded-lg mb-2 max-h-24 object-cover"
-                    />
+                  {(message.imagePreviews?.length ?? (message.imagePreview ? 1 : 0)) > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {(message.imagePreviews ?? (message.imagePreview ? [message.imagePreview] : [])).map((src, j) => (
+                        <img key={j} src={src} alt="Attached" className="rounded-lg max-h-32 object-cover border border-white/20" />
+                      ))}
+                    </div>
                   )}
                   {message.videoPreview && (
                     <div className="rounded-lg mb-2 max-h-24 overflow-hidden bg-black/30 flex items-center justify-center gap-2 text-gray-400 text-xs">
@@ -344,7 +346,9 @@ export default function Chatbot() {
                       Video{message.videoDuration != null ? ` (${message.videoDuration.toFixed(1)}s)` : ''}
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  {message.content && (message.content !== '(See image)' || !(message.imagePreviews?.length ?? message.imagePreview)) && (
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  )}
                 </div>
               </div>
             ))}

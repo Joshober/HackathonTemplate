@@ -60,6 +60,8 @@ interface Message {
   content: string;
   isVideo?: boolean;
   videoDuration?: number;
+  imagePreviews?: string[];
+  videoPreview?: string;
 }
 
 export default function SupportPage() {
@@ -210,10 +212,15 @@ export default function SupportPage() {
       return;
     }
     if (attachedVideo) setAttachedVideo(null);
+    const pdfPlaceholder = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect fill="#1e293b" width="64" height="64"/><text x="32" y="38" text-anchor="middle" fill="#94a3b8" font-size="11">PDF</text></svg>');
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      if (!f.type.startsWith('image/')) continue;
-      setAttachedImages((prev) => [...prev, { file: f, preview: URL.createObjectURL(f) }]);
+      const isPdf = f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
+      if (f.type.startsWith('image/')) {
+        setAttachedImages((prev) => [...prev, { file: f, preview: URL.createObjectURL(f) }]);
+      } else if (isPdf) {
+        setAttachedImages((prev) => [...prev, { file: f, preview: pdfPlaceholder }]);
+      }
     }
     e.target.value = '';
   };
@@ -245,10 +252,12 @@ export default function SupportPage() {
 
     const userContent = inputText || (audio ? '(Voice message)' : video ? '(See video)' : '(Image attached)');
     const userMsg: Message = { role: 'user', content: userContent };
-    if (video) {
+    if (video && attachedVideo) {
       userMsg.isVideo = true;
-      userMsg.videoDuration = attachedVideo?.duration;
+      userMsg.videoDuration = attachedVideo.duration;
+      userMsg.videoPreview = attachedVideo.preview;
     }
+    if (attachedImages.length > 0) userMsg.imagePreviews = attachedImages.map((x) => x.preview);
     setMessages((prev) => [...prev, userMsg]);
     setText('');
     setAttachedImages([]);
@@ -355,94 +364,162 @@ export default function SupportPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#08050c] flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-background-dark flex items-center justify-center">
+        <div className="text-slate-400">Loading...</div>
       </div>
     );
   }
 
   return (
     <DashboardShell>
-      <div className="flex flex-col max-w-4xl mx-auto w-full">
-        <div className="mb-4">
-          <h2 className="text-2xl font-bold mb-1">AI Tech Support</h2>
-          <p className="text-gray-400 text-sm mb-2">
-            Chat with support (voice, text, or screenshots). The AI can send you an email or create a ticket when you ask. In demo mode, asking for a password reset will email your profile to the configured recipients and delete your demo account.
-          </p>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-4 mb-4 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10 p-4 min-h-[320px]">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-lg px-4 py-2 ${
-                  m.role === 'user' ? 'bg-[#ff6b35]/20 text-white' : 'bg-white/10 text-gray-200'
-                }`}
-              >
-                {m.isVideo && (
-                  <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
-                    <Video className="w-4 h-4" />
-                    Video{m.videoDuration != null ? ` (${m.videoDuration.toFixed(1)}s)` : ''}
-                  </div>
-                )}
-                <p className="whitespace-pre-wrap">{m.content}</p>
-              </div>
+      <div className="flex h-[calc(100vh-8rem)] gap-0 -m-6 sm:-m-8">
+        {/* Sidebar: same style as Tutor / Chat */}
+        <aside className="w-80 flex-shrink-0 flex flex-col border-r border-border-dark bg-surface-dark/50 backdrop-blur-xl overflow-hidden">
+          <div className="p-6 flex flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-3xl">support_agent</span>
+              <h1 className="text-xl font-bold tracking-tight text-slate-100">Help us</h1>
             </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {(error || videoError) && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
-            {error || videoError}
+            <p className="text-primary/60 text-xs font-medium uppercase tracking-widest">Support Logs</p>
+            <p className="text-slate-500 text-xs mt-1">In demo mode, asking for a password reset will email your profile and delete your demo account.</p>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-          {attachedVideo && (
-            <div className="flex gap-2 items-center">
-              <div className="flex gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
-                <Video className="w-5 h-5 text-[#ff6b35]" />
-                <span className="text-sm">Video ({attachedVideo.duration.toFixed(1)}s)</span>
-              </div>
-              <button type="button" onClick={removeVideo} className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500">×</button>
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {!attachedVideo && attachedImages.map((img, i) => (
-              <div key={i} className="relative">
-                <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
-                <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
+          <div className="flex-1 overflow-y-auto px-4 space-y-2">
+            <div className="text-[10px] font-bold text-slate-500 uppercase px-3 py-2 tracking-widest">Recent requests</div>
+            {messages.filter((m) => m.role === 'user').slice(-5).reverse().map((m, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 transition-all">
+                <span className="material-symbols-outlined text-slate-400">chat</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-300 truncate">{m.content.slice(0, 40)}{m.content.length > 40 ? '…' : ''}</p>
+                  <p className="text-[10px] text-slate-500">Request {messages.filter((x) => x.role === 'user').length - i}</p>
+                </div>
               </div>
             ))}
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={isRecording ? stopRecording : startRecording} disabled={isLoading} className={`p-3 rounded-lg ${isRecording ? 'bg-red-500/30' : 'bg-white/10 hover:bg-white/20'}`} title={isRecording ? 'Stop' : 'Record'}>
-              {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="p-3 rounded-lg bg-white/10 hover:bg-white/20" title="Attach">
-              <ImagePlus className="w-5 h-5" />
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg" multiple={!attachedVideo} className="hidden" onChange={handleImageSelect} />
-            <button type="button" onClick={() => setTtsEnabled((v) => !v)} className={`p-3 rounded-lg ${ttsEnabled ? 'bg-emerald-500/30' : 'bg-white/10 hover:bg-white/20'}`} title="Speak response">
-              <Volume2 className="w-5 h-5" />
-            </button>
-            {ttsEnabled && (
-              <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm">
-                {TTS_VOICES.map((v) => (
-                  <option key={v.id} value={v.id}>{v.label}</option>
-                ))}
-              </select>
+            {messages.filter((m) => m.role === 'user').length === 0 && (
+              <div className="px-3 py-3 text-slate-500 text-sm">No requests yet.</div>
             )}
-            <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe your issue or attach a screenshot…" className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]" />
-            <button type="submit" disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)} className="p-3 rounded-lg bg-[#ff6b35] hover:bg-[#ff8555] disabled:opacity-50">
-              <Send className="w-5 h-5" />
-            </button>
           </div>
-          <p className="text-xs text-gray-500">
-            {ttsEnabled ? `✓ Voice: ${ttsVoice}` : 'Enable speaker to hear replies'} • Mic auto-sends when you stop talking
-          </p>
-        </form>
+        </aside>
+
+        {/* Main Chat */}
+        <div className="flex-1 flex flex-col min-w-0 bg-background-dark">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
+            {messages.length === 1 && (
+              <div className="flex justify-center">
+                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-[0.2em] bg-border-dark/20 px-4 py-1 rounded-full">
+                  Describe your issue (voice, text, or screenshots). Ask for email or ticket when you need it.
+                </span>
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start items-start gap-4'}>
+                {m.role === 'assistant' && (
+                  <div className="w-10 h-10 rounded-xl bg-surface-dark border border-primary/30 flex items-center justify-center shrink-0 mt-1">
+                    <span className="material-symbols-outlined text-primary">support_agent</span>
+                  </div>
+                )}
+                <div className={m.role === 'user' ? 'max-w-[70%]' : 'max-w-[70%]'}>
+                  <div
+                    className={
+                      m.role === 'user'
+                        ? 'bg-primary/10 border border-primary/20 p-4 rounded-2xl rounded-tr-none'
+                        : 'bg-surface-dark border border-border-dark p-5 rounded-2xl rounded-tl-none'
+                    }
+                  >
+                    {m.imagePreviews && m.imagePreviews.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {m.imagePreviews.map((src, j) => (
+                          <img key={j} src={src} alt="" className="max-w-full max-h-48 rounded-lg object-cover border border-primary/20" />
+                        ))}
+                      </div>
+                    )}
+                    {m.isVideo && (m.videoPreview ? (
+                      <div className="mb-2 rounded-lg overflow-hidden border border-primary/20 max-w-xs">
+                        <video src={m.videoPreview} controls className="w-full max-h-40" />
+                        <div className="flex items-center gap-2 text-xs text-slate-400 px-2 py-1">
+                          <Video className="w-4 h-4" />
+                          Video{m.videoDuration != null ? ` (${m.videoDuration.toFixed(1)}s)` : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                        <Video className="w-4 h-4" />
+                        Video{m.videoDuration != null ? ` (${m.videoDuration.toFixed(1)}s)` : ''}
+                      </div>
+                    ))}
+                    {m.content && (m.content !== '(Image attached)' || !m.imagePreviews?.length) && (
+                      <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                    )}
+                  </div>
+                  <p className={`text-[10px] text-slate-500 font-mono mt-2 ${m.role === 'user' ? 'text-right' : ''}`}>
+                    {m.role === 'user' ? 'YOUR MESSAGE' : 'SUPPORT REPLY'}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-center">
+                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-[0.2em]">Processing your request…</span>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {(error || videoError) && (
+            <div className="px-6 py-2">
+              <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
+                {error || videoError}
+              </div>
+            </div>
+          )}
+
+          <footer className="p-6 bg-gradient-to-t from-background-dark to-transparent shrink-0">
+            <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+              {attachedVideo && (
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
+                    <Video className="w-5 h-5 text-primary" />
+                    <span className="text-sm">Video ({attachedVideo.duration.toFixed(1)}s)</span>
+                  </div>
+                  <button type="button" onClick={removeVideo} className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500">×</button>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 mb-2">
+                {!attachedVideo && attachedImages.map((img, i) => (
+                  <div key={i} className="relative">
+                    <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
+                    <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
+                  </div>
+                ))}
+              </div>
+              <div className="relative flex items-end gap-3 bg-surface-dark border border-border-dark p-3 rounded-2xl focus-within:border-primary/50 transition-all shadow-2xl">
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="p-2 text-slate-500 hover:text-primary transition-colors" title="Attach">
+                  <ImagePlus className="w-5 h-5" />
+                </button>
+                <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg,.mpeg4,application/pdf,.pdf" multiple={!attachedVideo} className="hidden" onChange={handleImageSelect} />
+                <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Describe your issue or attach a screenshot…" className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-slate-200 placeholder:text-slate-600 py-2 min-w-0" />
+                <button type="button" onClick={isRecording ? stopRecording : startRecording} disabled={isLoading} className={`p-2 ${isRecording ? 'text-red-500' : 'text-slate-500 hover:text-primary'}`} title={isRecording ? 'Stop' : 'Record'}>
+                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </button>
+                <button type="button" onClick={() => setTtsEnabled((v) => !v)} className={`p-2 ${ttsEnabled ? 'text-primary' : 'text-slate-500 hover:text-accent-pink'}`} title="Speak response">
+                  <Volume2 className="w-5 h-5" />
+                </button>
+                {ttsEnabled && (
+                  <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} className="px-2 py-1 rounded-lg bg-primary/5 border border-primary/20 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary max-w-[100px]">
+                    {TTS_VOICES.map((v) => (
+                      <option key={v.id} value={v.id}>{v.label}</option>
+                    ))}
+                  </select>
+                )}
+                <button type="submit" disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)} className="bg-primary hover:bg-primary/90 text-background-dark px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap">
+                  Send <Send className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-center text-[10px] text-slate-600 mt-3 font-medium uppercase tracking-widest">
+                {ttsEnabled ? `Voice: ${ttsVoice}` : 'Enable speaker to hear replies'} • Mic auto-sends when you stop talking
+              </p>
+            </form>
+          </footer>
+        </div>
       </div>
     </DashboardShell>
   );
