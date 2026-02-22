@@ -96,7 +96,7 @@ export async function getCurrentUser(): Promise<User | null> {
       const user = await api.getCurrentUser();
       currentUser = user;
       return user;
-    } catch (error) {
+    } catch {
       // 401 or other auth errors are expected when not logged in
       // Don't treat them as actual errors
       currentUser = null;

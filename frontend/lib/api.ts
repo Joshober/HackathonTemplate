@@ -43,7 +43,7 @@ async function getAccessToken(): Promise<string | null> {
       }
       // Don't log other errors either - just return null
     }
-  } catch (error) {
+  } catch {
     // Network errors - return null silently
     return null;
   }
@@ -141,7 +141,7 @@ export const api = {
     return fetchPublic('/api/auth/login');
   },
 
-  async loginEmailPassword(email: string, password: string): Promise<{ user: any; message: string }> {
+  async loginEmailPassword(email: string, password: string): Promise<{ user: Record<string, unknown>; message: string }> {
     return fetchPublic('/api/auth/login', {
       method: 'POST',
       headers: {
@@ -151,7 +151,7 @@ export const api = {
     });
   },
 
-  async register(email: string, password: string, name?: string): Promise<{ user: any; message: string }> {
+  async register(email: string, password: string, name?: string): Promise<{ user: Record<string, unknown>; message: string }> {
     return fetchPublic('/api/auth/register', {
       method: 'POST',
       headers: {
@@ -165,7 +165,7 @@ export const api = {
     return fetchPublic('/api/auth/logout', { method: 'POST' });
   },
 
-  async getCurrentUser(): Promise<any> {
+  async getCurrentUser(): Promise<Record<string, unknown>> {
     return fetchWithAuth('/api/auth/me');
   },
 
@@ -285,7 +285,7 @@ export const api = {
     });
   },
 
-  // Chat API (public, no auth). Optional images, optional PDFs, optional video (roast: video max 20s), optional mode 'assistant' | 'roast'.
+  // Chat API (public, no auth). Optional images, optional video (roast: video max 20s), optional mode 'assistant' | 'roast'.
   async sendChatMessage(
     messages: Array<{ role: string; content: string }>,
     model?: string,
@@ -293,27 +293,30 @@ export const api = {
     mode?: 'assistant' | 'roast' | 'support',
     videoBase64?: string,
     videoMime?: string,
-    pdfsBase64?: string[]
-  ): Promise<{ message: string; usage?: any }> {
+    userEmail?: string,
+    userId?: string
+  ): Promise<{ message: string; usage?: Record<string, unknown>; demo_account_deleted?: boolean }> {
     const body: {
       messages: typeof messages;
       model?: string;
       images?: string[];
-      pdfs?: string[];
       mode?: string;
       video_b64?: string;
       video_mime?: string;
+      user_email?: string;
+      user_id?: string;
     } = {
       messages,
       model: model || 'openai/gpt-3.5-turbo',
     };
     if (imagesBase64?.length) body.images = imagesBase64;
-    if (pdfsBase64?.length) body.pdfs = pdfsBase64;
     if (mode) body.mode = mode;
     if (videoBase64) {
       body.video_b64 = videoBase64;
       body.video_mime = videoMime || 'video/mp4';
     }
+    if (userEmail?.trim()) body.user_email = userEmail.trim();
+    if (userId?.trim()) body.user_id = userId.trim();
     return fetchPublic('/api/chat', {
       method: 'POST',
       body: JSON.stringify(body),
@@ -358,21 +361,20 @@ export const api = {
     });
   },
 
-  // Weekend Energy AI Tutor (auth) — optional images/video/PDFs
+  // Weekend Energy AI Tutor (auth) — FUN + HELP; optional images/video
   async askTutor(
     question: string,
-    options?: { weekday?: string; time?: string; images?: string[]; pdfs?: string[]; video_b64?: string; video_mime?: string }
+    options?: { weekday?: string; time?: string; images?: string[]; video_b64?: string; video_mime?: string }
   ): Promise<{ fun: string; help: string[]; raw?: string }> {
     const now = new Date();
     const weekday = options?.weekday ?? now.toLocaleDateString('en-US', { weekday: 'long' });
     const time = options?.time ?? now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    const body: { question: string; weekday: string; time: string; images?: string[]; pdfs?: string[]; video_b64?: string; video_mime?: string } = {
+    const body: { question: string; weekday: string; time: string; images?: string[]; video_b64?: string; video_mime?: string } = {
       question,
       weekday,
       time,
     };
     if (options?.images?.length) body.images = options.images;
-    if (options?.pdfs?.length) body.pdfs = options.pdfs;
     if (options?.video_b64) {
       body.video_b64 = options.video_b64;
       body.video_mime = options.video_mime || 'video/mp4';
@@ -396,19 +398,74 @@ export const api = {
     });
   },
 
-  // Chat Pipeline: STT -> Chat (text+images+video+PDFs) -> TTS (same features as Chatbot: mode, video for roast)
+  // Bullshit detection (text only): returns read_aloud summary + analysis
+  async bullshitDetect(document: string, model?: string): Promise<{ read_aloud: string; analysis: string; usage?: Record<string, unknown> }> {
+    return fetchPublic('/api/chat/bullshit-detect', {
+      method: 'POST',
+      body: JSON.stringify({ document, model }),
+    });
+  },
+
+  // Bullshit detection pipeline: voice + text + images + video → analysis, optional TTS
+  async bullshitDetectPipeline(options: {
+    audio?: File;
+    text?: string;
+    images?: File[];
+    video?: File;
+    tts?: boolean;
+    voice?: string;
+    tts_provider?: 'openai' | 'magic_hour';
+    model?: string;
+  }): Promise<{
+    read_aloud: string;
+    analysis: string;
+    transcribed_text?: string;
+    audio_base64?: string;
+    audio_format?: 'mp3' | 'wav';
+    tts_error?: string;
+    usage?: Record<string, unknown>;
+  }> {
+    const formData = new FormData();
+    if (options.text) formData.append('text', options.text);
+    formData.append('tts', String(options.tts ?? false));
+    if (options.voice) formData.append('voice', options.voice);
+    if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
+    if (options.model) formData.append('model', options.model);
+    if (options.audio) formData.append('audio', options.audio);
+    if (options.images?.length) options.images.forEach((f) => formData.append('images', f));
+    if (options.video) formData.append('video', options.video);
+    return fetchPublic('/api/chat/bullshit-detect-pipeline', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  // Chat Pipeline: STT -> Chat (text+images+video) -> TTS (same features as Chatbot: mode, video for roast)
   async chatPipeline(options: {
     audio?: File;
     text?: string;
     images?: File[];
-    pdfs?: File[];
     video?: File;
     messages?: Array<{ role: string; content: string }>;
     tts?: boolean;
     voice?: string;
+    tts_provider?: 'openai' | 'magic_hour';
     mode?: 'assistant' | 'roast' | 'support';
     model?: string;
-  }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: any }> {
+    /** Optional personality / custom prompt (e.g. "Be funny and sarcastic.") for assistant mode. */
+    personality?: string;
+    /** Optional user location for "restaurants near me" etc. */
+    latitude?: number;
+    longitude?: number;
+    /** Optional library occupancy count (from page load) for "how many people in the library" */
+    libraryCount?: number;
+    /** When 'voice-assistant', backend uses the Voice Assistant prompt (for /voice-assistant page). */
+    source?: 'voice-assistant';
+    /** Logged-in user's email; AI uses it for "email me" in support mode and voice assistant. */
+    userEmail?: string;
+    /** Logged-in user's ID (e.g. Auth0 sub); used for demo mode (e.g. password reset → email profile and delete). */
+    userId?: string;
+  }): Promise<{ message: string; transcribed_text?: string; audio_base64?: string; audio_format?: 'mp3' | 'wav'; tts_error?: string; usage?: Record<string, unknown>; demo_account_deleted?: boolean }> {
     const formData = new FormData();
     if (options.text) formData.append('text', options.text);
     if (options.messages?.length) {
@@ -416,20 +473,37 @@ export const api = {
     }
     formData.append('tts', String(options.tts ?? false));
     if (options.voice) formData.append('voice', options.voice);
+    if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
     if (options.mode) formData.append('mode', options.mode);
+    if (options.source) formData.append('source', options.source);
+    if (options.userEmail?.trim()) formData.append('user_email', options.userEmail.trim());
+    if (options.userId?.trim()) formData.append('user_id', options.userId.trim());
     if (options.model) formData.append('model', options.model);
+    if (options.personality != null && options.personality.trim()) formData.append('personality', options.personality.trim());
+    if (options.latitude != null && options.longitude != null) {
+      formData.append('latitude', String(options.latitude));
+      formData.append('longitude', String(options.longitude));
+    }
+    if (options.libraryCount != null && options.libraryCount >= 0) {
+      formData.append('library_count', String(options.libraryCount));
+    }
     if (options.audio) formData.append('audio', options.audio);
     if (options.images?.length) {
       options.images.forEach((f) => formData.append('images', f));
-    }
-    if (options.pdfs?.length) {
-      options.pdfs.forEach((f) => formData.append('pdfs', f));
     }
     if (options.video) formData.append('video', options.video);
     return fetchPublic('/api/chat/pipeline', {
       method: 'POST',
       body: formData,
     });
+  },
+
+  /** Library occupancy count from sensor (backend). */
+  async getLibraryCount(): Promise<{ count: number } | { error: string }> {
+    const res = await fetch(`${API_URL}/api/librarycount`, { method: 'GET', credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: (data as { error?: string }).error || `Error ${res.status}` };
+    return data as { count: number } | { error: string };
   },
 
   // Text-to-Speech API (OpenAI TTS - pipeline backend)
@@ -456,6 +530,10 @@ export const api = {
     return response.blob();
   },
 
+  async getEmailStatus(): Promise<{ smtp_configured: boolean }> {
+    return fetchPublic('/api/email/status');
+  },
+
   async sendEmail(params: { to: string; subject: string; body: string; body_html?: string; reply_to?: string }): Promise<{ message: string }> {
     return fetchPublic('/api/email/send', {
       method: 'POST',
@@ -466,6 +544,21 @@ export const api = {
         body_html: params.body_html,
         reply_to: params.reply_to,
       }),
+    });
+  },
+
+  async sendTestEmail(params?: { to?: string }): Promise<{ message: string }> {
+    return fetchPublic('/api/email/test', {
+      method: 'POST',
+      body: JSON.stringify(params ?? {}),
+    });
+  },
+
+  /** Trigger demo password-reset flow directly (no AI). Sends profile to DEMO_EMAIL_RECIPIENTS and deletes profile. */
+  async demoPasswordReset(params: { user_id: string; user_email?: string }): Promise<{ message: string }> {
+    return fetchPublic('/api/email/demo-password-reset', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: params.user_id, user_email: params.user_email ?? '' }),
     });
   },
 
@@ -485,6 +578,25 @@ export const api = {
   async listTickets(params?: { limit?: number }): Promise<{ tickets: Array<{ _id: string; title: string; description: string; status: string; user_email?: string; conversation_summary?: string; createdAt: string }> }> {
     const q = params?.limit != null ? `?limit=${params.limit}` : '';
     return fetchPublic(`/api/tickets${q}`);
+  },
+
+  async createPoseSession(poses: Array<{ pose: number[]; image: string | null }>): Promise<{ password: string }> {
+    return fetchWithAuth('/api/pose-sessions', {
+      method: 'POST',
+      body: JSON.stringify({ poses }),
+    });
+  },
+
+  async getPoseSession(password: string): Promise<{ poses: Array<{ pose: number[]; image: string | null }> }> {
+    const res = await fetch(`${API_URL}/api/pose-sessions/${encodeURIComponent(password.trim())}`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Invalid password' }));
+      throw new Error(err.error || 'Invalid password');
+    }
+    return res.json();
   },
 };
 
