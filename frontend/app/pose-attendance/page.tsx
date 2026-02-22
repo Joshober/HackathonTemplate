@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/DashboardShell';
 import { motion } from 'motion/react';
-import { Camera, Copy, Check, Users, GraduationCap, Sparkles, Link2 } from 'lucide-react';
+import { Camera, Copy, Check, Users, GraduationCap, Sparkles, Link2, Clock } from 'lucide-react';
 import {
   extractKeypoints,
   detectPose,
@@ -37,11 +37,13 @@ function getFaceFromKeypoints(keypoints: PoseKeypoints): { x: number; y: number;
 
 type Mode = 'professor' | 'student';
 
+const REQUIRED_POSES = 3;
+
 const FEEDBACK_SUCCESS = [
   "You nailed the professor's weirdness!",
   'Maximum cringe achieved.',
   "That's the spirit!",
-  'Attendance confirmed!',
+  'Pose complete! Next one...',
 ];
 const FEEDBACK_FAIL = [
   "You look confident, but wrong.",
@@ -49,6 +51,7 @@ const FEEDBACK_FAIL = [
   'Almost there... or maybe not.',
   'Academic despair detected.',
 ];
+const KICKED_MESSAGE = "You were kicked for taking too long or for being too cringe.";
 
 const POSE_PRESETS = [
   { id: 't-rex', label: 'T-Rex mode', emoji: '🦖' },
@@ -56,41 +59,62 @@ const POSE_PRESETS = [
   { id: 'academic-despair', label: 'Academic despair', emoji: '😫' },
 ];
 
-/** Parse pose-only from URL-safe base64 (no image). Used for share links. */
-function parsePoseFromUrl(code: string): PoseKeypoints | null {
+type PoseWithImage = { pose: PoseKeypoints; image: string | null };
+
+/** Parse 1 pose from URL or 3-pose payload from code. */
+function parsePosesFromInput(code: string): PoseWithImage[] | null {
   try {
-    const json = atob(code.replace(/-/g, '+').replace(/_/g, '/'));
+    const json = decodeURIComponent(atob(code.replace(/-/g, '+').replace(/_/g, '/')));
     const parsed = JSON.parse(json);
-    if (Array.isArray(parsed) && parsed.length >= 33 * 3) return parsed;
+    if (parsed?.poses && Array.isArray(parsed.poses) && parsed.poses.length >= REQUIRED_POSES) {
+      const out: PoseWithImage[] = [];
+      for (const p of parsed.poses.slice(0, REQUIRED_POSES)) {
+        if (p?.pose && Array.isArray(p.pose) && p.pose.length >= 33 * 3) {
+          out.push({ pose: p.pose, image: typeof p.image === 'string' && p.image.startsWith('data:') ? p.image : null });
+        } else return null;
+      }
+      return out.length === REQUIRED_POSES ? out : null;
+    }
+    // Legacy: single pose
+    if (Array.isArray(parsed) && parsed.length >= 33 * 3) {
+      return [{ pose: parsed, image: null }];
+    }
+    if (parsed?.pose && Array.isArray(parsed.pose) && parsed.pose.length >= 33 * 3) {
+      return [{ pose: parsed.pose, image: typeof parsed.image === 'string' && parsed.image.startsWith('data:') ? parsed.image : null }];
+    }
     return null;
   } catch {
     return null;
   }
 }
 
-/** Encode pose-only for URL (keeps link short). */
-function encodePoseForUrl(pose: PoseKeypoints): string {
-  return btoa(JSON.stringify(pose)).replace(/\+/g, '-').replace(/\//g, '_');
+/** Encode 3 poses for URL or share code. */
+function encodePosesForUrl(poses: PoseWithImage[]): string {
+  return btoa(encodeURIComponent(JSON.stringify({ poses }))).replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 export default function PoseAttendancePage() {
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>('professor');
-  const [referencePose, setReferencePose] = useState<PoseKeypoints | null>(null);
-  const [referenceImage, setReferenceImage] = useState<string | null>(null);
+  const [referencePoses, setReferencePoses] = useState<PoseWithImage[]>([]);
   const [shareCode, setShareCode] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [cringeLevel, setCringeLevel] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [tips, setTips] = useState<string[]>([]);
-  const [presenceConfirmed, setPresenceConfirmed] = useState(false);
+  const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
+  const [kickedFromRoom, setKickedFromRoom] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(10);
   const [faceOverlay, setFaceOverlay] = useState<{ x: number; y: number; size: number } | null>(null);
   const [faceEmojiMessage, setFaceEmojiMessage] = useState<{ emoji: string; text: string }>({ emoji: '🤡', text: "You're a rockstar!" });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [studentPasteCode, setStudentPasteCode] = useState('');
   const hasAppliedUrlPoseRef = useRef(false);
+
+  const referencePose = referencePoses[currentPoseIndex]?.pose ?? null;
+  const referenceImage = referencePoses[currentPoseIndex]?.image ?? null;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -100,31 +124,19 @@ export default function PoseAttendancePage() {
   const isDetectingRef = useRef(false);
   const consecutiveGoodFramesRef = useRef(0);
 
-  /** Frames of similarity >= threshold required to confirm attendance */
-  const SUSTAINED_FRAMES = 18;
+  /** Frames of similarity >= threshold required to complete each pose (hold longer = ~1.5s at 30fps) */
+  const SUSTAINED_FRAMES = 45;
 
-  const generateShareCode = useCallback((pose: PoseKeypoints, image: string) => {
-    const payload = { pose, image };
-    return btoa(encodeURIComponent(JSON.stringify(payload)));
+  /** Seconds per pose — if time runs out, student is kicked */
+  const POSE_TIMEOUT_SECONDS = 10;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const generateShareCode = useCallback((poses: PoseWithImage[]) => {
+    return btoa(encodeURIComponent(JSON.stringify({ poses })));
   }, []);
 
-  const parseShareCode = useCallback((code: string): { pose: PoseKeypoints; image: string | null } | null => {
-    try {
-      const json = decodeURIComponent(atob(code));
-      const parsed = JSON.parse(json);
-      let pose: PoseKeypoints | null = null;
-      let image: string | null = null;
-      if (Array.isArray(parsed) && parsed.length >= 33 * 3) {
-        pose = parsed;
-      } else if (parsed?.pose && Array.isArray(parsed.pose) && parsed.pose.length >= 33 * 3) {
-        pose = parsed.pose;
-        if (typeof parsed.image === 'string' && parsed.image.startsWith('data:')) image = parsed.image;
-      }
-      if (pose) return { pose, image };
-    } catch {
-      // ignore
-    }
-    return null;
+  const parseShareCode = useCallback((code: string): PoseWithImage[] | null => {
+    return parsePosesFromInput(code.trim());
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -157,6 +169,7 @@ export default function PoseAttendancePage() {
 
   const captureReferencePose = useCallback(async () => {
     if (!videoRef.current || videoRef.current.readyState < 2) return;
+    if (referencePoses.length >= REQUIRED_POSES) return;
     setIsLoading(true);
     setError(null);
     try {
@@ -168,16 +181,16 @@ export default function PoseAttendancePage() {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
+        let imageData = '';
         if (ctx) {
           ctx.drawImage(video, 0, 0);
-          const imageData = canvas.toDataURL('image/jpeg', 0.85);
-          setReferenceImage(imageData);
-          setReferencePose(keypoints);
-          setShareCode(generateShareCode(keypoints, imageData));
-        } else {
-          setReferenceImage(null);
-          setReferencePose(keypoints);
-          setShareCode(generateShareCode(keypoints, ''));
+          imageData = canvas.toDataURL('image/jpeg', 0.85);
+        }
+        const newPose: PoseWithImage = { pose: keypoints, image: imageData || null };
+        const updated = [...referencePoses, newPose];
+        setReferencePoses(updated);
+        if (updated.length === REQUIRED_POSES) {
+          setShareCode(generateShareCode(updated));
         }
       } else {
         setError('No pose detected. Try again with your body visible.');
@@ -188,57 +201,62 @@ export default function PoseAttendancePage() {
     } finally {
       setIsLoading(false);
     }
-  }, [generateShareCode]);
+  }, [generateShareCode, referencePoses]);
 
   const loadFromShareCode = useCallback((code: string) => {
     const data = parseShareCode(code.trim());
-    if (data) {
-      setReferencePose(data.pose);
-      setReferenceImage(data.image);
+    if (data && data.length >= REQUIRED_POSES) {
+      setReferencePoses(data.slice(0, REQUIRED_POSES));
       setShareCode(code);
       setError(null);
-      setPresenceConfirmed(false);
+      setCurrentPoseIndex(0);
+      setKickedFromRoom(false);
+      consecutiveGoodFramesRef.current = 0;
+    } else if (data && data.length === 1) {
+      // Legacy single-pose: repeat it 3 times
+      setReferencePoses([data[0], data[0], data[0]]);
+      setShareCode(code);
+      setError(null);
+      setCurrentPoseIndex(0);
+      setKickedFromRoom(false);
       consecutiveGoodFramesRef.current = 0;
     } else {
-      setError('Invalid code.');
+      setError('Invalid code. Need 3 poses from the teacher.');
     }
   }, [parseShareCode]);
 
-  // Auto-load pose from URL so students only need to open the teacher's link (no paste)
+  // Auto-load poses from URL so students only need to open the teacher's link (no paste)
   useEffect(() => {
     if (hasAppliedUrlPoseRef.current) return;
-    const poseParam = searchParams.get('pose');
     const codeParam = searchParams.get('code');
-    if (poseParam) {
-      const pose = parsePoseFromUrl(poseParam);
-      if (pose) {
+    if (codeParam) {
+      const data = parsePosesFromInput(codeParam);
+      if (data && data.length >= REQUIRED_POSES) {
         hasAppliedUrlPoseRef.current = true;
         setMode('student');
-        setReferencePose(pose);
-        setReferenceImage(null);
-        setError(null);
-        setPresenceConfirmed(false);
-        consecutiveGoodFramesRef.current = 0;
-      }
-    } else if (codeParam) {
-      const data = parseShareCode(codeParam);
-      if (data) {
-        hasAppliedUrlPoseRef.current = true;
-        setMode('student');
-        setReferencePose(data.pose);
-        setReferenceImage(data.image);
+        setReferencePoses(data.slice(0, REQUIRED_POSES));
         setShareCode(codeParam);
         setError(null);
-        setPresenceConfirmed(false);
+        setCurrentPoseIndex(0);
+        setKickedFromRoom(false);
+        consecutiveGoodFramesRef.current = 0;
+      } else if (data && data.length === 1) {
+        hasAppliedUrlPoseRef.current = true;
+        setMode('student');
+        setReferencePoses([data[0], data[0], data[0]]);
+        setShareCode(codeParam);
+        setError(null);
+        setCurrentPoseIndex(0);
+        setKickedFromRoom(false);
         consecutiveGoodFramesRef.current = 0;
       }
     }
-  }, [searchParams, parseShareCode]);
+  }, [searchParams]);
 
   // Loop de detecção para modo student
   useEffect(() => {
-    if (mode !== 'student' || !referencePose || !videoRef.current) return;
-    if (presenceConfirmed) return;
+    if (mode !== 'student' || !referencePose || referencePoses.length === 0 || !videoRef.current) return;
+    if (kickedFromRoom) return;
 
     const runDetection = async () => {
       const video = videoRef.current;
@@ -273,10 +291,19 @@ export default function PoseAttendancePage() {
                 { emoji: '⭐', text: 'Star student!' },
               ];
               setFaceEmojiMessage(emojis[Math.floor(Math.random() * emojis.length)]);
-              setPresenceConfirmed(true);
-              setFeedback(FEEDBACK_SUCCESS[Math.floor(Math.random() * FEEDBACK_SUCCESS.length)]);
+
+              if (currentPoseIndex >= REQUIRED_POSES - 1) {
+                setKickedFromRoom(true);
+                setFeedback(KICKED_MESSAGE);
+                setFaceOverlay(null);
+              } else {
+                setCurrentPoseIndex((i) => i + 1);
+                consecutiveGoodFramesRef.current = 0;
+                setFaceOverlay(null);
+                setFeedback(`Pose ${currentPoseIndex + 2}/${REQUIRED_POSES} — next!`);
+              }
             } else {
-              setFeedback(`Hold the pose... ${Math.round((consecutiveGoodFramesRef.current / SUSTAINED_FRAMES) * 100)}%`);
+              setFeedback(`Hold the pose... ${Math.round((consecutiveGoodFramesRef.current / SUSTAINED_FRAMES) * 100)}% (Pose ${currentPoseIndex + 1}/${REQUIRED_POSES})`);
             }
           } else {
             consecutiveGoodFramesRef.current = 0;
@@ -297,7 +324,34 @@ export default function PoseAttendancePage() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [mode, referencePose, presenceConfirmed]);
+  }, [mode, referencePose, referencePoses.length, currentPoseIndex, kickedFromRoom]);
+
+  // Countdown timer per pose: 10s — if time runs out, kick
+  useEffect(() => {
+    if (mode !== 'student' || referencePoses.length === 0 || kickedFromRoom) return;
+    setTimeRemaining(POSE_TIMEOUT_SECONDS);
+    timerRef.current = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setKickedFromRoom(true);
+          setFeedback(KICKED_MESSAGE);
+          setFaceOverlay(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [mode, referencePoses.length, currentPoseIndex, kickedFromRoom]);
 
   // When entering professor or student mode, turn on camera
   useEffect(() => {
@@ -310,11 +364,13 @@ export default function PoseAttendancePage() {
   }, [stopCamera]);
 
   const resetStudent = useCallback(() => {
-    setPresenceConfirmed(false);
+    setKickedFromRoom(false);
+    setCurrentPoseIndex(0);
     setFaceOverlay(null);
     setCringeLevel(0);
     setFeedback(null);
     setTips([]);
+    setTimeRemaining(POSE_TIMEOUT_SECONDS);
     consecutiveGoodFramesRef.current = 0;
   }, []);
 
@@ -332,7 +388,7 @@ export default function PoseAttendancePage() {
           <div>
             <h2 className="text-3xl font-bold">Attendance by Pose Cringe™</h2>
             <p className="text-gray-400">
-              The teacher strikes a pose. Students imitate. Attendance confirmed when cringe level hits.
+              The teacher strikes 3 poses. Students imitate all 3. Spoiler: you get kicked from the room anyway.
             </p>
           </div>
         </div>
@@ -345,10 +401,10 @@ export default function PoseAttendancePage() {
           onClick={() => {
             setMode('professor');
             stopCamera();
-            setReferencePose(null);
-            setReferenceImage(null);
+            setReferencePoses([]);
             setShareCode('');
-            setPresenceConfirmed(false);
+            setCurrentPoseIndex(0);
+            setKickedFromRoom(false);
             setFaceOverlay(null);
             setCringeLevel(0);
             setFeedback(null);
@@ -366,7 +422,7 @@ export default function PoseAttendancePage() {
           type="button"
           onClick={() => {
             setMode('student');
-            setReferencePose(null);
+            setReferencePoses([]);
             startCamera();
           }}
           className={`px-4 py-2 rounded-xl font-medium transition-all ${
@@ -421,45 +477,53 @@ export default function PoseAttendancePage() {
                 <button
                   type="button"
                   onClick={captureReferencePose}
-                  disabled={isLoading}
+                  disabled={isLoading || referencePoses.length >= REQUIRED_POSES}
                   className="flex-1 px-4 py-2 bg-fuchsia-500/30 text-fuchsia-300 rounded-lg hover:bg-fuchsia-500/40 disabled:opacity-50"
                 >
-                  {isLoading ? 'Detecting...' : 'Capture pose'}
+                  {isLoading ? 'Detecting...' : referencePoses.length >= REQUIRED_POSES ? `All ${REQUIRED_POSES} captured!` : `Capture pose ${referencePoses.length + 1}/${REQUIRED_POSES}`}
                 </button>
               </div>
             </div>
 
             <div className="space-y-4">
               <p className="text-gray-400 text-sm">
-                Strike a weird pose on camera and click &quot;Capture pose&quot;. Share the
+                Strike {REQUIRED_POSES} weird poses on camera. Click &quot;Capture pose&quot; for each one. Share the
                 code with your students.
               </p>
 
-              {referencePose && (
+              {referencePoses.length > 0 && (
                 <>
-                  {referenceImage && (
+                  {referencePoses.length === REQUIRED_POSES && (
                     <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mb-4">
-                      <p className="text-sm text-gray-400 px-4 pt-3 pb-2">Captured pose (students will see this):</p>
-                      <img
-                        src={referenceImage}
-                        alt="Captured pose"
-                        className="w-full max-h-48 object-contain"
-                      />
+                      <p className="text-sm text-gray-400 px-4 pt-3 pb-2">Captured poses (students will see these):</p>
+                      <div className="flex gap-2 p-4 overflow-x-auto">
+                        {referencePoses.map((p, i) => (
+                          p.image && (
+                            <img
+                              key={i}
+                              src={p.image}
+                              alt={`Pose ${i + 1}`}
+                              className="w-24 h-24 object-cover rounded-lg flex-shrink-0"
+                            />
+                          )
+                        ))}
+                      </div>
                     </div>
                   )}
+                  {referencePoses.length === REQUIRED_POSES && (
                   <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                     <p className="text-sm text-gray-400 mb-2">Share with students (no code to type):</p>
                     <div className="flex gap-2 mb-2">
                       <input
                         type="text"
                         readOnly
-                        value={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?mode=student&pose=${encodePoseForUrl(referencePose)}` : ''}
+                        value={typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?mode=student&code=${encodePosesForUrl(referencePoses)}` : ''}
                         className="flex-1 px-3 py-2 bg-black/30 rounded-lg text-sm font-mono truncate"
                       />
                       <button
                         type="button"
                         onClick={() => {
-                          const link = `${window.location.origin}${window.location.pathname}?mode=student&pose=${encodePoseForUrl(referencePose)}`;
+                          const link = `${window.location.origin}${window.location.pathname}?mode=student&code=${encodePosesForUrl(referencePoses)}`;
                           navigator.clipboard.writeText(link);
                           setCopiedLink(true);
                           setTimeout(() => setCopiedLink(false), 2000);
@@ -492,6 +556,7 @@ export default function PoseAttendancePage() {
                     </button>
                   </div>
                 </div>
+                  )}
                 </>
               )}
 
@@ -527,7 +592,7 @@ export default function PoseAttendancePage() {
               {referenceImage ? (
                 <div className="bg-white/5 backdrop-blur-md border-2 border-fuchsia-500/40 rounded-xl overflow-hidden">
                   <div className="bg-fuchsia-500/10 px-4 py-2 text-sm font-medium text-fuchsia-300">
-                    Teacher&apos;s pose — copy this
+                    Teacher&apos;s pose {currentPoseIndex + 1}/{REQUIRED_POSES} — copy this
                   </div>
                   <div className="aspect-video bg-black/30 flex items-center justify-center relative overflow-hidden">
                     <img
@@ -535,7 +600,7 @@ export default function PoseAttendancePage() {
                       alt="Teacher's pose to copy"
                       className="max-w-full max-h-full object-cover -scale-x-100"
                     />
-                    {presenceConfirmed && referencePose && (() => {
+                    {faceOverlay && referencePose && !kickedFromRoom && (() => {
                       const refFace = getFaceFromKeypoints(referencePose);
                       if (!refFace) return null;
                       return (
@@ -586,7 +651,7 @@ export default function PoseAttendancePage() {
                     muted
                     className="max-w-full max-h-full object-cover -scale-x-100"
                   />
-                  {presenceConfirmed && faceOverlay && (
+                  {faceOverlay && !kickedFromRoom && (
                     <motion.div
                       initial={{ scale: 0, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
@@ -656,40 +721,49 @@ export default function PoseAttendancePage() {
                 </div>
               ) : (
                 <>
+                  {!kickedFromRoom && (
+                    <div className="flex items-center gap-2 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                      <Clock className="w-5 h-5 text-amber-500" />
+                      <span className="text-amber-400 font-medium">{timeRemaining}s</span>
+                      <span className="text-amber-500/80 text-sm">left for pose {currentPoseIndex + 1}/{REQUIRED_POSES}</span>
+                    </div>
+                  )}
                   <div>
                     <p className="text-sm text-gray-400 mb-2">Cringe Level</p>
                     <div className="h-4 bg-black/30 rounded-full overflow-hidden">
                       <motion.div
                         className={`h-full rounded-full ${
-                          cringeLevel >= DEFAULT_CRINGE_THRESHOLD * 100
-                            ? 'bg-green-500'
-                            : cringeLevel >= 50
-                              ? 'bg-amber-500'
-                              : 'bg-red-500/70'
+                          kickedFromRoom
+                            ? 'bg-red-500'
+                            : cringeLevel >= DEFAULT_CRINGE_THRESHOLD * 100
+                              ? 'bg-green-500'
+                              : cringeLevel >= 50
+                                ? 'bg-amber-500'
+                                : 'bg-red-500/70'
                         }`}
                         initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(cringeLevel, 100)}%` }}
+                        animate={{ width: `${kickedFromRoom ? 100 : Math.min(cringeLevel, 100)}%` }}
                         transition={{ duration: 0.3 }}
                       />
                     </div>
-                    <p className="text-right text-sm text-gray-500 mt-1">{cringeLevel}%</p>
+                    <p className="text-right text-sm text-gray-500 mt-1">{kickedFromRoom ? '100%' : `${cringeLevel}%`}</p>
                   </div>
 
                   <div
                     className={`p-6 rounded-xl border ${
-                      presenceConfirmed
-                        ? 'bg-green-500/10 border-green-500/40'
+                      kickedFromRoom
+                        ? 'bg-red-500/20 border-red-500/50'
                         : 'bg-white/5 border-white/10'
                     }`}
                   >
                     {feedback ? (
-                      <p className={presenceConfirmed ? 'text-green-400' : 'text-red-400'}>
+                      <p className={kickedFromRoom ? 'text-red-400 text-xl font-bold' : 'text-red-400'}>
                         {feedback}
                       </p>
                     ) : (
-                      <p className="text-gray-500">Do the pose to start...</p>
+                      <p className="text-gray-500">Do the pose to start... (Pose {currentPoseIndex + 1}/{REQUIRED_POSES})</p>
                     )}
-                    {tips.length > 0 && !presenceConfirmed && (
+                    {tips.length > 0 && !kickedFromRoom && (
                       <div className="mt-4 pt-4 border-t border-white/10">
                         <p className="text-sm font-medium text-amber-400 mb-2">Tips:</p>
                         <ul className="text-sm text-gray-300 space-y-1">
@@ -702,16 +776,15 @@ export default function PoseAttendancePage() {
                         </ul>
                       </div>
                     )}
-                    {presenceConfirmed && (
-                      <p className="mt-2 text-2xl font-bold text-green-400">Attendance confirmed ✅</p>
+                    {kickedFromRoom && (
+                      <p className="mt-2 text-2xl font-bold text-red-400">{KICKED_MESSAGE}</p>
                     )}
                   </div>
 
                   <button
                     type="button"
                     onClick={() => {
-                  setReferencePose(null);
-                    setReferenceImage(null);
+                    setReferencePoses([]);
                     setShareCode('');
                     resetStudent();
                     }}
