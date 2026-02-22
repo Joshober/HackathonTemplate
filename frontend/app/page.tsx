@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getCurrentUser, login, loginEmailPassword, register, User } from '@/lib/auth';
 import Link from 'next/link';
 import LandingPage from '@/components/LandingPage';
+import Chatbot from '@/components/Chatbot';
 import { motion } from 'motion/react';
 
 export default function Home() {
@@ -84,28 +85,16 @@ export default function Home() {
     <div className="flex items-center gap-4">
       {!isLoading && user ? (
         <>
-          <Link href="/dashboard">
-            <motion.span
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="inline-flex items-center bg-[#4F8CFF] hover:bg-[#5A96FF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-            >
-              Launch Console
-            </motion.span>
+          <Link href="/dashboard" className="bg-primary text-background-dark px-6 py-2.5 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(112,255,169,0.3)]">
+            Let&apos;s Get Weird
           </Link>
-          <Link href="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">
+          <Link href="/profile" className="text-sm text-slate-400 hover:text-primary transition-colors">
             Profile
           </Link>
         </>
       ) : (
-        <Link href="/dashboard">
-          <motion.span
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center bg-[#4F8CFF] hover:bg-[#5A96FF] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-          >
-            Launch Console
-          </motion.span>
+        <Link href="/dashboard" className="bg-primary text-background-dark px-6 py-2.5 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(112,255,169,0.3)]">
+          Let&apos;s Get Weird
         </Link>
       )}
     </div>
@@ -114,6 +103,7 @@ export default function Home() {
   return (
     <>
       <LandingPage>{navContent}</LandingPage>
+      <Chatbot />
 
       {/* Login modal / card - fixed overlay when showEmailLogin or when user not logged in and we want to show login on same page */}
       {!isLoading && !user && showEmailLogin && (
@@ -121,9 +111,9 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-[#0E1117] border border-white/10 rounded-2xl p-8 shadow-2xl"
+            className="w-full max-w-md bg-background-dark border border-primary/10 rounded-2xl p-8 shadow-2xl"
           >
-            <h3 className="text-xl font-semibold mb-6 text-white">
+            <h3 className="text-xl font-semibold mb-6 text-slate-100">
               {isRegistering ? 'Create account' : 'Sign in'}
             </h3>
             {error && (
@@ -139,7 +129,7 @@ export default function Home() {
             >
               {isRegistering && (
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">
+                  <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-1">
                     Name (optional)
                   </label>
                   <input
@@ -147,13 +137,13 @@ export default function Home() {
                     id="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                    className="w-full px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="Your name"
                   />
                 </div>
               )}
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+                    <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
                   Email
                 </label>
                 <input
@@ -162,12 +152,12 @@ export default function Home() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
                   placeholder="your@email.com"
                 />
               </div>
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">
                   Password
                 </label>
                 <input
@@ -177,14 +167,14 @@ export default function Home() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#4F8CFF]/50"
+                  className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff6b35]/50"
                   placeholder="••••••••"
                 />
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#4F8CFF] hover:bg-[#5A96FF] text-white py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
+                className="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
                 {loading ? 'Please wait...' : isRegistering ? 'Sign Up' : 'Login'}
               </button>
@@ -196,7 +186,7 @@ export default function Home() {
                   setIsRegistering(!isRegistering);
                   setError(null);
                 }}
-                className="text-[#4F8CFF] hover:text-[#6BA0FF]"
+                className="text-primary hover:text-accent-pink"
               >
                 {isRegistering ? 'Already have an account? Login' : "Don't have an account? Sign up"}
               </button>
@@ -209,16 +199,16 @@ export default function Home() {
                   setPassword('');
                   setName('');
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-slate-400 hover:text-slate-100"
               >
                 Close
               </button>
             </div>
-            <div className="mt-4 pt-4 border-t border-white/10">
+            <div className="mt-4 pt-4 border-t border-primary/10">
               <button
                 type="button"
                 onClick={handleLogin}
-                className="w-full py-2.5 border border-white/10 rounded-lg text-gray-300 hover:bg-white/5 transition-colors text-sm font-medium"
+                className="w-full py-2.5 border border-primary/20 rounded-lg text-slate-300 hover:bg-primary/5 transition-colors text-sm font-medium"
               >
                 Login with Google (Auth0)
               </button>
@@ -234,7 +224,7 @@ export default function Home() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setShowEmailLogin(true)}
-            className="bg-[#4F8CFF] hover:bg-[#5A96FF] text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-[#4F8CFF]/30"
+            className="bg-primary hover:bg-primary/90 text-background-dark font-bold px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-primary/30"
           >
             Sign in
           </motion.button>

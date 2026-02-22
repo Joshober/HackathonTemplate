@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ['@mediapipe/tasks-vision'],
   output: 'standalone',
   images: {
     remotePatterns: [
@@ -37,6 +38,16 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'cdn.auth0.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'picsum.photos',
         pathname: '/**',
       },
     ],

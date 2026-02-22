@@ -31,74 +31,44 @@ export default function Navbar() {
     }
   };
 
+  const linkClass = 'text-slate-400 hover:text-primary px-3 py-2 text-sm font-medium transition-colors border-b-2 border-transparent hover:border-primary pb-0.5';
+
   return (
-    <nav className="bg-white shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center">
-            <Link href="/" className="text-xl font-bold text-indigo-600">
-              Hackathon Template
-            </Link>
+    <nav className="bg-background-dark/95 backdrop-blur-sm border-b border-primary/10">
+      <div className="max-w-6xl mx-auto px-5 py-4 flex justify-between items-center">
+        <Link href="/" className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-background-dark font-bold text-lg">
+            <span className="material-symbols-outlined">terminal</span>
           </div>
-          <div className="flex items-center space-x-4">
-            {!isLoading && (
-              <>
-                <Link
-                  href="/multiverse"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Roast AI
-                </Link>
-              </>
-            )}
-            {!isLoading && user && (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/profile"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Profile
-                </Link>
-                <Link
-                  href="/voice"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Voice
-                </Link>
-                <span className="text-gray-700 text-sm">
-                  {user.name || user.email}
-                </span>
-                <button
-                  onClick={handleLogout}
-                  className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700"
-                >
-                  Logout
-                </button>
-              </>
-            )}
-            {!isLoading && !user && (
-              <>
-                <Link
-                  href="/voice"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Voice
-                </Link>
-                <Link
-                  href="/"
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
-                >
-                  Login
-                </Link>
-              </>
-            )}
-          </div>
+          <span className="font-heading font-bold text-lg tracking-tight">Claude Home™</span>
+        </Link>
+        <div className="flex items-center gap-4">
+          {!isLoading && user && (
+            <>
+              <Link href="/dashboard" className={linkClass}>Dashboard</Link>
+              <Link href="/profile" className={linkClass}>Profile</Link>
+              <Link href="/voice" className={linkClass}>Voice</Link>
+              <Link href="/voice-assistant" className={linkClass}>Voice Assistant</Link>
+              <span className="text-slate-500 text-sm truncate max-w-[140px]">
+                {user.name || user.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="text-slate-400 hover:text-primary px-4 py-2 text-sm font-medium border-2 border-primary/20 rounded-lg hover:border-primary/50 transition-colors"
+              >
+                Logout
+              </button>
+            </>
+          )}
+          {!isLoading && !user && (
+            <>
+              <Link href="/voice" className={linkClass}>Voice</Link>
+              <Link href="/voice-assistant" className={linkClass}>Voice Assistant</Link>
+              <Link href="/" className="px-5 py-2.5 rounded-lg bg-primary text-background-dark font-bold text-sm uppercase tracking-wide hover:bg-primary/90 transition-colors">
+                Login
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </nav>

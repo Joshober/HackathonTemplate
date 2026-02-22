@@ -4,8 +4,16 @@ import { useEffect, useState } from 'react';
 import { getCurrentUser, login, User } from '@/lib/auth';
 import Link from 'next/link';
 import DashboardShell from '@/components/DashboardShell';
-import { motion } from 'motion/react';
-import { Clock, User as UserIcon } from 'lucide-react';
+
+const shortcuts = [
+  { href: '/chat', label: 'Chat Pipeline', icon: 'forum', desc: 'Voice, text, images → AI' },
+  { href: '/tutor', label: 'AI Tutor', icon: 'school', desc: 'Learn with voice or text' },
+  { href: '/support', label: 'Tech Support', icon: 'support_agent', desc: 'Chat, email, tickets' },
+  { href: '/voice-assistant', label: 'Voice Assistant', icon: 'mic', desc: 'Hands-free assistant' },
+  { href: '/bullshit-detect', label: 'Reality Check', icon: 'fact_check', desc: 'Detect unreliable content' },
+  { href: '/pose-attendance', label: 'Pose Attendance', icon: 'videocam', desc: 'Attendance by pose' },
+  { href: '/profile', label: 'Profile', icon: 'person', desc: 'Edit your profile' },
+];
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -32,8 +40,11 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0E1117] flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-background-dark flex items-center justify-center">
+        <div className="text-primary flex items-center gap-2">
+          <span className="material-symbols-outlined animate-spin">progress_activity</span>
+          Loading...
+        </div>
       </div>
     );
   }
@@ -44,58 +55,28 @@ export default function Dashboard() {
 
   return (
     <DashboardShell>
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="mb-8"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <div>
-            <h2 className="text-3xl font-bold mb-1">Overview</h2>
-            <p className="text-gray-400">Welcome to your control center</p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <Clock className="w-4 h-4" />
-            <span>Last updated: Just now</span>
-          </div>
+      <div className="w-full max-w-5xl">
+        <h1 className="text-2xl font-bold text-slate-100 mb-1">
+          Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''}
+        </h1>
+        <p className="text-slate-500 text-sm mb-8">{user.email}</p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {shortcuts.map((s) => (
+            <Link
+              key={s.href}
+              href={s.href}
+              className="flex items-center gap-6 p-7 rounded-2xl border border-primary/10 bg-background-dark hover:border-primary/30 hover:bg-primary/5 transition-colors min-h-[120px]"
+            >
+              <span className="material-symbols-outlined text-primary text-4xl">{s.icon}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-100 text-lg">{s.label}</p>
+                <p className="text-slate-500 mt-1">{s.desc}</p>
+              </div>
+              <span className="material-symbols-outlined text-slate-500 text-2xl ml-auto">arrow_forward</span>
+            </Link>
+          ))}
         </div>
-      </motion.div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          whileHover={{ y: -4, scale: 1.02 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6 hover:bg-white/8 hover:border-white/20 transition-all"
-        >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="bg-gradient-to-br from-[#4F8CFF]/20 to-[#4F8CFF]/5 p-3 rounded-xl">
-              <UserIcon className="w-6 h-6 text-[#4F8CFF]" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold">Profile</h3>
-              <p className="text-sm text-gray-400">View and edit your profile</p>
-            </div>
-          </div>
-          <Link
-            href="/profile"
-            className="inline-flex items-center text-[#4F8CFF] hover:text-[#6BA0FF] text-sm font-medium"
-          >
-            Go to Profile →
-          </Link>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="bg-white/5 backdrop-blur-md border border-white/10 rounded-xl p-6"
-        >
-          <h3 className="text-xl font-semibold mb-2">Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''}</h3>
-          <p className="text-gray-400 text-sm">{user.email}</p>
-        </motion.div>
       </div>
     </DashboardShell>
   );

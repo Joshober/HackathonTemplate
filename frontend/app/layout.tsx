@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
-import Chatbot from "@/components/Chatbot";
 
-const inter = Inter({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-display",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Claude Home™",
-  description: "Your AI Assistant for Everything, Everywhere",
+  title: "Claude Home™ | Smart enough to run your life.",
+  description: "When automation goes just a little too far. The first AI home assistant that judges your screen time and forgets your birthdays on purpose.",
 };
 
 export default function RootLayout({
@@ -20,9 +20,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.variable} font-sans antialiased bg-[#0E1117] text-white`}>
+      <head>
+        {/* eslint-disable-next-line @next/next/no-page-custom-font -- Material Symbols for icons */}
+        <link
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className={`${spaceGrotesk.variable} font-sans antialiased bg-background-dark text-slate-100 selection:bg-primary selection:text-background-dark`}>
         {children}
-        <Chatbot />
       </body>
     </html>
   );

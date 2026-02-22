@@ -154,6 +154,36 @@ CLOUDINARY_API_SECRET=YOUR_CLOUDINARY_API_SECRET
 OPENROUTER_API_KEY=YOUR_OPENROUTER_API_KEY
 ```
 
+#### Web search (chat pipeline)
+
+The chat pipeline can search the web when the assistant needs current information. Two providers are supported:
+
+- **DuckDuckGo** (default, no API key): set `WEB_SEARCH_PROVIDER=duckduckgo` or leave unset.
+- **SerpAPI** (Google results, requires API key): set `WEB_SEARCH_PROVIDER=serpapi` and add your key:
+
+```env
+WEB_SEARCH_PROVIDER=serpapi
+SERPAPI_API_KEY=your_serpapi_key
+```
+
+Get a SerpAPI key at [serpapi.com](https://serpapi.com/). The backend also accepts the env var `SerpAPI` for the key.
+
+#### Zoho Mail SMTP (optional)
+
+To send email from the backend (e.g. contact form, notifications), add to `backend/.env`:
+
+```env
+# Zoho: use smtp.zoho.com for @zoho.com; smtppro.zoho.com for custom domain
+SMTP_HOST=smtp.zoho.com
+SMTP_PORT=587
+SMTP_USER=your-zoho-email@zoho.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=your-zoho-email@zoho.com
+```
+
+- Use an [Application-specific password](https://www.zoho.com/mail/help/adminconsole/two-factor-authentication.html#alink5) if you have 2FA enabled.
+- API: `GET /api/email/status` (check config), `POST /api/email/send` (send), `POST /api/email/test` (send test email).
+
 #### Root .env (for Docker Compose)
 
 Create `.env` in the root directory (or copy from `.env.example`) with all variables from both frontend and backend:
@@ -248,11 +278,15 @@ HackathonTemplate/
 │   ├── lib/                  # Utilities
 │   │   ├── auth0.ts          # Auth0 helpers
 │   │   └── api.ts            # API client functions
+│   ├── public/
+│   │   └── images/           # Static images (e.g. developer-help.png)
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
 │   └── package.json
 ├── backend/                  # Flask application
 │   ├── app/
+│   │   ├── static/
+│   │   │   └── images/       # Static assets (e.g. developer-help.png)
 │   │   ├── __init__.py       # Flask app factory
 │   │   ├── routes/
 │   │   │   ├── items.py      # Items CRUD endpoints
@@ -273,6 +307,17 @@ HackathonTemplate/
 ├── docker-compose.yml        # Orchestration
 └── README.md
 ```
+
+## Shared assets
+
+Imágenes en el repo para que todo el mundo las use al hacer push:
+
+| Archivo | Web (Next.js) | Backend (Flask) |
+|---------|----------------|-----------------|
+| `developer-help.png` | `frontend/public/images/` → `/images/developer-help.png` | `backend/app/static/images/` → `/static/images/developer-help.png` |
+| `AI_Tutor_Judging_Silently.png` | `frontend/public/images/` → `/images/AI_Tutor_Judging_Silently.png` | `backend/app/static/images/` → `/static/images/AI_Tutor_Judging_Silently.png` |
+| `friday_in_hackathome.png` | `frontend/public/images/` → `/images/friday_in_hackathome.png` | `backend/app/static/images/` → `/static/images/friday_in_hackathome.png` |
+| `Student_using_AI.png` | `frontend/public/images/` → `/images/Student_using_AI.png` | `backend/app/static/images/` → `/static/images/Student_using_AI.png` |
 
 ## API Endpoints
 

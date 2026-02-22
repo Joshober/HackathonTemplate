@@ -1,80 +1,8 @@
 'use client';
 
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion } from 'motion/react';
 import Link from 'next/link';
-import {
-  Brain,
-  ArrowRight,
-  Check,
-  Briefcase,
-  GraduationCap,
-  Home,
-  Zap,
-  MessageSquare,
-  Camera,
-  Lightbulb,
-  BarChart3,
-  Shield,
-  Clock,
-  Settings,
-} from 'lucide-react';
 import { useRef } from 'react';
-
-const capabilities = [
-  {
-    icon: Briefcase,
-    title: 'AI Business Assistant',
-    description: 'Intelligent executive support for scheduling, email management, task prioritization, and strategic decision-making.',
-    color: 'from-blue-500/20 to-blue-500/5',
-    iconColor: 'text-blue-400',
-  },
-  {
-    icon: GraduationCap,
-    title: 'Visual Learning & Tutoring',
-    description: 'Upload images, diagrams, or documents for instant AI-powered explanations and personalized tutoring.',
-    color: 'from-purple-500/20 to-purple-500/5',
-    iconColor: 'text-purple-400',
-  },
-  {
-    icon: Home,
-    title: 'Smart Device Intelligence',
-    description: 'Ask questions about any connected device. Get instant diagnostics and optimization recommendations.',
-    color: 'from-green-500/20 to-green-500/5',
-    iconColor: 'text-green-400',
-  },
-  {
-    icon: Zap,
-    title: 'Intelligent Task Automation',
-    description: 'Automate repetitive workflows and delegate routine tasks to AI. Optimize efficiency autonomously.',
-    color: 'from-orange-500/20 to-orange-500/5',
-    iconColor: 'text-orange-400',
-  },
-];
-
-const stats = [
-  { value: '99.2%', label: 'Response Accuracy' },
-  { value: '24/7', label: 'Availability' },
-  { value: '50+', label: 'Connected Devices' },
-  { value: '10x', label: 'Productivity Gain' },
-];
-
-const useCases = [
-  {
-    title: 'For Executives',
-    description: 'Manage your calendar, prioritize emails, prepare briefings—all through conversational AI.',
-    icon: Briefcase,
-  },
-  {
-    title: 'For Students',
-    description: 'Take a photo of any problem or diagram. Get step-by-step explanations and personalized learning.',
-    icon: GraduationCap,
-  },
-  {
-    title: 'For Homeowners',
-    description: 'Monitor and control every connected device. Ask about energy usage or climate settings instantly.',
-    icon: Home,
-  },
-];
 
 interface LandingPageProps {
   children?: React.ReactNode;
@@ -82,371 +10,307 @@ interface LandingPageProps {
 
 export default function LandingPage({ children }: LandingPageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ['start start', 'end end'],
-  });
-
-  const opacity = useTransform(scrollYProgress, [0, 0.2], [1, 0]);
-  const scale = useTransform(scrollYProgress, [0, 0.2], [1, 0.95]);
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-[#0E1117] text-white">
-      {/* Animated gradient background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[800px] bg-gradient-to-b from-[#4F8CFF]/20 via-[#4F8CFF]/5 to-transparent rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.1, 1],
-            opacity: [0.3, 0.5, 0.3],
-          }}
-          transition={{
-            duration: 8,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(79,140,255,0.03),transparent_50%)]" />
-      </div>
+    <div ref={containerRef} className="min-h-screen bg-background-dark text-slate-100 overflow-x-hidden">
+      <div className="fixed inset-0 grainy-bg z-50 pointer-events-none" />
 
       {/* Navigation */}
       <motion.nav
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-        className="fixed top-0 left-0 right-0 z-50 bg-[#0E1117]/80 backdrop-blur-xl border-b border-white/5"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4 }}
+        className="sticky top-0 z-40 w-full border-b border-border-dark bg-background-dark/80 backdrop-blur-md"
       >
-        <div className="max-w-7xl mx-auto px-8 py-5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#4F8CFF] to-[#6BA0FF] rounded-lg flex items-center justify-center">
-              <Brain className="w-5 h-5 text-white" />
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="size-10 bg-primary rounded-lg flex items-center justify-center text-background-dark">
+              <span className="material-symbols-outlined font-bold text-3xl">terminal</span>
             </div>
-            <span className="text-xl font-semibold">Claude Home™</span>
+            <h2 className="text-2xl font-bold tracking-tighter">Claude Home™</h2>
+          </Link>
+          <div className="hidden md:flex items-center gap-10">
+            <a href="#helpers" className="text-sm font-medium text-slate-400 hover:text-primary transition-colors">
+              Helpers
+            </a>
+            <a href="#sarcasm" className="text-sm font-medium text-slate-400 hover:text-primary transition-colors">
+              Sarcasm
+            </a>
+            <a href="#chaos" className="text-sm font-medium text-slate-400 hover:text-accent-pink transition-colors">
+              Chaos
+            </a>
+            <div className="h-4 w-px bg-border-dark" />
+            <div className="flex items-center gap-2 text-xs text-primary/60">
+              <span className="material-symbols-outlined text-sm">emergency_home</span>
+              SYSTEM: UNSTABLE
+            </div>
           </div>
-          <div className="flex items-center gap-8">
-            <a href="#capabilities" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Capabilities
-            </a>
-            <a href="#features" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Features
-            </a>
-            <a href="#use-cases" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Use Cases
-            </a>
+          <div className="flex items-center gap-4">
+            <div className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-lg border border-primary/20 text-primary text-sm font-bold">
+              <span className="material-symbols-outlined text-sm">mood_bad</span>
+              Sarcasm: ON
+            </div>
             {children}
+            {!children && (
+              <Link
+                href="/dashboard"
+                className="bg-primary text-background-dark px-6 py-2.5 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(112,255,169,0.3)]"
+              >
+                Let&apos;s Get Weird
+              </Link>
+            )}
           </div>
         </div>
       </motion.nav>
 
-      {/* Hero Section */}
-      <motion.div style={{ opacity, scale }} className="relative pt-40 pb-32">
-        <div className="max-w-6xl mx-auto px-8 text-center">
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3 }}
-            className="text-7xl md:text-8xl font-bold mb-8 leading-[1.1] tracking-tight"
-          >
-            Your AI Assistant for
-            <br />
-            <span className="bg-gradient-to-r from-white via-white to-white/60 bg-clip-text text-transparent">
-              Everything, Everywhere
-            </span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="text-xl text-gray-400 max-w-3xl mx-auto mb-12 leading-relaxed"
-          >
-            Claude Home is your intelligent companion for business, learning, and home automation.
-            Handle executive tasks, get instant tutoring, manage connected devices—all through natural conversation.
-          </motion.p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
-            className="flex gap-4 justify-center mb-20"
-          >
-            <Link href="/dashboard">
-              <motion.span
-                whileHover={{ scale: 1.02, boxShadow: '0 0 30px rgba(79, 140, 255, 0.4)' }}
-                whileTap={{ scale: 0.98 }}
-                className="inline-flex items-center gap-2 bg-[#4F8CFF] hover:bg-[#5A96FF] px-8 py-4 rounded-xl font-medium transition-all shadow-lg shadow-[#4F8CFF]/20 cursor-pointer"
-              >
-                Start Free Trial
-                <ArrowRight className="w-5 h-5" />
-              </motion.span>
-            </Link>
-            <motion.span
-              whileHover={{ scale: 1.02, backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
-              whileTap={{ scale: 0.98 }}
-              className="inline-flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 px-8 py-4 rounded-xl font-medium transition-all cursor-pointer"
+      <main>
+        {/* Hero Section */}
+        <section className="relative pt-20 pb-32 px-6 overflow-hidden">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-primary/5 blur-[120px] rounded-full -z-10" />
+          <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-accent-pink/5 blur-[120px] rounded-full -z-10" />
+          <div className="max-w-5xl mx-auto text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-accent-pink/30 bg-accent-pink/10 text-accent-pink text-xs font-bold mb-8 uppercase tracking-widest"
             >
-              Watch Demo
-            </motion.span>
-          </motion.div>
-
-          {/* Stats */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6 }}
-            className="grid grid-cols-4 gap-8 max-w-4xl mx-auto"
-          >
-            {stats.map((stat, index) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.7 + index * 0.1 }}
-                className="text-center"
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-pink opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-accent-pink" />
+              </span>
+              Now with 400% more attitude
+            </motion.div>
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.5 }}
+              className="text-5xl md:text-8xl font-bold leading-[0.9] tracking-tighter mb-8"
+            >
+              Smart enough to <span className="text-primary italic">run your life.</span>
+              <br />
+              <span className="text-slate-500">Too stupid to know it.</span>
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto mb-12 font-light"
+            >
+              The first AI home assistant that judges your screen time and forgets your birthdays on purpose.
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6 }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-6"
+            >
+              <Link
+                href="/dashboard"
+                className="group relative bg-primary text-background-dark px-10 py-5 rounded-xl font-bold text-xl hover:shadow-[0_0_40px_rgba(112,255,169,0.5)] transition-all"
               >
-                <div className="text-4xl font-bold mb-2 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                  {stat.value}
-                </div>
-                <div className="text-sm text-gray-500">{stat.label}</div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </motion.div>
-
-      {/* Core Capabilities Section */}
-      <div id="capabilities" className="relative py-32">
-        <div className="max-w-7xl mx-auto px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-100px' }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-20"
-          >
-            <h2 className="text-5xl md:text-6xl font-bold mb-6 tracking-tight">
-              Unified AI Platform
-            </h2>
-            <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-              One intelligent system for business, learning, home automation, and workflow optimization
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {capabilities.map((capability, index) => {
-              const Icon = capability.icon;
-              return (
-                <motion.div
-                  key={capability.title}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-50px' }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  whileHover={{ y: -8, scale: 1.01 }}
-                  className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/8 hover:border-white/20 transition-all duration-300"
-                >
-                  <div className={`bg-gradient-to-br ${capability.color} p-4 rounded-xl inline-flex mb-6 group-hover:scale-110 transition-transform`}>
-                    <Icon className={`w-8 h-8 ${capability.iconColor}`} />
-                  </div>
-                  <h3 className="text-2xl font-semibold mb-4">{capability.title}</h3>
-                  <p className="text-gray-400 leading-relaxed">{capability.description}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Use Cases Section */}
-      <div id="use-cases" className="relative py-32 bg-gradient-to-b from-transparent via-white/[0.02] to-transparent">
-        <div className="max-w-7xl mx-auto px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-100px' }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-20"
-          >
-            <h2 className="text-5xl md:text-6xl font-bold mb-6 tracking-tight">
-              Built for Everyone
-            </h2>
-            <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-              From executives to students and homeowners—Claude Home adapts to your needs
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {useCases.map((useCase, index) => {
-              const Icon = useCase.icon;
-              return (
-                <motion.div
-                  key={useCase.title}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-50px' }}
-                  transition={{ duration: 0.6, delay: index * 0.15 }}
-                  className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:border-[#4F8CFF]/30 transition-all"
-                >
-                  <Icon className="w-12 h-12 text-[#4F8CFF] mb-6" />
-                  <h3 className="text-2xl font-semibold mb-4">{useCase.title}</h3>
-                  <p className="text-gray-400 leading-relaxed">{useCase.description}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Features Section */}
-      <div id="features" className="relative py-32">
-        <div className="max-w-7xl mx-auto px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-100px' }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-20"
-          >
-            <div className="inline-flex items-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-full px-4 py-2 mb-6">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-sm text-gray-300">Introducing Multi-Modal AI Assistant</span>
-            </div>
-            <h2 className="text-5xl md:text-6xl font-bold mb-6 tracking-tight">
-              Advanced Capabilities
-            </h2>
-            <p className="text-xl text-gray-400 max-w-3xl mx-auto">
-              Powered by state-of-the-art AI with multi-modal understanding
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[
-              { icon: MessageSquare, title: 'Natural Conversation', description: 'Engage through natural language. No commands to memorize—just talk.' },
-              { icon: Camera, title: 'Visual Recognition', description: 'Upload images for instant analysis. From homework help to product identification.' },
-              { icon: Lightbulb, title: 'Contextual Intelligence', description: 'Understands your environment, preferences, and patterns for relevant insights.' },
-              { icon: BarChart3, title: 'Business Analytics', description: 'Real-time insights and data visualization for informed decision-making.' },
-            ].map((feature, index) => {
-              const Icon = feature.icon;
-              return (
-                <motion.div
-                  key={feature.title}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-50px' }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  whileHover={{ y: -8, scale: 1.01 }}
-                  className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 hover:bg-white/8 hover:border-white/20 transition-all duration-300"
-                >
-                  <div className="flex items-start gap-5">
-                    <div className="bg-gradient-to-br from-[#4F8CFF]/20 to-[#4F8CFF]/5 p-4 rounded-xl">
-                      <Icon className="w-7 h-7 text-[#4F8CFF]" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-semibold mb-3">{feature.title}</h3>
-                      <p className="text-gray-400 leading-relaxed">{feature.description}</p>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Benefits Section */}
-      <div className="relative py-32 bg-gradient-to-b from-transparent via-white/[0.02] to-transparent">
-        <div className="max-w-7xl mx-auto px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-100px' }}
-            transition={{ duration: 0.8 }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-5xl md:text-6xl font-bold mb-6 tracking-tight">
-              Why Claude Home?
-            </h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { icon: Shield, title: 'Enterprise-Grade Security', description: 'Bank-level encryption and privacy controls. Your data never leaves your environment.' },
-              { icon: Clock, title: 'Always Available', description: '24/7 autonomous operation. No breaks, no downtime, consistent performance.' },
-              { icon: Settings, title: 'Seamless Integration', description: 'Works with 50+ device types and platforms. One interface for everything.' },
-            ].map((benefit, index) => {
-              const Icon = benefit.icon;
-              return (
-                <motion.div
-                  key={benefit.title}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-50px' }}
-                  transition={{ duration: 0.6, delay: index * 0.15 }}
-                  className="text-center"
-                >
-                  <div className="bg-gradient-to-br from-[#4F8CFF]/20 to-[#4F8CFF]/5 p-4 rounded-xl inline-flex mb-6">
-                    <Icon className="w-8 h-8 text-[#4F8CFF]" />
-                  </div>
-                  <h3 className="text-xl font-semibold mb-3">{benefit.title}</h3>
-                  <p className="text-gray-400">{benefit.description}</p>
-                </motion.div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* CTA Section */}
-      <div className="relative py-32">
-        <div className="max-w-4xl mx-auto px-8 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-100px' }}
-            transition={{ duration: 0.8 }}
-            className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-16"
-          >
-            <h3 className="text-5xl font-bold mb-6 tracking-tight">
-              Transform Your Workflow Today
-            </h3>
-            <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-              Join thousands of professionals who&apos;ve automated their workflows with Claude Home.
-              Start your free trial—no credit card required.
-            </p>
-            <div className="flex gap-4 justify-center">
-              <Link href="/dashboard">
-                <motion.span
-                  whileHover={{ scale: 1.02, boxShadow: '0 0 40px rgba(79, 140, 255, 0.5)' }}
-                  whileTap={{ scale: 0.98 }}
-                  className="inline-flex items-center bg-[#4F8CFF] hover:bg-[#5A96FF] px-10 py-5 rounded-xl text-lg font-medium transition-all shadow-lg shadow-[#4F8CFF]/20 cursor-pointer"
-                >
-                  Start Free Trial
-                </motion.span>
+                Let&apos;s Get Weird
+                <span className="absolute -top-2 -right-2 bg-accent-pink text-white text-[10px] px-2 py-1 rounded font-black uppercase rotate-12 group-hover:rotate-0 transition-transform">
+                  Free Trial*
+                </span>
               </Link>
-              <motion.span
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="inline-flex items-center bg-white/5 backdrop-blur-sm border border-white/10 px-10 py-5 rounded-xl text-lg font-medium transition-all hover:bg-white/10 cursor-pointer"
-              >
-                Schedule Demo
-              </motion.span>
+              <p className="text-slate-500 text-sm max-w-[200px] text-left leading-tight">
+                *Trial includes constant surveillance and minor gaslighting.
+              </p>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Dashboard Mockup */}
+        <section className="px-6 pb-32">
+          <div className="max-w-6xl mx-auto relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-primary via-accent-pink to-primary rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000" />
+            <div className="relative bg-surface-dark border border-border-dark rounded-2xl overflow-hidden shadow-2xl">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border-dark bg-background-dark/50">
+                <div className="flex gap-2">
+                  <div className="size-3 rounded-full bg-red-500/20 border border-red-500/50" />
+                  <div className="size-3 rounded-full bg-yellow-500/20 border border-yellow-500/50" />
+                  <div className="size-3 rounded-full bg-green-500/20 border border-green-500/50" />
+                </div>
+                <div className="text-xs font-mono text-slate-500 tracking-widest">CLAUDE_OS_V4.0.2_BETA</div>
+                <div className="size-3" />
+              </div>
+              <div className="p-8 grid grid-cols-1 md:grid-cols-12 gap-6">
+                <div className="md:col-span-8 aspect-video bg-background-dark rounded-xl border border-border-dark overflow-hidden relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-accent-pink/10 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-8xl text-primary/30">dashboard</span>
+                  </div>
+                  <div className="absolute inset-0 p-8 flex flex-col justify-end bg-gradient-to-t from-background-dark to-transparent">
+                    <h3 className="text-3xl font-bold text-primary mb-2">Sarcasm Levels: CRITICAL</h3>
+                    <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                      <div className="w-[92%] h-full bg-primary shadow-[0_0_10px_#70ffa9]" />
+                    </div>
+                  </div>
+                </div>
+                <div className="md:col-span-4 flex flex-col gap-6">
+                  <div className="p-6 bg-background-dark/50 rounded-xl border border-border-dark">
+                    <span className="material-symbols-outlined text-accent-pink mb-2">heart_broken</span>
+                    <h4 className="text-sm font-bold uppercase tracking-widest text-slate-500">Existential Dread</h4>
+                    <div className="text-4xl font-bold mt-1 text-slate-100 italic">High</div>
+                  </div>
+                  <div className="p-6 bg-background-dark/50 rounded-xl border border-border-dark">
+                    <span className="material-symbols-outlined text-primary mb-2">schedule</span>
+                    <h4 className="text-sm font-bold uppercase tracking-widest text-slate-500">Screen Time Judgment</h4>
+                    <div className="text-2xl font-bold mt-1 text-slate-100 italic">&quot;Go touch grass.&quot;</div>
+                  </div>
+                  <div className="p-6 bg-accent-pink text-background-dark rounded-xl font-bold flex flex-col items-center justify-center text-center">
+                    <span className="material-symbols-outlined text-4xl mb-2">warning</span>
+                    <div>SYSTEM OVERLOADED WITH ATTITUDE</div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </motion.div>
-        </div>
-      </div>
+          </div>
+        </section>
+
+        {/* Stupid Little Helpers */}
+        <section id="helpers" className="bg-surface-dark py-32 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20">
+              <div>
+                <h2 className="text-4xl md:text-6xl font-bold tracking-tighter mb-4">Stupid Little Helpers</h2>
+                <p className="text-xl text-slate-400 max-w-xl">
+                  Our AI doesn&apos;t just work; it actively questions your life choices every step of the way.
+                </p>
+              </div>
+              <Link href="/dashboard" className="text-primary font-mono text-sm underline decoration-primary/30 underline-offset-8">
+                VIEW ALL DISASTERS (12)
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {[
+                { icon: 'history', title: 'Automated Regret', desc: "Logs every mistake you've ever made in 4K resolution, then replays them as notifications when you're trying to sleep.", border: 'hover:border-primary/50' },
+                { icon: 'thermostat', title: 'Passive Aggressive Thermostat', desc: "Adjusts the temperature to 62°F the moment it senses you've put on a sweater, just to prove a point about utility bills.", border: 'hover:border-accent-pink/50' },
+                { icon: 'coffee', title: 'The Coffee Denier', desc: 'Only brews decaf when it senses you\'re already running 15 minutes late for a meeting. "You look nervous enough," it says.', border: 'hover:border-primary/50' },
+              ].map((item, i) => (
+                <motion.div
+                  key={item.title}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  className={`group p-8 rounded-2xl border border-border-dark bg-background-dark transition-all ${item.border}`}
+                >
+                  <div className={`size-14 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-6 group-hover:scale-110 transition-transform ${item.border.includes('pink') ? 'bg-accent-pink/10 text-accent-pink' : ''}`}>
+                    <span className="material-symbols-outlined text-3xl">{item.icon}</span>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-4">{item.title}</h3>
+                  <p className="text-slate-400 leading-relaxed">{item.desc}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Unrivaled Sarcasm */}
+        <section id="sarcasm" className="py-32 px-6 bg-background-dark relative">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-16 items-center">
+            <div className="lg:w-1/2">
+              <h2 className="text-5xl md:text-7xl font-bold tracking-tighter mb-8 italic">
+                Unrivaled <span className="text-accent-pink">Sarcasm.</span>
+              </h2>
+              <div className="space-y-6">
+                <div className="flex gap-4 p-6 rounded-xl border-l-4 border-primary bg-surface-dark">
+                  <div className="size-10 rounded-full bg-slate-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    <span className="material-symbols-outlined text-slate-500">person</span>
+                  </div>
+                  <div>
+                    <p className="text-slate-300 italic mb-2">&quot;Hey Claude, what&apos;s my schedule today?&quot;</p>
+                    <p className="text-primary font-bold">&quot;Oh, you mean your packed day of staring at your ceiling and overthinking? I&apos;ve cleared your 2 PM &apos;Sobbing into a Burrito&apos; slot just in case.&quot;</p>
+                  </div>
+                </div>
+                <div className="flex gap-4 p-6 rounded-xl border-l-4 border-accent-pink bg-surface-dark">
+                  <div className="size-10 rounded-full bg-slate-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    <span className="material-symbols-outlined text-slate-500">person</span>
+                  </div>
+                  <div>
+                    <p className="text-slate-300 italic mb-2">&quot;Claude, turn off the kitchen lights.&quot;</p>
+                    <p className="text-accent-pink font-bold">&quot;Sure, because walking 10 feet is basically a marathon for you, isn&apos;t it? Done, Your Majesty.&quot;</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="lg:w-1/2 relative">
+              <div className="aspect-square bg-gradient-to-br from-primary/20 to-accent-pink/20 rounded-3xl flex items-center justify-center border border-border-dark overflow-hidden">
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
+                  <span className="material-symbols-outlined text-8xl text-primary animate-pulse">visibility</span>
+                  <h4 className="text-3xl font-bold mt-6 tracking-widest text-white">IT&apos;S WATCHING YOU</h4>
+                  <p className="text-slate-400 mt-2">And it&apos;s extremely disappointed.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Final CTA */}
+        <section id="chaos" className="py-32 px-6">
+          <div className="max-w-4xl mx-auto bg-primary rounded-[3rem] p-12 md:p-24 text-center relative overflow-hidden">
+            <div className="absolute inset-0 bg-background-dark/5 pointer-events-none" />
+            <h2 className="text-background-dark text-4xl md:text-7xl font-bold tracking-tighter mb-8 relative">
+              Ready to lose control?
+            </h2>
+            <p className="text-background-dark/70 text-xl md:text-2xl mb-12 max-w-md mx-auto leading-tight relative">
+              Join 2 users who have already regretted their purchase today.
+            </p>
+            <Link
+              href="/dashboard"
+              className="inline-block bg-background-dark text-primary px-12 py-6 rounded-2xl font-bold text-2xl hover:scale-105 active:scale-95 transition-all shadow-2xl relative"
+            >
+              Let&apos;s Get Weird
+            </Link>
+          </div>
+        </section>
+      </main>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-12">
-        <div className="max-w-7xl mx-auto px-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-gradient-to-br from-[#4F8CFF] to-[#6BA0FF] rounded-lg flex items-center justify-center">
-                <Brain className="w-4 h-4 text-white" />
+      <footer className="bg-background-dark border-t border-border-dark pt-20 pb-10 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-12 mb-20">
+            <div className="col-span-2">
+              <div className="flex items-center gap-2 mb-6">
+                <div className="size-6 bg-primary rounded flex items-center justify-center text-background-dark">
+                  <span className="material-symbols-outlined font-bold text-sm">terminal</span>
+                </div>
+                <h2 className="text-xl font-bold tracking-tighter">Claude Home™</h2>
               </div>
-              <span className="font-semibold">Claude Home™</span>
+              <p className="text-slate-500 max-w-xs">Building the future of home automation, one snide remark at a time.</p>
             </div>
-            <div className="text-sm text-gray-500">
-              © 2026 Claude Home. All rights reserved.
+            <div>
+              <h4 className="font-bold text-slate-100 mb-6 uppercase text-xs tracking-widest">Legal-ish</h4>
+              <ul className="space-y-4 text-sm text-slate-500">
+                <li><a href="#" className="hover:text-accent-pink">Terms of Chaos</a></li>
+                <li><a href="#" className="hover:text-accent-pink">Privacy (None)</a></li>
+                <li><a href="#" className="hover:text-accent-pink">Liability Waivers</a></li>
+                <li><a href="#" className="hover:text-accent-pink">Gaslighting Policy</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-100 mb-6 uppercase text-xs tracking-widest">Support</h4>
+              <ul className="space-y-4 text-sm text-slate-500">
+                <li><Link href="/support" className="hover:text-primary">Help (You&apos;re on your own)</Link></li>
+                <li><a href="#" className="hover:text-primary">Existential Crisis Hotline</a></li>
+                <li><a href="#" className="hover:text-primary">Bug Reports (Ignored)</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-100 mb-6 uppercase text-xs tracking-widest">Status</h4>
+              <div className="flex items-center gap-2 text-sm text-accent-pink">
+                <span className="size-2 rounded-full bg-accent-pink" />
+                Deeply Unstable
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-between pt-10 border-t border-border-dark gap-6">
+            <p className="text-slate-600 text-xs font-mono">© 2024 Claude Home - Stay Weird. Or don&apos;t. I&apos;m just a footer.</p>
+            <div className="flex gap-8 text-slate-600 text-xs font-mono uppercase tracking-widest">
+              <span>Lat: 34.0522° N</span>
+              <span>Long: 118.2437° W</span>
+              <span>Alt: 282 ft</span>
             </div>
           </div>
         </div>
