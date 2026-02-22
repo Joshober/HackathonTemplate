@@ -150,6 +150,31 @@ ASSISTANT_TOOLS = [
             'parameters': {'type': 'object', 'properties': {}},
         },
     },
+    {
+        'type': 'function',
+        'function': {
+            'name': 'send_email',
+            'description': 'Send an email. Use when the user asks to send an email, email someone, or write/send a message to an email address. You need: recipient email (to), subject line, and body text.',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'to': {
+                        'type': 'string',
+                        'description': 'Recipient email address (e.g. someone@example.com)',
+                    },
+                    'subject': {
+                        'type': 'string',
+                        'description': 'Subject line of the email',
+                    },
+                    'body': {
+                        'type': 'string',
+                        'description': 'Plain text body of the email. Keep concise for voice; can be multiple sentences.',
+                    },
+                },
+                'required': ['to', 'subject', 'body'],
+            },
+        },
+    },
 ]
 
 
@@ -290,6 +315,20 @@ def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_
                 )
             elif name == 'get_portfolio_summary':
                 tool_result = fetch_portfolio_summary()
+            elif name == 'send_email':
+                try:
+                    from app.services.mail import send_email as do_send_email, is_configured as mail_configured
+                    if not mail_configured():
+                        tool_result = 'Email not configured. SMTP is not set up on the server.'
+                    else:
+                        do_send_email(
+                            to=(args.get('to') or '').strip(),
+                            subject=(args.get('subject') or '').strip(),
+                            body_text=(args.get('body') or '').strip(),
+                        )
+                        tool_result = 'Email sent successfully.'
+                except Exception as e:
+                    tool_result = f'Failed to send email: {str(e)}'
             else:
                 tool_result = f'Unknown tool: {name}'
             messages.append({'role': 'tool', 'tool_call_id': tid, 'content': tool_result})
