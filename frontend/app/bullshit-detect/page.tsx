@@ -4,6 +4,33 @@ import { useState, useRef, useEffect } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import { api } from '@/lib/api';
 import { FileWarning, Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth';
+
+const ACCEPTED_DOC_TYPES = '.pdf,.doc,.docx';
+const isPdfOrWord = (f: File) => {
+  const name = (f.name || '').toLowerCase();
+  return name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx');
+};
+
+async function extractPdfText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const parts: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map((item) => ('str' in item ? item.str : '')).join(' ');
+    parts.push(pageText);
+  }
+  return parts.join('\n\n');
+}
+
+async function extractWordText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value;
+}
 
 const MAX_VIDEO_SECONDS = 20;
 const VIDEO_EXTENSIONS = ['.mov', '.mp4', '.webm', '.mpeg', '.mpeg4'];
@@ -86,6 +113,7 @@ export default function BullshitDetectPage() {
   const [analysis, setAnalysis] = useState('');
   const [transcribedText, setTranscribedText] = useState<string | null>(null);
   const [lastTtsUrl, setLastTtsUrl] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -98,6 +126,10 @@ export default function BullshitDetectPage() {
 
   useEffect(() => () => {
     if (lastTtsUrlRef.current) URL.revokeObjectURL(lastTtsUrlRef.current);
+  }, []);
+
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs';
   }, []);
 
   const startRecording = async () => {
@@ -163,36 +195,52 @@ export default function BullshitDetectPage() {
     }
   };
 
+  const processFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).filter(isPdfOrWord);
+    if (!files.length) return;
+    setError(null);
+    setVideoError(null);
+    Promise.all(
+      files.map(async (file) => {
+        const name = (file.name || '').toLowerCase();
+        if (name.endsWith('.pdf')) return extractPdfText(file);
+        if (name.endsWith('.doc') || name.endsWith('.docx')) return extractWordText(file);
+        return '';
+      })
+    )
+      .then((contents) => {
+        const combined = contents.filter(Boolean).join('\n\n');
+        if (combined) setText((prev) => (prev ? prev + '\n\n' + combined : combined));
+      })
+      .catch(() => setError('Could not read document. Try a different file.'));
+  };
+
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
-    setVideoError(null);
-    const file = files[0];
-    if (isVideoFile(file)) {
-      setVideoError(null);
-      getVideoDuration(file)
-        .then((duration) => {
-          if (duration > MAX_VIDEO_SECONDS) {
-            setVideoError(`Video must be ${MAX_VIDEO_SECONDS}s or less (this one is ${duration.toFixed(1)}s).`);
-            return;
-          }
-          setAttachedVideo({ file, preview: URL.createObjectURL(file), duration });
-          setAttachedImages([]);
-        })
-        .catch(() => {
-          setAttachedVideo({ file, preview: URL.createObjectURL(file), duration: 0 });
-          setAttachedImages([]);
-        });
-      e.target.value = '';
-      return;
-    }
-    if (attachedVideo) setAttachedVideo(null);
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      if (!f.type.startsWith('image/')) continue;
-      setAttachedImages((prev) => [...prev, { file: f, preview: URL.createObjectURL(f) }]);
-    }
+    processFiles(files);
     e.target.value = '';
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isLoading) return;
+    const files = e.dataTransfer.files;
+    if (!files?.length) return;
+    const valid = Array.from(files).filter(isPdfOrWord);
+    if (valid.length) processFiles(valid);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isLoading) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
   };
 
   const removeImage = (idx: number) => {
@@ -301,13 +349,37 @@ export default function BullshitDetectPage() {
         </div>
 
         <div className="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-6 space-y-4">
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => !isLoading && fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+              isDragging
+                ? 'border-amber-500 bg-amber-500/10'
+                : 'border-white/20 hover:border-amber-500/50 hover:bg-white/5'
+            } ${isLoading ? 'pointer-events-none opacity-60' : ''}`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_DOC_TYPES}
+              multiple
+              className="hidden"
+              onChange={handleImageSelect}
+            />
+            <ImagePlus className="w-10 h-10 mx-auto mb-2 text-amber-400/80" />
+            <p className="text-gray-300 font-medium">Drag and drop Word documents or PDF here</p>
+            <p className="text-gray-500 text-sm mt-1">or click to browse • .doc, .docx, .pdf only</p>
+          </div>
+
           {attachedVideo && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
                 <Video className="w-5 h-5 text-amber-400" />
                 <span className="text-sm">Video ({attachedVideo.duration.toFixed(1)}s)</span>
               </div>
-              <button type="button" onClick={removeVideo} className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500">×</button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); removeVideo(); }} className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500">×</button>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
@@ -330,23 +402,6 @@ export default function BullshitDetectPage() {
               >
                 {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
-                className="p-3 rounded-lg bg-white/10 hover:bg-white/20"
-                title="Attach image or video"
-              >
-                <ImagePlus className="w-5 h-5" />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg"
-                multiple={!attachedVideo}
-                className="hidden"
-                onChange={handleImageSelect}
-              />
               <button
                 type="button"
                 onClick={() => setTtsEnabled((v) => !v)}
@@ -386,7 +441,7 @@ export default function BullshitDetectPage() {
                 type="text"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder={attachedVideo || attachedImages.length ? 'Optional caption…' : 'Type or paste text, or attach image/video…'}
+                placeholder={attachedVideo || attachedImages.length ? 'Optional caption…' : 'Type or paste text…'}
                 className="flex-1 px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 disabled={isLoading}
               />
