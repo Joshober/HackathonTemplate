@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/DashboardShell';
 import { motion } from 'motion/react';
-import { Camera, Copy, Check, Users, GraduationCap, Sparkles, Link2, Clock } from 'lucide-react';
+import { Camera, Copy, Check, Users, GraduationCap, Link2, Clock } from 'lucide-react';
 import {
   extractKeypoints,
   detectPose,
@@ -55,7 +55,9 @@ const FEEDBACK_FAIL = [
   'Almost there... or maybe not.',
   'Academic despair detected.',
 ];
-const KICKED_MESSAGE = "Ok, the AI decided to kick you out because it's working too well.";
+const KICKED_MESSAGE = "You failed to verify you were there. Try again tomorrow.";
+const THIRD_POSE_FEEDBACK = 'Close but not good enough yet, almost there!';
+const ABSENT_MESSAGE = 'You got marked absent. Try again tomorrow.';
 
 const POSE_PRESETS = [
   { id: 't-rex', label: 'T-Rex mode', emoji: '🦖' },
@@ -99,17 +101,17 @@ function encodePosesForUrl(poses: PoseWithImage[]): string {
 
 export default function PoseAttendancePage() {
   const searchParams = useSearchParams();
-  const [mode, setMode] = useState<Mode>('professor');
+  const [mode, setMode] = useState<Mode>('student');
   const [referencePoses, setReferencePoses] = useState<PoseWithImage[]>([]);
   const [shareCode, setShareCode] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [cringeLevel, setCringeLevel] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [tips, setTips] = useState<string[]>([]);
   const [currentPoseIndex, setCurrentPoseIndex] = useState(0);
   const [kickedFromRoom, setKickedFromRoom] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(10);
+  const [kickedReason, setKickedReason] = useState<'timeout' | 'third_pose' | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState(5);
   const [faceOverlay, setFaceOverlay] = useState<{ x: number; y: number; size: number } | null>(null);
   const [faceEmojiMessage, setFaceEmojiMessage] = useState<{ emoji: string; text: string }>({ emoji: '🤡', text: "You're a rockstar!" });
   const [isLoading, setIsLoading] = useState(false);
@@ -119,6 +121,7 @@ export default function PoseAttendancePage() {
   const [sessionPassword, setSessionPassword] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
+  const [profileIsStudent, setProfileIsStudent] = useState(false);
   const hasAppliedUrlPoseRef = useRef(false);
 
   const referencePose = referencePoses[currentPoseIndex]?.pose ?? null;
@@ -136,7 +139,7 @@ export default function PoseAttendancePage() {
   const SUSTAINED_FRAMES = 45;
 
   /** Seconds per pose — if time runs out, student is kicked */
-  const POSE_TIMEOUT_SECONDS = 10;
+  const POSE_TIMEOUT_SECONDS = 5;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const generateShareCode = useCallback((poses: PoseWithImage[]) => {
@@ -150,14 +153,62 @@ export default function PoseAttendancePage() {
   const startCamera = useCallback(async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setError('Camera not available. Use HTTPS or localhost and a browser that supports getUserMedia.');
+        return;
+      }
+      if (!window.isSecureContext) {
+        setError('Camera requires a secure context. Open this page via https:// or localhost.');
+        return;
+      }
+      // Prefer 640x480 for pose detection; fall back stepwise if unsupported (e.g. some webcams/drivers)
+      const constraintsList: MediaStreamConstraints[] = [
+        {
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user',
+          },
+        },
+        { video: { width: { ideal: 640 }, height: { ideal: 480 } } },
+        { video: true },
+        { video: {} },
+      ];
+      let stream: MediaStream | null = null;
+      let lastErr: unknown = null;
+      for (const constraints of constraintsList) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (!stream) {
+        throw lastErr;
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
     } catch (e) {
-      setError('Could not access camera.');
-      console.error(e);
+      const err = e as DOMException & { message?: string; name?: string };
+      const name = err?.name ?? '';
+      const msg = err?.message ?? '';
+      let userMessage: string;
+      if (name === 'NotAllowedError' || msg.toLowerCase().includes('permission')) {
+        userMessage = 'Camera permission denied. Allow camera access in your browser and try again.';
+      } else if (name === 'NotFoundError') {
+        userMessage = 'No camera found. Connect a webcam and refresh.';
+      } else if (name === 'NotReadableError' || msg.toLowerCase().includes('could not start') || msg.toLowerCase().includes('video source')) {
+        userMessage = 'Camera in use or not readable. Close other apps using the camera (Zoom, Teams, etc.), then try again.';
+      } else if (name === 'OverconstrainedError') {
+        userMessage = 'Camera does not support requested settings. Try a different browser or device.';
+      } else {
+        userMessage = msg && msg.length < 120 ? msg : 'Could not start video. Check permissions and that no other app is using the camera.';
+      }
+      setError(userMessage);
+      console.error('Camera error:', name, msg, e);
     }
   }, []);
 
@@ -219,6 +270,7 @@ export default function PoseAttendancePage() {
       setError(null);
       setCurrentPoseIndex(0);
       setKickedFromRoom(false);
+      setKickedReason(null);
       consecutiveGoodFramesRef.current = 0;
     } else if (data && data.length === 1) {
       setReferencePoses([data[0], data[0], data[0]]);
@@ -226,6 +278,7 @@ export default function PoseAttendancePage() {
       setError(null);
       setCurrentPoseIndex(0);
       setKickedFromRoom(false);
+      setKickedReason(null);
       consecutiveGoodFramesRef.current = 0;
     } else {
       setError('Invalid code. Need 3 poses from the teacher.');
@@ -270,6 +323,7 @@ export default function PoseAttendancePage() {
         setStudentPasteCode('');
         setCurrentPoseIndex(0);
         setKickedFromRoom(false);
+        setKickedReason(null);
         consecutiveGoodFramesRef.current = 0;
       } else {
         setError('Invalid or expired password.');
@@ -296,6 +350,7 @@ export default function PoseAttendancePage() {
           setReferencePoses(poses.map((p) => ({ pose: p.pose, image: p.image ?? null })));
           setCurrentPoseIndex(0);
           setKickedFromRoom(false);
+          setKickedReason(null);
           consecutiveGoodFramesRef.current = 0;
           setError(null);
         } else setError('Invalid or expired password.');
@@ -312,6 +367,7 @@ export default function PoseAttendancePage() {
         setError(null);
         setCurrentPoseIndex(0);
         setKickedFromRoom(false);
+        setKickedReason(null);
         consecutiveGoodFramesRef.current = 0;
       } else if (data && data.length === 1) {
         hasAppliedUrlPoseRef.current = true;
@@ -321,9 +377,29 @@ export default function PoseAttendancePage() {
         setError(null);
         setCurrentPoseIndex(0);
         setKickedFromRoom(false);
+        setKickedReason(null);
         consecutiveGoodFramesRef.current = 0;
       }
     }
+  }, [searchParams]);
+
+  // Fetch profile to know if user is a student (hide Teacher tab). Never show Teacher view until we know;
+  // initial mode is 'student' so we don't flash Teacher for students. Switch to professor only for non-students.
+  const hasAppliedProfileDefaultRef = useRef(false);
+  useEffect(() => {
+    if (hasAppliedProfileDefaultRef.current) return;
+    hasAppliedProfileDefaultRef.current = true;
+    const hasUrlParams = !!searchParams.get('password') || !!searchParams.get('code');
+    api.getProfile().then((p) => {
+      if (p.isStudent) {
+        setProfileIsStudent(true);
+        if (!hasUrlParams) setMode('student');
+      } else if (!hasUrlParams) {
+        setMode('professor');
+      }
+    }).catch(() => {
+      if (!hasUrlParams) setMode('professor');
+    });
   }, [searchParams]);
 
   // Loop de detecção para modo student
@@ -345,11 +421,10 @@ export default function PoseAttendancePage() {
       lastVideoTimeRef.current = frameTime;
       isDetectingRef.current = true;
       try {
-        const result = await detectPose(video, frameTime * 1000);
+        const result = await detectPose(video);
         const keypoints = result ? extractKeypoints(result) : null;
         if (keypoints) {
           const similarity = comparePoses(referencePose, keypoints);
-          setCringeLevel(Math.round(similarity * 100));
           if (similarity >= DEFAULT_CRINGE_THRESHOLD) {
             consecutiveGoodFramesRef.current += 1;
             setTips([]);
@@ -411,6 +486,7 @@ export default function PoseAttendancePage() {
             timerRef.current = null;
           }
           setKickedFromRoom(true);
+          setKickedReason('timeout');
           setFeedback(KICKED_MESSAGE);
           setFaceOverlay(null);
           return 0;
@@ -426,11 +502,14 @@ export default function PoseAttendancePage() {
     };
   }, [mode, referencePoses.length, currentPoseIndex, kickedFromRoom]);
 
-  // When entering professor or student mode, turn on camera
+  // Request camera in the background when in a mode that needs it (browser shows permission prompt)
   useEffect(() => {
-    startCamera();
-    return () => stopCamera();
-  }, [mode]);
+    if (mode !== 'professor' && mode !== 'student') return;
+    const t = setTimeout(() => {
+      if (!streamRef.current) startCamera();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [mode, startCamera]);
 
   useEffect(() => {
     return () => stopCamera();
@@ -438,9 +517,9 @@ export default function PoseAttendancePage() {
 
   const resetStudent = useCallback(() => {
     setKickedFromRoom(false);
+    setKickedReason(null);
     setCurrentPoseIndex(0);
     setFaceOverlay(null);
-    setCringeLevel(0);
     setFeedback(null);
     setTips([]);
     setTimeRemaining(POSE_TIMEOUT_SECONDS);
@@ -456,10 +535,10 @@ export default function PoseAttendancePage() {
       >
         <div className="flex items-center gap-3 mb-2">
           <div className="bg-gradient-to-br from-fuchsia-500/20 to-fuchsia-500/5 p-3 rounded-xl">
-            <Sparkles className="w-6 h-6 text-fuchsia-500" />
+            <Camera className="w-6 h-6 text-fuchsia-500" />
           </div>
           <div>
-            <h2 className="text-3xl font-bold">Attendance by Pose Cringe™</h2>
+            <h2 className="text-3xl font-bold">Attendance by Pose</h2>
             <p className="text-gray-400">
               The teacher strikes 3 poses. Students imitate all 3. Spoiler: you get kicked from the room anyway.
             </p>
@@ -467,37 +546,37 @@ export default function PoseAttendancePage() {
         </div>
       </motion.div>
 
-      {/* Tabs Teacher / Student */}
+      {/* Tabs Teacher / Student — hide Teacher for users with "I'm a student" in profile */}
       <div className="flex gap-2 mb-6">
-        <button
-          type="button"
-          onClick={() => {
-            setMode('professor');
-            stopCamera();
-            setReferencePoses([]);
-            setShareCode('');
-            setSessionPassword(null);
-            setCurrentPoseIndex(0);
-            setKickedFromRoom(false);
-            setFaceOverlay(null);
-            setCringeLevel(0);
-            setFeedback(null);
-          }}
-          className={`px-4 py-2 rounded-xl font-medium transition-all ${
-            mode === 'professor'
-              ? 'bg-fuchsia-500/30 text-white border border-fuchsia-500/50'
-              : 'bg-white/5 text-gray-400 hover:bg-white/10'
-          }`}
-        >
-          <GraduationCap className="w-4 h-4 inline mr-2 -mt-0.5" />
-          Teacher
-        </button>
+        {!profileIsStudent && (
+          <button
+            type="button"
+            onClick={() => {
+              setMode('professor');
+              setReferencePoses([]);
+              setShareCode('');
+              setSessionPassword(null);
+              setCurrentPoseIndex(0);
+              setKickedFromRoom(false);
+              setKickedReason(null);
+              setFaceOverlay(null);
+              setFeedback(null);
+            }}
+            className={`px-4 py-2 rounded-xl font-medium transition-all ${
+              mode === 'professor'
+                ? 'bg-fuchsia-500/30 text-white border border-fuchsia-500/50'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4 inline mr-2 -mt-0.5" />
+            Teacher
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {
             setMode('student');
             setReferencePoses([]);
-            startCamera();
           }}
           className={`px-4 py-2 rounded-xl font-medium transition-all ${
             mode === 'student'
@@ -516,7 +595,7 @@ export default function PoseAttendancePage() {
         </div>
       )}
 
-      {mode === 'professor' && (
+      {mode === 'professor' && !profileIsStudent && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -533,21 +612,8 @@ export default function PoseAttendancePage() {
                   className="max-w-full max-h-full object-cover"
                 />
                 <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-                {!streamRef.current && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
-                    <Camera className="w-16 h-16 mb-2 opacity-50" />
-                    <span>Camera off</span>
-                  </div>
-                )}
               </div>
               <div className="p-4 flex gap-2">
-                <button
-                  type="button"
-                  onClick={startCamera}
-                  className="flex-1 px-4 py-2 bg-[#ff6b35]/20 text-[#ff6b35] rounded-lg hover:bg-[#ff6b35]/30"
-                >
-                  Turn on camera
-                </button>
                 <button
                   type="button"
                   onClick={captureReferencePose}
@@ -730,7 +796,7 @@ export default function PoseAttendancePage() {
                     Pose loaded from link
                   </div>
                   <div className="aspect-video bg-black/30 flex items-center justify-center p-6 text-center">
-                    <p className="text-gray-400">Get in frame and match the pose. Use the cringe meter on the right!</p>
+                    <p className="text-gray-400">Get in frame and match the pose before the timer runs out!</p>
                   </div>
                 </div>
               ) : null}
@@ -774,12 +840,6 @@ export default function PoseAttendancePage() {
                       </div>
                     </motion.div>
                   )}
-                  {!streamRef.current && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
-                      <Camera className="w-12 h-12 mb-2 opacity-50" />
-                      <span>Starting camera...</span>
-                    </div>
-                  )}
                 </div>
                 <p className="p-4 text-sm text-gray-400">
                   {referencePose
@@ -816,32 +876,20 @@ export default function PoseAttendancePage() {
               ) : (
                 <>
                   {!kickedFromRoom && (
-                    <div className="flex items-center gap-2 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                      <Clock className="w-5 h-5 text-amber-500" />
-                      <span className="text-amber-400 font-medium">{timeRemaining}s</span>
-                      <span className="text-amber-500/80 text-sm">left for pose {currentPoseIndex + 1}/{REQUIRED_POSES}</span>
+                    <div className="flex items-center justify-center gap-3 p-6 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                      <Clock className="w-8 h-8 text-amber-500" />
+                      <div className="text-center">
+                        <p className="text-3xl font-bold text-amber-400 tabular-nums">{timeRemaining}s</p>
+                        <p className="text-amber-500/80 text-sm mt-0.5">left for pose {currentPoseIndex + 1}/{REQUIRED_POSES}</p>
+                      </div>
                     </div>
                   )}
-                  <div>
-                    <p className="text-sm text-gray-400 mb-2">Cringe Level</p>
-                    <div className="h-4 bg-black/30 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full ${
-                          kickedFromRoom
-                            ? 'bg-red-500'
-                            : cringeLevel >= DEFAULT_CRINGE_THRESHOLD * 100
-                              ? 'bg-green-500'
-                              : cringeLevel >= 50
-                                ? 'bg-amber-500'
-                                : 'bg-red-500/70'
-                        }`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${kickedFromRoom ? 100 : Math.min(cringeLevel, 100)}%` }}
-                        transition={{ duration: 0.3 }}
-                      />
+                  {kickedFromRoom && (
+                    <div className="flex items-center justify-center gap-3 p-6 bg-red-500/10 border border-red-500/30 rounded-xl">
+                      <Clock className="w-8 h-8 text-red-500" />
+                      <p className="text-xl font-bold text-red-400">Time&apos;s up</p>
                     </div>
-                    <p className="text-right text-sm text-gray-500 mt-1">{kickedFromRoom ? '100%' : `${cringeLevel}%`}</p>
-                  </div>
+                  )}
 
                   <div
                     className={`p-6 rounded-xl border ${
@@ -869,9 +917,6 @@ export default function PoseAttendancePage() {
                           ))}
                         </ul>
                       </div>
-                    )}
-                    {kickedFromRoom && (
-                      <p className="mt-2 text-2xl font-bold text-red-400">{KICKED_MESSAGE}</p>
                     )}
                   </div>
 

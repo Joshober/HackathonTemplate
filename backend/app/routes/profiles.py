@@ -59,6 +59,7 @@ def get_profile(user_id):
                 'displayName': display_name,
                 'bio': '',  # Empty bio, user can fill it later
                 'profileImageUrl': profile_image_url,
+                'isStudent': False,
                 'createdAt': now,
                 'updatedAt': now
             }
@@ -115,6 +116,7 @@ def create_profile(user_id):
                 except Exception as e:
                     return jsonify({'error': str(e)}), 500
         
+        is_student = data.get('isStudent', 'false').lower() in ('true', '1', 'yes')
         # Create new profile
         now = datetime.utcnow()
         new_profile = {
@@ -122,6 +124,7 @@ def create_profile(user_id):
             'displayName': display_name,
             'bio': bio,
             'profileImageUrl': profile_image_url,
+            'isStudent': is_student,
             'createdAt': now,
             'updatedAt': now
         }
@@ -148,13 +151,20 @@ def update_profile(user_id):
         if not existing_profile:
             return jsonify({'error': 'Profile not found'}), 404
         
-        data = request.form
+        # Accept either JSON (when no image) or form data (multipart)
+        if request.is_json:
+            data = request.get_json(silent=True) or {}
+        else:
+            data = request.form
         update_data = {'updatedAt': datetime.utcnow()}
         
-        if 'displayName' in data:
-            update_data['displayName'] = data['displayName']
+        if data.get('displayName') is not None:
+            update_data['displayName'] = data.get('displayName') or ''
         if 'bio' in data:
-            update_data['bio'] = data['bio']
+            update_data['bio'] = data.get('bio', '')
+        is_student_val = data.get('isStudent')
+        if is_student_val is not None:
+            update_data['isStudent'] = str(is_student_val).lower() in ('true', '1', 'yes')
         
         # Handle image upload
         if 'image' in request.files:

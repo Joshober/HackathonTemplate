@@ -115,20 +115,18 @@ export async function detectPoseFromImage(
   return null;
 }
 
+/** Monotonic timestamp for VIDEO mode (module-level so it never resets on React remount/Strict Mode). */
+let videoTimestampMs = 0;
+
 /**
  * Detecta pose em um frame de vídeo (uso: loop do aluno).
- * Exige timestamp em ms, monotónico; use video.currentTime * 1000.
+ * Usa timestamp interno monotónico para evitar erro de MediaPipe (norm_rect mismatch).
  */
-/**
- * Detecta pose em um frame de vídeo (uso: loop do aluno).
- */
-export async function detectPose(
-  video: HTMLVideoElement,
-  timestamp: number
-): Promise<PoseLandmarkerResult | null> {
+export async function detectPose(video: HTMLVideoElement): Promise<PoseLandmarkerResult | null> {
   const detector = await initPoseLandmarker();
+  videoTimestampMs += 33; // ~30fps; must always increase
   try {
-    return detector.detectForVideo(video, timestamp);
+    return detector.detectForVideo(video, videoTimestampMs);
   } catch {
     return null;
   }

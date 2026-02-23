@@ -9,10 +9,10 @@ const navItems: { icon: string; label: string; href: string }[] = [
   { icon: 'dashboard', label: 'Overview', href: '/dashboard' },
   { icon: 'list_alt', label: 'Chaos Logs', href: '/chat' },
   { icon: 'history', label: 'AI Tutor', href: '/tutor' },
-  { icon: 'warning', label: 'Existential Threats', href: '/bullshit-detect' },
+  { icon: 'fact_check', label: 'Reality Checker', href: '/bullshit-detect' },
   { icon: 'graphic_eq', label: 'Voice Assistant', href: '/voice-assistant' },
-  { icon: 'videocam', label: 'Pose Attendance', href: '/pose-attendance' },
-  { icon: 'help_center', label: 'Help us', href: '/support' },
+  { icon: 'photo_camera', label: 'Pose Attendance', href: '/pose-attendance' },
+  { icon: 'help_center', label: 'Tech support', href: '/support' },
 ];
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {

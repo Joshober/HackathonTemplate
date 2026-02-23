@@ -11,7 +11,7 @@ const shortcuts = [
   { href: '/support', label: 'Tech Support', icon: 'support_agent', desc: 'Chat, email, tickets' },
   { href: '/voice-assistant', label: 'Voice Assistant', icon: 'mic', desc: 'Hands-free assistant' },
   { href: '/bullshit-detect', label: 'Reality Check', icon: 'fact_check', desc: 'Detect unreliable content' },
-  { href: '/pose-attendance', label: 'Pose Attendance', icon: 'videocam', desc: 'Attendance by pose' },
+  { href: '/pose-attendance', label: 'Pose Attendance', icon: 'photo_camera', desc: 'Attendance by pose' },
   { href: '/profile', label: 'Profile', icon: 'person', desc: 'Edit your profile' },
 ];
 

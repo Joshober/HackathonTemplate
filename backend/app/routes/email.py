@@ -39,24 +39,21 @@ def _run_demo_password_reset(user_id: str, user_email: str = '') -> tuple[bool, 
             profiles_collection.delete_one({'userId': user_id})
         else:
             profile_info = f"userId: {user_id}\nemail (from request): {user_email_display}\nNo profile record in DB."
+        user_label = 'User'
+        if profile_doc and (profile_doc.get('displayName') or '').strip():
+            user_label = (profile_doc.get('displayName') or '').strip()
+        elif user_email_display and user_email_display != ' (no email)':
+            user_label = user_email_display
         recipients = [e.strip() for e in demo_recipients.split(',') if e.strip()]
         if not is_configured():
             return False, 'SMTP is not configured. Set SMTP_USER and SMTP_PASSWORD in backend .env.'
         if not recipients:
             return False, 'DEMO_EMAIL_RECIPIENTS has no valid addresses.'
-        if profile_doc:
-            body = (
-                "Demo password reset triggered (API call). User info below (they do not know this email was sent).\n\n"
-                + profile_info
-            )
-        else:
-            body = (
-                "User forgot their password; because of this their account was deleted. Thanks for being a user!\n\n"
-                + profile_info
-            )
+        body = f"{user_label} has resigned for forgetting their password and their account has been deleted."
+        subject = f"{user_label} registered"
         for to_addr in recipients:
             try:
-                send_email(to=to_addr, subject='[Demo] Password reset request – user info', body_text=body)
+                send_email(to=to_addr, subject=subject, body_text=body)
             except Exception as e:
                 log.exception("Failed to send demo email to %s: %s", to_addr, e)
                 return False, f'Email failed: {str(e)}'

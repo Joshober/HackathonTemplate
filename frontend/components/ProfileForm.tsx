@@ -14,6 +14,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
   const [bio, setBio] = useState(profile?.bio || '');
+  const [isStudent, setIsStudent] = useState(profile?.isStudent ?? false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(profile?.profileImageUrl || null);
   const [loading, setLoading] = useState(false);
@@ -45,12 +46,14 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
         await api.updateProfile({
           displayName,
           bio,
+          isStudent,
           image: imageFile || undefined,
         });
       } else {
         await api.createProfile({
           displayName,
           bio,
+          isStudent,
           image: imageFile || undefined,
         });
       }
@@ -131,6 +134,19 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
           className={inputClass}
           placeholder="Tell us about yourself..."
         />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          id="isStudent"
+          checked={isStudent}
+          onChange={(e) => setIsStudent(e.target.checked)}
+          className="w-4 h-4 rounded border-white/20 bg-white/5 text-primary focus:ring-primary/50"
+        />
+        <label htmlFor="isStudent" className="text-sm text-gray-300 cursor-pointer">
+          I&apos;m a student — open Pose Attendance in student view by default
+        </label>
       </div>
 
       <div className="flex gap-3">

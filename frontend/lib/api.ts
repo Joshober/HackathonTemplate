@@ -17,6 +17,8 @@ export interface Profile {
   displayName: string;
   bio: string;
   profileImageUrl?: string;
+  /** When true, Pose Attendance page opens in student view by default */
+  isStudent?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -250,10 +252,11 @@ export const api = {
     return fetchWithAuth('/api/profiles');
   },
 
-  async createProfile(profile: { displayName: string; bio: string; image?: File }): Promise<Profile> {
+  async createProfile(profile: { displayName: string; bio: string; image?: File; isStudent?: boolean }): Promise<Profile> {
     const formData = new FormData();
     formData.append('displayName', profile.displayName);
     formData.append('bio', profile.bio);
+    if (profile.isStudent !== undefined) formData.append('isStudent', profile.isStudent ? 'true' : 'false');
     if (profile.image) {
       formData.append('image', profile.image);
     }
@@ -263,13 +266,24 @@ export const api = {
     });
   },
 
-  async updateProfile(profile: { displayName?: string; bio?: string; image?: File }): Promise<Profile> {
+  async updateProfile(profile: { displayName?: string; bio?: string; image?: File; isStudent?: boolean }): Promise<Profile> {
+    // When no image, send JSON so backend reliably receives all fields (e.g. isStudent)
+    if (!profile.image) {
+      const body: Record<string, string | boolean> = {};
+      if (profile.displayName) body.displayName = profile.displayName;
+      if (profile.bio !== undefined) body.bio = profile.bio;
+      if (profile.isStudent !== undefined) body.isStudent = profile.isStudent;
+      return fetchWithAuth('/api/profiles', {
+        method: 'PUT',
+        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const formData = new FormData();
     if (profile.displayName) formData.append('displayName', profile.displayName);
     if (profile.bio !== undefined) formData.append('bio', profile.bio);
-    if (profile.image) {
-      formData.append('image', profile.image);
-    }
+    if (profile.isStudent !== undefined) formData.append('isStudent', profile.isStudent ? 'true' : 'false');
+    formData.append('image', profile.image!);
     return fetchWithAuth('/api/profiles', {
       method: 'PUT',
       body: formData,

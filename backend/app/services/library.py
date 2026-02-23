@@ -4,7 +4,7 @@ import json
 import requests
 
 _LIBRARY_NGROK_URL = 'https://warner-unthrashed-nonvascularly.ngrok-free.dev/api/ble/count'
-_LIBRARY_LOCAL_URL = 'http://192.168.137.147/api/ble/count'
+_LIBRARY_LOCAL_URL = 'http://192.168.137.87/api/ble/count'
 _LIBRARY_FALLBACK_COUNT = 14
 
 

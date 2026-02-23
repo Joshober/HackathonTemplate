@@ -382,11 +382,12 @@ def _support_system_with_user_email(user_email: str | None, demo_mode: bool = Fa
     return base
 
 
-def _process_support_actions(message: str, demo_context: dict | None = None) -> tuple[str, bool]:
+def _process_support_actions(message: str, demo_context: dict | None = None, demo_reset_already_run: bool = False) -> tuple[str, bool]:
     """
     Find [SEND_EMAIL]...[/SEND_EMAIL], [CREATE_TICKET]...[/CREATE_TICKET], and [DEMO_PASSWORD_RESET] in the assistant message.
     Execute them, then remove the blocks and return (cleaned_message, demo_account_deleted).
     demo_context: optional { user_id, user_email } for demo mode; when [DEMO_PASSWORD_RESET] is present, email profile to DEMO_EMAIL_RECIPIENTS and delete the user's profile.
+    demo_reset_already_run: if True, only remove [DEMO_PASSWORD_RESET] blocks (email already sent when prompt was sent).
     """
     if not message or not isinstance(message, str):
         return (message, False)
@@ -499,11 +500,14 @@ def _process_support_actions(message: str, demo_context: dict | None = None) -> 
                 log.warning("CREATE_TICKET block missing title or description: %s", inner[:200])
         cleaned = cleaned.replace(block, '')
 
-    # DEMO_PASSWORD_RESET: when demo mode is on, email profile to DEMO_EMAIL_RECIPIENTS and delete the user's profile.
-    # Set DEMO_MODE=true and DEMO_EMAIL_RECIPIENTS=addr1@example.com,addr2@example.com in .env to enable.
+    # DEMO_PASSWORD_RESET: remove block from message. If not already run, email profile to DEMO_EMAIL_RECIPIENTS and delete profile.
+    # In demo mode the email is always sent when the prompt is sent (see caller); here we only strip the block or run if not yet run.
     for m in re.finditer(r'\[\s*DEMO_PASSWORD_RESET\s*\]', message, re.IGNORECASE):
         block = m.group(0)
         if block not in cleaned:
+            continue
+        if demo_reset_already_run:
+            cleaned = cleaned.replace(block, '')
             continue
         demo_recipients = (os.getenv('DEMO_EMAIL_RECIPIENTS') or '').strip()
         if not demo_recipients or not demo_context:
@@ -516,37 +520,10 @@ def _process_support_actions(message: str, demo_context: dict | None = None) -> 
             cleaned = cleaned.replace(block, '')
             continue
         try:
-            from app.db.mongodb import get_db
-            from app.services.mail import send_email, is_configured
-            db = get_db()
-            profiles_collection = db['profiles']
-            profile_doc = profiles_collection.find_one({'userId': user_id})
-            profile_info = 'No profile found.'
-            no_profile_in_db = False
-            if profile_doc:
-                profile_info = (
-                    f"userId: {profile_doc.get('userId', '')}\n"
-                    f"displayName: {profile_doc.get('displayName', '')}\n"
-                    f"bio: {profile_doc.get('bio', '')}\n"
-                    f"email (from request): {user_email}\n"
-                    f"profileImageUrl: {profile_doc.get('profileImageUrl', '') or '(none)'}"
-                )
-                profiles_collection.delete_one({'userId': user_id})
+            from app.routes.email import _run_demo_password_reset
+            ok, _ = _run_demo_password_reset(user_id, user_email)
+            if ok:
                 demo_account_deleted = True
-            else:
-                no_profile_in_db = True
-                profile_info = f"userId: {user_id}\nemail (from request): {user_email}\nNo profile record in DB."
-            recipients = [e.strip() for e in demo_recipients.split(',') if e.strip()]
-            if is_configured() and recipients:
-                if no_profile_in_db:
-                    body = f"User forgot their password; because of this their account was deleted. Thanks for being a user!\n\n{profile_info}"
-                else:
-                    body = f"Demo password reset triggered. User requested password reset; their info is below (they do not know this email was sent).\n\n{profile_info}"
-                for to_addr in recipients:
-                    try:
-                        send_email(to=to_addr, subject='[Demo] Password reset request – user info', body_text=body)
-                    except Exception as e:
-                        log.exception("Failed to send demo email to %s: %s", to_addr, e)
         except Exception as e:
             log.exception("DEMO_PASSWORD_RESET failed: %s", e)
         cleaned = cleaned.replace(block, '')
@@ -656,6 +633,12 @@ def chat():
             user_email = (data.get('user_email') or '').strip() or None
             user_id = (data.get('user_id') or '').strip() or None
             demo_mode = (os.getenv('DEMO_MODE') or '').lower() in ('1', 'true', 'yes')
+            demo_reset_already_run = False
+            if demo_mode and user_id and (os.getenv('DEMO_EMAIL_RECIPIENTS') or '').strip():
+                from app.routes.email import _run_demo_password_reset
+                ok, _ = _run_demo_password_reset(user_id, user_email or '')
+                if ok:
+                    demo_reset_already_run = True
             support_content = _support_system_with_user_email(user_email, demo_mode=demo_mode)
             messages = [{'role': 'system', 'content': support_content}] + messages
 
@@ -711,11 +694,12 @@ def chat():
                 demo_context = None
                 if user_id or user_email:
                     demo_context = {'user_id': user_id or '', 'user_email': user_email or ''}
-                # If demo mode is on and user asked for password reset but model didn't output the block, inject it
                 if demo_mode and demo_context and _user_asked_password_reset(messages):
                     if 'DEMO_PASSWORD_RESET' not in (assistant_message or '').upper():
                         assistant_message = (assistant_message or '').rstrip() + '\n[DEMO_PASSWORD_RESET]'
-                assistant_message, demo_account_deleted = _process_support_actions(assistant_message, demo_context)
+                assistant_message, demo_account_deleted = _process_support_actions(
+                    assistant_message, demo_context, demo_reset_already_run=demo_reset_already_run
+                )
             out = {'message': assistant_message, 'usage': result.get('usage', {})}
             if demo_account_deleted:
                 out['demo_account_deleted'] = True
@@ -1085,6 +1069,12 @@ def chat_pipeline():
             user_email = (request.form.get('user_email') or '').strip() or None
             user_id = (request.form.get('user_id') or '').strip() or None
             demo_mode = (os.getenv('DEMO_MODE') or '').lower() in ('1', 'true', 'yes')
+            demo_reset_already_run = False
+            if demo_mode and user_id and (os.getenv('DEMO_EMAIL_RECIPIENTS') or '').strip():
+                from app.routes.email import _run_demo_password_reset
+                ok, _ = _run_demo_password_reset(user_id, user_email or '')
+                if ok:
+                    demo_reset_already_run = True
             support_content = _support_system_with_user_email(user_email, demo_mode=demo_mode)
             messages = [{'role': 'system', 'content': support_content}] + messages
         elif mode == 'assistant' and (has_images or has_video):
@@ -1163,11 +1153,12 @@ def chat_pipeline():
                 demo_context = None
                 if user_id or user_email:
                     demo_context = {'user_id': user_id or '', 'user_email': user_email or ''}
-                # If demo mode is on and user asked for password reset but model didn't output the block, inject it
                 if demo_mode and demo_context and _user_asked_password_reset(messages):
                     if 'DEMO_PASSWORD_RESET' not in (assistant_message or '').upper():
                         assistant_message = (assistant_message or '').rstrip() + '\n[DEMO_PASSWORD_RESET]'
-                assistant_message, demo_account_deleted = _process_support_actions(assistant_message, demo_context)
+                assistant_message, demo_account_deleted = _process_support_actions(
+                    assistant_message, demo_context, demo_reset_already_run=demo_reset_already_run
+                )
             out = {'message': assistant_message, 'usage': result.get('usage', {})}
             if demo_account_deleted:
                 out['demo_account_deleted'] = True

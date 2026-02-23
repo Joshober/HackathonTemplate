@@ -42,10 +42,10 @@ describe('Feature: DashboardShell nav items', () => {
     { label: 'Overview', href: '/dashboard' },
     { label: 'Chaos Logs', href: '/chat' },
     { label: 'AI Tutor', href: '/tutor' },
-    { label: 'Existential Threats', href: '/bullshit-detect' },
+    { label: 'Reality Checker', href: '/bullshit-detect' },
     { label: 'Voice Assistant', href: '/voice-assistant' },
     { label: 'Pose Attendance', href: '/pose-attendance' },
-    { label: 'Help us', href: '/support' },
+    { label: 'Tech support', href: '/support' },
   ];
 
   it.each(EXPECTED_NAV)('nav has $label linking to $href', ({ label, href }) => {

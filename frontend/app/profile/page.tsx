@@ -149,6 +149,11 @@ export default function ProfilePage() {
               <div className="flex-1 min-w-0">
                 <h1 className="text-4xl font-bold mb-2 text-white">{profile.displayName}</h1>
                 {user?.email && <p className="text-gray-400 text-lg">{user.email}</p>}
+                {profile.isStudent && (
+                  <span className="inline-block mt-2 px-3 py-1 rounded-lg bg-fuchsia-500/20 text-fuchsia-300 text-sm font-medium">
+                    Pose Attendance: Student view
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => setEditing(true)}

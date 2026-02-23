@@ -305,7 +305,7 @@ export default function BullshitDetectPage() {
         <aside className="w-80 flex-shrink-0 flex flex-col border-r border-border-dark bg-surface-dark/50 backdrop-blur-xl overflow-hidden">
           <div className="p-6 flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-3xl">warning</span>
+              <span className="material-symbols-outlined text-primary text-3xl">fact_check</span>
               <h1 className="text-xl font-bold tracking-tight text-slate-100">Reality Check</h1>
             </div>
             <p className="text-primary/60 text-xs font-medium uppercase tracking-widest">Threat Logs</p>
