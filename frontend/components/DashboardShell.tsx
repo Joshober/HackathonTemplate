@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { logout } from '@/lib/auth';
+import { api } from '@/lib/api';
 
 const navItems: { icon: string; label: string; href: string }[] = [
   { icon: 'dashboard', label: 'Overview', href: '/dashboard' },
@@ -17,6 +19,11 @@ const navItems: { icon: string; label: string; href: string }[] = [
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    api.adminMe().then((r) => setIsAdmin(!!r?.isAdmin));
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -62,6 +69,22 @@ export default function DashboardShell({ children }: { children: React.ReactNode
                 </Link>
               );
             })}
+            {isAdmin && (
+              <Link href="/admin">
+                <motion.span
+                  whileHover={{ x: 4 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all w-full cursor-pointer group ${
+                    pathname === '/admin' || pathname?.startsWith('/admin/')
+                      ? 'bg-amber-500/30 text-amber-200 font-bold border border-amber-500/40'
+                      : 'hover:bg-amber-500/10 text-slate-400 hover:text-amber-300'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-xl">admin_panel_settings</span>
+                  <span className="text-sm">Admin</span>
+                </motion.span>
+              </Link>
+            )}
           </nav>
 
           <div className="mt-auto pt-6 border-t border-primary/10 space-y-3">

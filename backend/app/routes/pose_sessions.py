@@ -5,11 +5,10 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 from app.db.mongodb import get_db
 from app.routes.auth_backend import require_auth, get_user_info_from_request
+from app.services.roles import is_professor_email
 
 bp = Blueprint('pose_sessions', __name__)
 COLLECTION = 'pose_sessions'
-
-PROFESSOR_EMAIL = 'adsthomastesa@gmail.com'
 REQUIRED_POSES = 3
 PASSWORD_LENGTH = 8
 PASSWORD_ALPHABET = string.ascii_lowercase + string.digits  # no uppercase to avoid confusion
@@ -36,15 +35,15 @@ def _validate_poses(poses: list) -> bool:
 @require_auth
 def create_pose_session(user_id):
     """
-    Create a pose session (professor only: adsthomastesa@gmail.com).
+    Create a pose session (professor only — see ADMIN_EMAILS / PROFESSOR_EMAILS / admin panel).
     Body: { "poses": [ { "pose": [...], "image": "data:..." or null }, ... ] } (3 poses).
     Returns: { "password": "xxxxxxxx" }.
     """
     try:
         user = get_user_info_from_request()
         email = (user.get('email') or '').strip().lower()
-        if email != PROFESSOR_EMAIL:
-            return jsonify({'error': 'Only the professor can create pose sessions.'}), 403
+        if not is_professor_email(email):
+            return jsonify({'error': 'Only designated professors can create pose sessions.'}), 403
 
         data = request.get_json() or {}
         poses = data.get('poses')

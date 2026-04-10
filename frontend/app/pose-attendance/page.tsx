@@ -13,10 +13,23 @@ import {
   type PoseKeypoints,
 } from '@/lib/poseDetection';
 import { comparePoses, DEFAULT_CRINGE_THRESHOLD, getPoseTips } from '@/lib/poseComparison';
-import { getCurrentUser } from '@/lib/auth';
 import { api } from '@/lib/api';
 
-const PROFESSOR_EMAIL = 'adsthomastesa@gmail.com';
+/** Wait until the video element has decodable frames and non-zero dimensions (fixes early Capture clicks). */
+async function waitForVideoReady(video: HTMLVideoElement, timeoutMs = 6000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0
+    ) {
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  return false;
+}
 
 /** Extract face position and size from pose keypoints. MediaPipe: 0=nose, 2=left_eye, 5=right_eye, 7=left_ear, 8=right_ear */
 function getFaceFromKeypoints(keypoints: PoseKeypoints): { x: number; y: number; size: number } | null {
@@ -120,6 +133,9 @@ export default function PoseAttendancePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const hasAppliedUrlPoseRef = useRef(false);
+  /** Stream attached — ref alone does not re-render, so overlay was stuck on "camera off". */
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraFrameReady, setCameraFrameReady] = useState(false);
 
   const referencePose = referencePoses[currentPoseIndex]?.pose ?? null;
   const referenceImage = referencePoses[currentPoseIndex]?.image ?? null;
@@ -149,6 +165,7 @@ export default function PoseAttendancePage() {
 
   const startCamera = useCallback(async () => {
     setError(null);
+    setCameraFrameReady(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -158,18 +175,33 @@ export default function PoseAttendancePage() {
         },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.playsInline = true;
-        await videoRef.current.play().catch(() => {});
+      setCameraActive(true);
+      const v = videoRef.current;
+      if (v) {
+        v.srcObject = stream;
+        v.playsInline = true;
+        try {
+          await v.play();
+        } catch {
+          /* muted + playsInline usually enough; policies vary */
+        }
+        const ready = await waitForVideoReady(v, 8000);
+        setCameraFrameReady(ready);
+        if (!ready) {
+          setError('Camera started but no video frames yet. Click Turn on camera again or check browser permissions.');
+        }
       }
     } catch (e) {
+      setCameraActive(false);
+      setCameraFrameReady(false);
       setError('Could not access camera.');
       console.error(e);
     }
   }, []);
 
   const stopCamera = useCallback(() => {
+    setCameraActive(false);
+    setCameraFrameReady(false);
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -184,12 +216,20 @@ export default function PoseAttendancePage() {
   }, []);
 
   const captureReferencePose = useCallback(async () => {
-    if (!videoRef.current || videoRef.current.readyState < 2) return;
     if (referencePoses.length >= REQUIRED_POSES) return;
+    const video = videoRef.current;
+    if (!video || !streamRef.current) {
+      setError('Turn on the camera first, wait until you see the preview, then capture.');
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const video = videoRef.current;
+      const ready = await waitForVideoReady(video, 5000);
+      if (!ready) {
+        setError('Camera not ready yet. Wait until you see yourself in the preview, then try Capture again.');
+        return;
+      }
       video.playsInline = true;
       await video.play().catch(() => {});
       await new Promise((r) => requestAnimationFrame(r));
@@ -213,11 +253,11 @@ export default function PoseAttendancePage() {
         }
       } else {
         setError(
-          'No pose detected. Face the camera, keep your upper body and arms in frame, use good lighting, then try again.',
+          'No pose detected. Face the camera, keep your upper body and arms in frame, use good lighting, then try again.'
         );
       }
     } catch (e) {
-      setError('Error detecting pose.');
+      setError('Error detecting pose. Disable ad blockers for this site (MediaPipe loads model/WASM from the network).');
       console.error(e);
     } finally {
       setIsLoading(false);
@@ -246,10 +286,10 @@ export default function PoseAttendancePage() {
   }, [parseShareCode]);
 
   useEffect(() => {
-    getCurrentUser().then((user) => {
-      const email = (user?.email || '').trim().toLowerCase();
-      setIsProfessor(email === PROFESSOR_EMAIL);
-    }).catch(() => setIsProfessor(false));
+    api
+      .adminMe()
+      .then((r) => setIsProfessor(!!r?.isProfessor))
+      .catch(() => setIsProfessor(false));
   }, []);
 
   const savePoseSession = useCallback(async () => {
@@ -443,7 +483,7 @@ export default function PoseAttendancePage() {
   useEffect(() => {
     startCamera();
     return () => stopCamera();
-  }, [mode]);
+  }, [mode, startCamera, stopCamera]);
 
   useEffect(() => {
     return () => stopCamera();
@@ -546,7 +586,7 @@ export default function PoseAttendancePage() {
                   className="max-w-full max-h-full object-cover"
                 />
                 <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-                {!streamRef.current && (
+                {!cameraActive && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
                     <Camera className="w-16 h-16 mb-2 opacity-50" />
                     <span>Camera off</span>
@@ -564,7 +604,7 @@ export default function PoseAttendancePage() {
                 <button
                   type="button"
                   onClick={captureReferencePose}
-                  disabled={isLoading || referencePoses.length >= REQUIRED_POSES}
+                  disabled={isLoading || referencePoses.length >= REQUIRED_POSES || !cameraActive}
                   className="flex-1 px-4 py-2 bg-fuchsia-500/30 text-fuchsia-300 rounded-lg hover:bg-fuchsia-500/40 disabled:opacity-50"
                 >
                   {isLoading ? 'Detecting...' : referencePoses.length >= REQUIRED_POSES ? `All ${REQUIRED_POSES} captured!` : `Capture pose ${referencePoses.length + 1}/${REQUIRED_POSES}`}
@@ -787,7 +827,7 @@ export default function PoseAttendancePage() {
                       </div>
                     </motion.div>
                   )}
-                  {!streamRef.current && (
+                  {!cameraActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500">
                       <Camera className="w-12 h-12 mb-2 opacity-50" />
                       <span>Starting camera...</span>

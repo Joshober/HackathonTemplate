@@ -3,10 +3,12 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getCurrentUser, logout, User } from '@/lib/auth';
+import { api } from '@/lib/api';
 
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -16,6 +18,12 @@ export default function Navbar() {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
+      if (currentUser) {
+        const roles = await api.adminMe();
+        setIsAdmin(!!roles?.isAdmin);
+      } else {
+        setIsAdmin(false);
+      }
     } catch (error) {
       console.error('Error loading user:', error);
     } finally {
@@ -46,6 +54,11 @@ export default function Navbar() {
           {!isLoading && user && (
             <>
               <Link href="/dashboard" className={linkClass}>Dashboard</Link>
+              {isAdmin && (
+                <Link href="/admin" className={linkClass}>
+                  Admin
+                </Link>
+              )}
               <Link href="/profile" className={linkClass}>Profile</Link>
               <Link href="/voice" className={linkClass}>Voice</Link>
               <Link href="/voice-assistant" className={linkClass}>Voice Assistant</Link>

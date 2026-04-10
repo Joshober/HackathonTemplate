@@ -31,3 +31,6 @@ run-flutter-mobile:
 
 flutter-run:
 	cd mobile && flutter pub get && flutter run
+
+
+

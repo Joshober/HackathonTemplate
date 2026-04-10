@@ -10,6 +10,7 @@ const APP_DIR = path.join(__dirname, '../app');
 
 const EXPECTED_ROUTES = [
   '',
+  'admin',
   'dashboard',
   'tutor',
   'profile',
@@ -63,6 +64,9 @@ describe('Feature: API client exports', () => {
   const content = fs.readFileSync(apiPath, 'utf-8');
 
   const EXPECTED_METHODS = [
+    'adminMe',
+    'getAdminSettings',
+    'updateAdminProfessorEmails',
     'sendChatMessage',
     'chatPipeline',
     'bullshitDetect',

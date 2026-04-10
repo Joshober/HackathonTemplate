@@ -600,6 +600,40 @@ export const api = {
     }
     return res.json();
   },
+
+  /** Role flags for the logged-in user (401 → null). */
+  async adminMe(): Promise<{ email: string; isAdmin: boolean; isProfessor: boolean } | null> {
+    try {
+      return (await fetchWithAuth('/api/admin/me')) as {
+        email: string;
+        isAdmin: boolean;
+        isProfessor: boolean;
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  async getAdminSettings(): Promise<{
+    admin_emails: string[];
+    builtin_professor_emails: string[];
+    additional_professor_emails: string[];
+    effective_professor_emails: string[];
+    smtp_configured: boolean;
+    smtp_user_hint: string | null;
+  }> {
+    return fetchWithAuth('/api/admin/settings');
+  },
+
+  async updateAdminProfessorEmails(additional: string[]): Promise<{
+    additional_professor_emails: string[];
+    effective_professor_emails: string[];
+  }> {
+    return fetchWithAuth('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ additional_professor_emails: additional }),
+    });
+  },
 };
 
 // Roast AI types (aligned with backend JSON)
