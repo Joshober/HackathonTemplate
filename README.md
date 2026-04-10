@@ -278,11 +278,15 @@ HackathonTemplate/
 │   ├── lib/                  # Utilities
 │   │   ├── auth0.ts          # Auth0 helpers
 │   │   └── api.ts            # API client functions
+│   ├── public/
+│   │   └── images/           # Static images (e.g. developer-help.png)
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
 │   └── package.json
 ├── backend/                  # Flask application
 │   ├── app/
+│   │   ├── static/
+│   │   │   └── images/       # Static assets (e.g. developer-help.png)
 │   │   ├── __init__.py       # Flask app factory
 │   │   ├── routes/
 │   │   │   ├── items.py      # Items CRUD endpoints
@@ -303,6 +307,17 @@ HackathonTemplate/
 ├── docker-compose.yml        # Orchestration
 └── README.md
 ```
+
+## Shared assets
+
+Imágenes en el repo para que todo el mundo las use al hacer push:
+
+| Archivo | Web (Next.js) | Backend (Flask) |
+|---------|----------------|-----------------|
+| `developer-help.png` | `frontend/public/images/` → `/images/developer-help.png` | `backend/app/static/images/` → `/static/images/developer-help.png` |
+| `AI_Tutor_Judging_Silently.png` | `frontend/public/images/` → `/images/AI_Tutor_Judging_Silently.png` | `backend/app/static/images/` → `/static/images/AI_Tutor_Judging_Silently.png` |
+| `friday_in_hackathome.png` | `frontend/public/images/` → `/images/friday_in_hackathome.png` | `backend/app/static/images/` → `/static/images/friday_in_hackathome.png` |
+| `Student_using_AI.png` | `frontend/public/images/` → `/images/Student_using_AI.png` | `backend/app/static/images/` → `/static/images/Student_using_AI.png` |
 
 ## API Endpoints
 

@@ -3,7 +3,39 @@
 import { useState, useRef, useEffect } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import { api } from '@/lib/api';
-import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
+import { FileWarning, Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth';
+
+const ACCEPTED_DOC_TYPES = '.pdf,.doc,.docx';
+const isPdfOrWord = (f: File) => {
+  const name = (f.name || '').toLowerCase();
+  return name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx');
+};
+
+const ACCEPT_MEDIA =
+  'image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg,.mpeg4,application/pdf,.pdf';
+
+async function extractPdfText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const parts: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item: { str?: string }) => ('str' in item && typeof item.str === 'string' ? item.str : ''))
+      .join(' ');
+    parts.push(pageText);
+  }
+  return parts.join('\n\n');
+}
+
+async function extractWordText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value;
+}
 
 const MAX_VIDEO_SECONDS = 20;
 const VIDEO_EXTENSIONS = ['.mov', '.mp4', '.webm', '.mpeg', '.mpeg4'];
@@ -89,19 +121,25 @@ export default function BullshitDetectPage() {
   const [analysis, setAnalysis] = useState('');
   const [transcribedText, setTranscribedText] = useState<string | null>(null);
   const [lastTtsUrl, setLastTtsUrl] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [recentChecks, setRecentChecks] = useState<string[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastTtsUrlRef = useRef<string | null>(null);
   lastTtsUrlRef.current = lastTtsUrl;
 
   useEffect(() => () => {
     if (lastTtsUrlRef.current) URL.revokeObjectURL(lastTtsUrlRef.current);
+  }, []);
+
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs';
   }, []);
 
   const startRecording = async () => {
@@ -167,13 +205,40 @@ export default function BullshitDetectPage() {
     }
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processFiles = (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).filter(isPdfOrWord);
+    if (!files.length) return;
+    setError(null);
+    setVideoError(null);
+    Promise.all(
+      files.map(async (file) => {
+        const name = (file.name || '').toLowerCase();
+        if (name.endsWith('.pdf')) return extractPdfText(file);
+        if (name.endsWith('.doc') || name.endsWith('.docx')) return extractWordText(file);
+        return '';
+      })
+    )
+      .then((contents) => {
+        const combined = contents.filter(Boolean).join('\n\n');
+        if (combined) setText((prev) => (prev ? prev + '\n\n' + combined : combined));
+      })
+      .catch(() => setError('Could not read document. Try a different file.'));
+  };
+
+  const handleDocInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    processFiles(files);
+    e.target.value = '';
+  };
+
+  const handleMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length) return;
     setVideoError(null);
+    setError(null);
     const file = files[0];
     if (isVideoFile(file)) {
-      setVideoError(null);
       getVideoDuration(file)
         .then((duration) => {
           if (duration > MAX_VIDEO_SECONDS) {
@@ -190,18 +255,45 @@ export default function BullshitDetectPage() {
       e.target.value = '';
       return;
     }
+    const lower = (file.name || '').toLowerCase();
+    if (file.type === 'application/pdf' || lower.endsWith('.pdf')) {
+      extractPdfText(file)
+        .then((extracted) => {
+          if (extracted.trim()) setText((prev) => (prev ? prev + '\n\n' + extracted : extracted));
+        })
+        .catch(() => setError('Could not read PDF.'));
+      e.target.value = '';
+      return;
+    }
     if (attachedVideo) setAttachedVideo(null);
-    const pdfPlaceholder = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect fill="#1e293b" width="64" height="64"/><text x="32" y="38" text-anchor="middle" fill="#94a3b8" font-size="11">PDF</text></svg>');
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      const isPdf = f.type === 'application/pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
       if (f.type.startsWith('image/')) {
         setAttachedImages((prev) => [...prev, { file: f, preview: URL.createObjectURL(f) }]);
-      } else if (isPdf) {
-        setAttachedImages((prev) => [...prev, { file: f, preview: pdfPlaceholder }]);
       }
     }
     e.target.value = '';
+  };
+
+  const handleDrop = (ev: React.DragEvent) => {
+    ev.preventDefault();
+    setIsDragging(false);
+    if (isLoading) return;
+    const dropped = ev.dataTransfer.files;
+    if (!dropped?.length) return;
+    const docs = Array.from(dropped).filter(isPdfOrWord);
+    if (docs.length) processFiles(docs);
+  };
+
+  const handleDragOver = (ev: React.DragEvent) => {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    if (!isLoading) setIsDragging(true);
+  };
+
+  const handleDragLeave = (ev: React.DragEvent) => {
+    ev.preventDefault();
+    if (!ev.currentTarget.contains(ev.relatedTarget as Node)) setIsDragging(false);
   };
 
   const removeImage = (idx: number) => {
@@ -256,8 +348,10 @@ export default function BullshitDetectPage() {
       setReadAloud(result.read_aloud || '');
       setAnalysis(result.analysis || '');
       if (result.transcribed_text) setTranscribedText(result.transcribed_text);
-      setRecentChecks((prev) => [...prev, inputText || (audio ? '(Voice)' : video ? '(Video)' : '(Image)')].slice(-5));
-      if (result.tts_error) setError((e) => (e ? e + ' ' : '') + `TTS: ${result.tts_error}`);
+      setRecentChecks((prev) =>
+        [...prev, inputText || (audio ? '(Voice)' : video ? '(Video)' : '(Image)')].slice(-5)
+      );
+      if (result.tts_error) setError((err) => (err ? err + ' ' : '') + `TTS: ${result.tts_error}`);
 
       if (ttsEnabled && result.audio_base64) {
         const mime = result.audio_format === 'wav' ? 'audio/wav' : 'audio/mpeg';
@@ -300,95 +394,224 @@ export default function BullshitDetectPage() {
 
   return (
     <DashboardShell>
-      <div className="flex h-[calc(100vh-8rem)] gap-0 -m-6 sm:-m-8">
-        {/* Sidebar: same style as Chaos Logs */}
-        <aside className="w-80 flex-shrink-0 flex flex-col border-r border-border-dark bg-surface-dark/50 backdrop-blur-xl overflow-hidden">
-          <div className="p-6 flex flex-col gap-1">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-amber-500/20 border border-amber-500/30 rounded-xl flex items-center justify-center shrink-0">
+              <FileWarning className="w-6 h-6 text-amber-400" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Reality Check</h1>
+              <p className="text-gray-400 text-sm">
+                Use voice, text, drag in Word/PDF, or attach images/video. Blunt analysis of jargon and fluff—no
+                plain-language rewrite.
+              </p>
+            </div>
+          </div>
+          {recentChecks.length > 0 && (
+            <div className="text-xs text-gray-500 sm:text-right sm:max-w-xs">
+              <span className="font-medium text-gray-400 uppercase tracking-wide">Recent</span>
+              <ul className="mt-1 space-y-0.5">
+                {recentChecks
+                  .slice()
+                  .reverse()
+                  .map((s, i) => (
+                    <li key={i} className="truncate" title={s}>
+                      {s.length > 48 ? `${s.slice(0, 48)}…` : s}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-6 space-y-4">
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => !isLoading && docInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+              isDragging
+                ? 'border-amber-500 bg-amber-500/10'
+                : 'border-white/20 hover:border-amber-500/50 hover:bg-white/5'
+            } ${isLoading ? 'pointer-events-none opacity-60' : ''}`}
+          >
+            <input
+              ref={docInputRef}
+              type="file"
+              accept={ACCEPTED_DOC_TYPES}
+              multiple
+              className="hidden"
+              onChange={handleDocInputChange}
+            />
+            <ImagePlus className="w-10 h-10 mx-auto mb-2 text-amber-400/80" />
+            <p className="text-gray-300 font-medium">Drag and drop Word documents or PDF here</p>
+            <p className="text-gray-500 text-sm mt-1">or click to browse • .doc, .docx, .pdf only</p>
+          </div>
+
+          <input
+            ref={mediaInputRef}
+            type="file"
+            accept={ACCEPT_MEDIA}
+            multiple={!attachedVideo}
+            className="hidden"
+            onChange={handleMediaSelect}
+          />
+
+          {attachedVideo && (
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-3xl">fact_check</span>
-              <h1 className="text-xl font-bold tracking-tight text-slate-100">Reality Check</h1>
-            </div>
-            <p className="text-primary/60 text-xs font-medium uppercase tracking-widest">Threat Logs</p>
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 space-y-2">
-            <div className="text-[10px] font-bold text-slate-500 uppercase px-3 py-2 tracking-widest">Recent Checks</div>
-            {recentChecks.slice().reverse().map((summary, i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-white/5 transition-all">
-                <span className="material-symbols-outlined text-slate-400">fact_check</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-300 truncate">{summary.slice(0, 40)}{summary.length > 40 ? '…' : ''}</p>
-                  <p className="text-[10px] text-slate-500">Check {recentChecks.length - i}</p>
-                </div>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                <Video className="w-5 h-5 text-amber-400" />
+                <span className="text-sm">Video ({attachedVideo.duration.toFixed(1)}s)</span>
               </div>
-            ))}
-            {recentChecks.length === 0 && (
-              <div className="px-3 py-3 text-slate-500 text-sm">No checks yet.</div>
-            )}
-          </div>
-        </aside>
-
-        {/* Main */}
-        <div className="flex-1 flex flex-col min-w-0 bg-background-dark">
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
-            <div className="bg-surface-dark border border-border-dark rounded-2xl p-4 space-y-4">
-              {attachedVideo && (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                    <Video className="w-5 h-5 text-primary" />
-                    <span className="text-sm">Video ({attachedVideo.duration.toFixed(1)}s)</span>
-                  </div>
-                  <button type="button" onClick={removeVideo} className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500">×</button>
+              <button
+                type="button"
+                onClick={removeVideo}
+                className="p-1.5 bg-red-500/80 rounded-lg hover:bg-red-500"
+                aria-label="Remove video"
+              >
+                ×
+              </button>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {!attachedVideo &&
+              attachedImages.map((img, i) => (
+                <div key={i} className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs leading-5"
+                    aria-label="Remove image"
+                  >
+                    ×
+                  </button>
                 </div>
+              ))}
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => !isLoading && mediaInputRef.current?.click()}
+                disabled={isLoading}
+                className="p-3 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-50"
+                title="Attach image or video"
+              >
+                <ImagePlus className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isLoading}
+                className={`p-3 rounded-lg ${isRecording ? 'bg-red-500/30' : 'bg-white/10 hover:bg-white/20'}`}
+                title={isRecording ? 'Stop recording' : 'Record voice'}
+              >
+                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTtsEnabled((v) => !v)}
+                className={`p-3 rounded-lg ${ttsEnabled ? 'bg-amber-500/30' : 'bg-white/10 hover:bg-white/20'}`}
+                title="Speak analysis"
+              >
+                <Volume2 className="w-5 h-5" />
+              </button>
+              {ttsEnabled && (
+                <>
+                  <select
+                    value={ttsProvider}
+                    onChange={(e) => {
+                      const p = e.target.value as 'openai' | 'magic_hour';
+                      setTtsProvider(p);
+                      setTtsVoice(p === 'openai' ? 'coral' : 'Morgan Freeman');
+                    }}
+                    className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    title="TTS provider"
+                  >
+                    <option value="openai">OpenAI (faster)</option>
+                    <option value="magic_hour">Magic Hour (celebrity)</option>
+                  </select>
+                  <select
+                    value={ttsVoice}
+                    onChange={(e) => setTtsVoice(e.target.value)}
+                    className="px-3 py-2 rounded-lg bg-white/10 border border-white/20 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    title="TTS voice"
+                  >
+                    {(ttsProvider === 'openai' ? OPENAI_TTS_VOICES : MAGIC_HOUR_VOICES).map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.label}
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}
-              <div className="flex flex-wrap gap-2">
-                {!attachedVideo && attachedImages.map((img, i) => (
-                  <div key={i} className="relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img.preview} alt="" className="w-16 h-16 object-cover rounded-lg" />
-                    <button type="button" onClick={() => removeImage(i)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs">×</button>
-                  </div>
-                ))}
-              </div>
-              <form onSubmit={handleSubmit} className="relative flex items-end gap-3 bg-background-dark border border-border-dark p-3 rounded-2xl focus-within:border-primary/50 transition-all shadow-2xl">
-                <input ref={fileInputRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/mpeg,.mov,.mp4,.webm,.mpeg,.mpeg4,application/pdf,.pdf" multiple={!attachedVideo} className="hidden" onChange={handleImageSelect} />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading} className="p-2 text-slate-500 hover:text-primary transition-colors" title="Attach">
-                  <ImagePlus className="w-5 h-5" />
-                </button>
-                <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder={attachedVideo || attachedImages.length ? 'Optional caption…' : 'Type or paste text, or attach image/video…'} className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-slate-200 placeholder:text-slate-600 py-2 min-w-0" disabled={isLoading} />
-                <button type="button" onClick={isRecording ? stopRecording : startRecording} disabled={isLoading} className={`p-2 ${isRecording ? 'text-red-500' : 'text-slate-500 hover:text-primary'}`} title={isRecording ? 'Stop' : 'Record'}>
-                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                </button>
-                <button type="button" onClick={() => setTtsEnabled((v) => !v)} className={`p-2 ${ttsEnabled ? 'text-primary' : 'text-slate-500 hover:text-accent-pink'}`} title="Speak analysis">
-                  <Volume2 className="w-5 h-5" />
-                </button>
-                {ttsEnabled && (
-                  <>
-                    <select value={ttsProvider} onChange={(e) => { const p = e.target.value as 'openai' | 'magic_hour'; setTtsProvider(p); setTtsVoice(p === 'openai' ? 'coral' : 'Morgan Freeman'); }} className="px-2 py-1 rounded-lg bg-primary/5 border border-primary/20 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary" title="TTS provider">
-                      <option value="openai">OpenAI</option>
-                      <option value="magic_hour">Magic Hour</option>
-                    </select>
-                    <select value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} className="px-2 py-1 rounded-lg bg-primary/5 border border-primary/20 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary max-w-[120px]" title="TTS voice">
-                      {(ttsProvider === 'openai' ? OPENAI_TTS_VOICES : MAGIC_HOUR_VOICES).map((v) => (
-                        <option key={v.id} value={v.id}>{v.label}</option>
-                      ))}
-                    </select>
-                  </>
-                )}
-                <button type="submit" disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)} className="bg-primary hover:bg-primary/90 text-background-dark px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 whitespace-nowrap">
-                  Analyze <Send className="w-4 h-4" />
-                </button>
-              </form>
-              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Mic auto-sends • Max video {MAX_VIDEO_SECONDS}s</p>
+              <input
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder={
+                  attachedVideo || attachedImages.length ? 'Optional caption…' : 'Type or paste text…'
+                }
+                className="flex-1 min-w-[12rem] px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || (!text.trim() && attachedImages.length === 0 && !attachedVideo)}
+                className="p-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-black font-medium disabled:opacity-50"
+              >
+                <Send className="w-5 h-5" />
+              </button>
             </div>
+            <p className="text-xs text-gray-500">
+              {ttsEnabled
+                ? `✓ ${ttsProvider === 'magic_hour' ? 'Magic Hour' : 'OpenAI'} – ${(ttsProvider === 'openai' ? OPENAI_TTS_VOICES : MAGIC_HOUR_VOICES).find((v) => v.id === ttsVoice)?.label || ttsVoice}`
+                : 'Enable speaker to hear analysis'}
+              {' • '}Mic auto-sends when you stop talking • Max video {MAX_VIDEO_SECONDS}s
+            </p>
+          </form>
 
-            {(error || videoError) && (
-              <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
-                {error || videoError}
-              </div>
-            )}
-            {isLoading && (
-              <div className="flex justify-center">
-                <span className="text-[10px] font-medium text-slate-500 uppercase tracking-[0.2em]">Analyzing…</span>
+          {(error || videoError) && <p className="text-red-400 text-sm">{error || videoError}</p>}
+        </div>
+
+        {(userInputSummary !== null || readAloud || analysis) && (
+          <div className="space-y-4">
+            {userInputSummary !== null && (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                <h2 className="text-sm font-medium text-gray-400 mb-1">Input</h2>
+                {lastInputImagePreviews.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {lastInputImagePreviews.map((src, j) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={j}
+                        src={src}
+                        alt=""
+                        className="max-w-full max-h-48 rounded-lg object-cover border border-amber-500/20"
+                      />
+                    ))}
+                  </div>
+                )}
+                {lastInputVideoPreview && (
+                  <div className="mb-2 rounded-lg overflow-hidden border border-amber-500/20 max-w-xs">
+                    <video src={lastInputVideoPreview} controls className="w-full max-h-40" />
+                    {lastInputVideoDuration != null && (
+                      <p className="text-gray-500 text-xs px-2 py-1">Video ({lastInputVideoDuration.toFixed(1)}s)</p>
+                    )}
+                  </div>
+                )}
+                {(userInputSummary !== '(Image attached)' ||
+                  (lastInputImagePreviews.length === 0 && !lastInputVideoPreview)) && (
+                  <p className="text-gray-200 text-sm whitespace-pre-wrap">{userInputSummary}</p>
+                )}
+                {transcribedText && (
+                  <p className="text-gray-500 text-xs mt-2">Transcribed: {transcribedText}</p>
+                )}
               </div>
             )}
             {readAloud && (
@@ -410,52 +633,16 @@ export default function BullshitDetectPage() {
                 <div className="text-amber-200/90 text-sm whitespace-pre-wrap">{readAloud}</div>
               </div>
             )}
-
-            {(userInputSummary !== null || readAloud || analysis) && (
-              <div className="space-y-4">
-                {userInputSummary !== null && (
-                  <div className="bg-surface-dark border border-border-dark rounded-2xl p-5">
-                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Input</h2>
-                    {lastInputImagePreviews.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {lastInputImagePreviews.map((src, j) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={j} src={src} alt="" className="max-w-full max-h-48 rounded-lg object-cover border border-primary/20" />
-                        ))}
-                      </div>
-                    )}
-                    {lastInputVideoPreview && (
-                      <div className="mb-2 rounded-lg overflow-hidden border border-primary/20 max-w-xs">
-                        <video src={lastInputVideoPreview} controls className="w-full max-h-40" />
-                        {lastInputVideoDuration != null && (
-                          <p className="text-xs text-slate-500 px-2 py-1">Video ({lastInputVideoDuration.toFixed(1)}s)</p>
-                        )}
-                      </div>
-                    )}
-                    {(userInputSummary !== '(Image attached)' || (lastInputImagePreviews.length === 0 && !lastInputVideoPreview)) && (
-                      <p className="text-slate-200 text-sm whitespace-pre-wrap">{userInputSummary}</p>
-                    )}
-                    {transcribedText && (
-                      <p className="text-slate-500 text-xs mt-2">Transcribed: {transcribedText}</p>
-                    )}
-                  </div>
-                )}
-                {readAloud && (
-                  <div className="bg-primary/10 border border-primary/30 rounded-2xl p-5">
-                    <h2 className="text-xs font-bold text-primary uppercase tracking-widest mb-2">Summary (read aloud)</h2>
-                    <div className="text-slate-200 text-sm whitespace-pre-wrap">{readAloud}</div>
-                  </div>
-                )}
-                {analysis && (
-                  <div className="bg-surface-dark border border-border-dark rounded-2xl p-6">
-                    <h2 className="text-sm font-bold text-primary uppercase tracking-widest mb-3">Full analysis</h2>
-                    <div className="text-slate-300 text-sm whitespace-pre-wrap">{analysis}</div>
-                  </div>
-                )}
+            {analysis && (
+              <div className="bg-white/5 backdrop-blur border border-amber-500/30 rounded-xl p-6">
+                <h2 className="text-lg font-semibold text-amber-400 mb-3">Full analysis</h2>
+                <div className="text-gray-300 text-sm whitespace-pre-wrap">{analysis}</div>
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {isLoading && <p className="text-amber-400/80 text-sm">Analyzing…</p>}
       </div>
     </DashboardShell>
   );
