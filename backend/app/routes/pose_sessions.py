@@ -9,7 +9,7 @@ from app.routes.auth_backend import require_auth, get_user_info_from_request
 bp = Blueprint('pose_sessions', __name__)
 COLLECTION = 'pose_sessions'
 
-PROFESSOR_EMAIL = 'contatothomastesa@gmail.com'
+PROFESSOR_EMAIL = 'adsthomastesa@gmail.com'
 REQUIRED_POSES = 3
 PASSWORD_LENGTH = 8
 PASSWORD_ALPHABET = string.ascii_lowercase + string.digits  # no uppercase to avoid confusion
@@ -36,7 +36,7 @@ def _validate_poses(poses: list) -> bool:
 @require_auth
 def create_pose_session(user_id):
     """
-    Create a pose session (professor only: contatothomastesa@gmail.com).
+    Create a pose session (professor only: adsthomastesa@gmail.com).
     Body: { "poses": [ { "pose": [...], "image": "data:..." or null }, ... ] } (3 poses).
     Returns: { "password": "xxxxxxxx" }.
     """

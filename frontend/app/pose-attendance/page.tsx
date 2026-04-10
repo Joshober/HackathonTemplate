@@ -16,7 +16,7 @@ import { comparePoses, DEFAULT_CRINGE_THRESHOLD, getPoseTips } from '@/lib/poseC
 import { getCurrentUser } from '@/lib/auth';
 import { api } from '@/lib/api';
 
-const PROFESSOR_EMAIL = 'contatothomastesa@gmail.com';
+const PROFESSOR_EMAIL = 'adsthomastesa@gmail.com';
 
 /** Extract face position and size from pose keypoints. MediaPipe: 0=nose, 2=left_eye, 5=right_eye, 7=left_ear, 8=right_ear */
 function getFaceFromKeypoints(keypoints: PoseKeypoints): { x: number; y: number; size: number } | null {
@@ -150,10 +150,18 @@ export default function PoseAttendancePage() {
   const startCamera = useCallback(async () => {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.playsInline = true;
+        await videoRef.current.play().catch(() => {});
       }
     } catch (e) {
       setError('Could not access camera.');
@@ -182,6 +190,9 @@ export default function PoseAttendancePage() {
     setError(null);
     try {
       const video = videoRef.current;
+      video.playsInline = true;
+      await video.play().catch(() => {});
+      await new Promise((r) => requestAnimationFrame(r));
       const result = await detectPoseFromImage(video);
       const keypoints = result ? extractKeypoints(result) : null;
       if (keypoints) {
@@ -201,7 +212,9 @@ export default function PoseAttendancePage() {
           setShareCode(generateShareCode(updated));
         }
       } else {
-        setError('No pose detected. Try again with your body visible.');
+        setError(
+          'No pose detected. Face the camera, keep your upper body and arms in frame, use good lighting, then try again.',
+        );
       }
     } catch (e) {
       setError('Error detecting pose.');

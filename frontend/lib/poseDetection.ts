@@ -10,11 +10,18 @@ import {
   type NormalizedLandmark,
 } from '@mediapipe/tasks-vision';
 
-const WASM_PATH = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm';
-const MODEL_PATH = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+/** Must match `dependencies["@mediapipe/tasks-vision"]` — `@latest` WASM often breaks detection silently. */
+const WASM_PATH = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/wasm';
+const MODEL_LITE =
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+/** Full model for single-frame capture: detects better with partial body / awkward poses. */
+const MODEL_FULL =
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
 
-/** Lower thresholds so poses are detected more reliably (body partially visible / varying lighting). */
-const MIN_CONFIDENCE = 0.25;
+/** VIDEO loop: balance speed vs recall. */
+const MIN_CONFIDENCE_VIDEO = 0.2;
+/** IMAGE capture: be permissive so reference poses register reliably. */
+const MIN_CONFIDENCE_IMAGE = 0.15;
 
 let poseLandmarker: PoseLandmarker | null = null;
 let poseLandmarkerImage: PoseLandmarker | null = null;
@@ -26,12 +33,12 @@ export async function initPoseLandmarker(): Promise<PoseLandmarker> {
   if (poseLandmarker) return poseLandmarker;
   const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
   const p = PoseLandmarker.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: MODEL_PATH },
+    baseOptions: { modelAssetPath: MODEL_LITE },
     runningMode: 'VIDEO',
     numPoses: 1,
-    minPoseDetectionConfidence: MIN_CONFIDENCE,
-    minPosePresenceConfidence: MIN_CONFIDENCE,
-    minTrackingConfidence: MIN_CONFIDENCE,
+    minPoseDetectionConfidence: MIN_CONFIDENCE_VIDEO,
+    minPosePresenceConfidence: MIN_CONFIDENCE_VIDEO,
+    minTrackingConfidence: MIN_CONFIDENCE_VIDEO,
   });
   poseLandmarker = await p;
   return poseLandmarker;
@@ -42,12 +49,12 @@ async function initPoseLandmarkerImage(): Promise<PoseLandmarker> {
   if (poseLandmarkerImage) return poseLandmarkerImage;
   const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
   const p = PoseLandmarker.createFromOptions(vision, {
-    baseOptions: { modelAssetPath: MODEL_PATH },
+    baseOptions: { modelAssetPath: MODEL_FULL },
     runningMode: 'IMAGE',
     numPoses: 1,
-    minPoseDetectionConfidence: MIN_CONFIDENCE,
-    minPosePresenceConfidence: MIN_CONFIDENCE,
-    minTrackingConfidence: MIN_CONFIDENCE,
+    minPoseDetectionConfidence: MIN_CONFIDENCE_IMAGE,
+    minPosePresenceConfidence: MIN_CONFIDENCE_IMAGE,
+    minTrackingConfidence: MIN_CONFIDENCE_IMAGE,
   });
   poseLandmarkerImage = await p;
   return poseLandmarkerImage;
@@ -70,7 +77,7 @@ export function extractKeypoints(result: PoseLandmarkerResult): PoseKeypoints | 
 
 /**
  * Detecta pose em um único frame (uso: professor capturando referência).
- * Tenta primeiro o vídeo direto (ImageSource), depois canvas. Faz até 3 tentativas com pequeno delay.
+ * Usa o landmarker em modo IMAGE e a API síncrona `detect()`.
  */
 export async function detectPoseFromImage(
   video: HTMLVideoElement
@@ -78,9 +85,12 @@ export async function detectPoseFromImage(
   if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return null;
   const detector = await initPoseLandmarkerImage();
 
-  const tryDetect = (source: HTMLVideoElement | HTMLCanvasElement): PoseLandmarkerResult | null => {
+  // IMAGE running mode uses `detect()`, not `detectForImage` (that method does not exist on PoseLandmarker).
+  const tryDetect = (
+    source: HTMLVideoElement | HTMLCanvasElement | ImageBitmap
+  ): PoseLandmarkerResult | null => {
     try {
-      const result = detector.detectForImage(source);
+      const result = detector.detect(source);
       if (result?.landmarks?.length && result.landmarks[0]?.length) return result;
       return null;
     } catch {
@@ -88,11 +98,28 @@ export async function detectPoseFromImage(
     }
   };
 
-  // 1) Try current video frame directly (MediaPipe accepts HTMLVideoElement as ImageSource)
+  const tryImageBitmap = async (): Promise<PoseLandmarkerResult | null> => {
+    try {
+      const bitmap = await createImageBitmap(video);
+      try {
+        return tryDetect(bitmap);
+      } finally {
+        bitmap.close();
+      }
+    } catch {
+      return null;
+    }
+  };
+
+  // 1) Current video frame (some browsers handle this best when the element is playing)
   let result = tryDetect(video);
   if (result) return result;
 
-  // 2) Try canvas snapshot (avoids any video-element quirks)
+  // 2) ImageBitmap — often more reliable than drawing a not-yet-ready video frame
+  result = await tryImageBitmap();
+  if (result) return result;
+
+  // 3) Canvas snapshot (avoids some video-element quirks)
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -103,12 +130,16 @@ export async function detectPoseFromImage(
     if (result) return result;
   }
 
-  // 3) Retry with short delays (in case the first frame was blank or not yet decoded)
-  for (let i = 0; i < 2; i++) {
-    await new Promise((r) => setTimeout(r, 150));
+  // 4) Retries: wait for decoder / lighting / movement to settle
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 120));
     if (video.readyState < 2) break;
+    result = await tryImageBitmap();
+    if (result) return result;
     ctx?.drawImage(video, 0, 0);
     result = tryDetect(canvas);
+    if (result) return result;
+    result = tryDetect(video);
     if (result) return result;
   }
 
