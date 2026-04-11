@@ -27,6 +27,9 @@ let poseLandmarkerVideo: PoseLandmarker | null = null;
 let poseLandmarkerImageLite: PoseLandmarker | null = null;
 let poseLandmarkerImageFull: PoseLandmarker | null = null;
 
+/** MediaPipe VIDEO mode requires strictly increasing timestamps; video.currentTime can reset when the stream restarts. */
+let lastDetectForVideoTimestampMs = 0;
+
 export type PoseKeypoints = number[]; // flattened [x0,y0,z0, x1,y1,z1, ...] para 33 landmarks
 
 function landmarkerOptions(
@@ -42,6 +45,22 @@ function landmarkerOptions(
     minPosePresenceConfidence: minConfidence,
     minTrackingConfidence: minConfidence,
   } as const;
+}
+
+/**
+ * Call when the camera stream is (re)attached or mode switches.
+ * Prevents "Packet timestamp mismatch" after video.currentTime jumps backward.
+ */
+export function resetVideoPoseLandmarker(): void {
+  lastDetectForVideoTimestampMs = 0;
+  if (poseLandmarkerVideo) {
+    try {
+      poseLandmarkerVideo.close();
+    } catch {
+      /* ignore */
+    }
+    poseLandmarkerVideo = null;
+  }
 }
 
 /** Landmarker em modo VIDEO (loop do aluno). */
@@ -189,14 +208,18 @@ export async function detectPoseFromImage(
 
 /**
  * Detecta pose em um frame de vídeo (uso: loop do aluno).
+ * @param timestampMs - Hint in milliseconds (e.g. video.currentTime * 1000); clamped to stay monotonic.
  */
 export async function detectPose(
   video: HTMLVideoElement,
-  timestamp: number
+  timestampMs: number
 ): Promise<PoseLandmarkerResult | null> {
   const detector = await initPoseLandmarker();
   try {
-    const result = detector.detectForVideo(video, timestamp);
+    const rounded = Math.round(timestampMs);
+    const ts = Math.max(lastDetectForVideoTimestampMs + 1, rounded);
+    lastDetectForVideoTimestampMs = ts;
+    const result = detector.detectForVideo(video, ts);
     if (result?.landmarks?.length && result.landmarks[0]?.length) return result;
     return null;
   } catch {

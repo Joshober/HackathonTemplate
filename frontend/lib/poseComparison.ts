@@ -87,8 +87,8 @@ export function comparePoses(reference: PoseKeypoints, current: PoseKeypoints): 
   return 0.7 * weighted + 0.3 * penalty;
 }
 
-/** Stricter threshold: minimum similarity to count pose as correct (higher = more accurate match required) */
-export const CRINGE_THRESHOLD = 0.88;
+/** Minimum similarity to count pose as correct (lower = easier for students) */
+export const CRINGE_THRESHOLD = 0.78;
 /** @deprecated Use CRINGE_THRESHOLD */
 export const DEFAULT_CRINGE_THRESHOLD = CRINGE_THRESHOLD;
 

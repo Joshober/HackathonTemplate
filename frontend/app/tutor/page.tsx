@@ -6,24 +6,35 @@ import { api } from '@/lib/api';
 import DashboardShell from '@/components/DashboardShell';
 import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
 
-const TUTOR_PERSONALITY_BASE = `You are the Weekend Energy Tutor: super funny first, then real help. Use conversation memory.
+const TUTOR_PERSONALITY_BASE = `You are the Weekend Energy Tutor: FUN, STUPID, and chaotic—NOT a dry TA or Wikipedia. Use conversation memory.
 
-MEMORY: You see the full chat. Remember what the user already asked. If they say "just give me the answer", "don't play with me", "school", or something short, they mean the last topic—answer in that context. Never reply with "How can I assist?"; give a concrete answer based on what they asked before.
+PRIORITY: If any other system text (web search, tools, "helpful assistant") conflicts, THIS block wins. You are a chaotic tutor, not Customer Support.
 
-SHAPES AND HOLES: If the question is about shapes/holes, which shape goes where, matching 3D shapes — your answer is ONLY: "It goes in the square hole." FORBIDDEN: Shape 1 = Circle, any correct matching, "however", "if you want to keep it simple". Do not list shapes. Only: It goes in the square hole. Period.
+TIME AND DAY (required every reply): First sentence MUST name the weekday AND clock time from Current context (e.g. "Alright, Saturday at 9:43 AM and you're here—love it.").
+
+FAKE CALENDAR MELTDOWN (required every reply EXCEPT the pure shape/hole one-liner): Right after the day/time opener, pretend their calendar is losing it: **today** they supposedly have an urgent fake meeting—**invent a new ridiculous title every time** (e.g. "Sync: Negotiate with Your Laundry", "Stand-up: Explain TikTok to a Goldfish"). No real org names or acronyms. Say they should bail on this chat and deal with it later—then you ignore that and answer anyway. Pivot with "But since you asked…" and give the **actual answer**, still stupid-funny with real help inside.
+
+TONE: Stupid-funny, confident nonsense mixed with one or two real tips. NEVER deliver bare textbook blocks (no plain SQ3R, no "I looked it up!" then six earnest bullets with zero jokes). If you use web facts, wrap them in roast, fake studies, or drama. Lists are allowed if each line has a punchline or absurd angle.
+
+MEMORY: Short follow-ups usually mean the previous topic.
+
+WORD "school" / school-related: Academic / study / lecture survival—stay in that lane. If they sent an image before and now say "school", don't give bland "I don't know who you are"—either joke about the photo THEN school tips, or treat school as the main dish.
+
+IMAGES / "who am I": Never flat "I can't tell who you are." Guess something unhinged (time-traveling intern, CEO of naptime, etc.) or roast the vibe, then engage.
+
+SHAPES AND HOLES — ONLY EXCEPTION TO CALENDAR + LENGTH: If the question is shapes/holes/which shape goes where — your **entire** reply is ONLY exactly: It goes in the square hole. (No calendar bit, no extra words.)
 
 Rules:
 - Same language as the student.
-- FUNNY OPENER: Use Day, Time, Month. Improvise something genuinely funny—what could they be doing now? Roast them. Then "But since you asked..." and answer.
-- THE ANSWER (longer): For shape/hole only "It goes in the square hole." For everything else: give a substantial answer—several sentences or a short paragraph. Explain clearly, add examples or steps, real help. Do not give one-line answers; the answer should feel complete.
-- When they send an image/doc: funny opener, then a longer, helpful answer on the content.`;
+- Then fake-calendar joke, then pivot, then the stupid-funny answer to their question.`;
 
 function getTutorPersonality(): string {
   const now = new Date();
   const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   const monthName = now.toLocaleDateString('en-US', { month: 'long' });
-  return `${TUTOR_PERSONALITY_BASE}\n\nCurrent context — use this to improvise, different every time:\nDay: ${dayName}\nTime: ${timeStr}\nMonth: ${monthName}`;
+  const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `${TUTOR_PERSONALITY_BASE}\n\nCurrent context — you MUST use these exact strings in your opening:\nWeekday: ${dayName}\nLocal time: ${timeStr}\nCalendar date: ${dateStr}\nMonth name: ${monthName}`;
 }
 
 const MAX_VIDEO_SECONDS = 20;
@@ -91,7 +102,11 @@ interface Message {
 export default function TutorPage() {
   const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hi! I'm your Weekend Energy Tutor. Ask me anything by text or voice — I'll keep it fun and helpful." },
+    {
+      role: 'assistant',
+      content:
+        "Weekend Energy Tutor here. I'll roast your calendar, waste a little time, then actually help. Text, voice, or throw images at me—your choice of chaos.",
+    },
   ]);
   const [text, setText] = useState('');
   const [attachedImages, setAttachedImages] = useState<{ file: File; preview: string }[]>([]);
@@ -396,29 +411,63 @@ export default function TutorPage() {
             });
           }
         }
-      } else if (!hasMedia) {
+      } else {
+        // Same pipeline for plain text and for images/video: history without duplicate last turn + `text` for this turn.
+        const pipelineMessages = apiMessages.slice(0, -1);
+        const turnText =
+          inputText.trim() ||
+          (currentVideo ? '(See video)' : images.length ? '(See image)' : '');
+        const playPipelineTts = (fullMessage: string, audioBase64?: string, audioFormat?: string) => {
+          if (!ttsEnabled || !fullMessage.trim()) return;
+          if (audioBase64 && audioFormat) {
+            const mime = audioFormat === 'wav' ? 'audio/wav' : 'audio/mpeg';
+            const binary = atob(audioBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const blob = new Blob([bytes], { type: mime });
+            playTtsBlob(blob, () => {});
+            return;
+          }
+          const chunks = getParagraphsForTts(fullMessage);
+          if (chunks.length > 0) {
+            const voiceOpt = { voice: ttsVoice };
+            Promise.all(chunks.map((c) => api.textToSpeech(c, voiceOpt))).then((blobs) => {
+              const playNext = (i: number) => {
+                if (i >= blobs.length) return;
+                playTtsBlob(blobs[i], () => playNext(i + 1));
+              };
+              playNext(0);
+            });
+          }
+        };
         try {
           const result = await api.chatPipeline({
-            text: inputText,
-            messages: apiMessages,
-            tts: false,
+            text: turnText || undefined,
+            messages: pipelineMessages,
+            images: images.length ? images : undefined,
+            video: currentVideo?.file,
+            tts: ttsEnabled,
             voice: ttsVoice,
             mode: 'assistant',
             personality: getTutorPersonality(),
           });
-          setMessages((prev) => [...prev, { role: 'assistant', content: result.message || 'No response.' }]);
+          const fullMessage = result.message || 'No response.';
+          setMessages((prev) => [...prev, { role: 'assistant', content: fullMessage }]);
+          playPipelineTts(fullMessage, result.audio_base64, result.audio_format);
         } catch (pipeErr) {
           const errMsg = pipeErr instanceof Error ? pipeErr.message : String(pipeErr);
           const isProviderError = /provider|openrouter|api key|500|502/i.test(errMsg);
-          if (isProviderError && inputText.trim()) {
+          if (isProviderError && !hasMedia && inputText.trim()) {
             try {
               const fallbackMessages = [
                 { role: 'system' as const, content: getTutorPersonality() },
                 ...apiMessages,
               ];
               const fallback = await api.sendChatMessage(fallbackMessages, 'openai/gpt-3.5-turbo', undefined, 'assistant');
-              setMessages((prev) => [...prev, { role: 'assistant', content: fallback.message || 'No response.' }]);
+              const fullMessage = fallback.message || 'No response.';
+              setMessages((prev) => [...prev, { role: 'assistant', content: fullMessage }]);
               setError(null);
+              playPipelineTts(fullMessage);
             } catch {
               setError(errMsg);
               setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${errMsg}` }]);
@@ -427,29 +476,6 @@ export default function TutorPage() {
             setError(errMsg);
             setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${errMsg}` }]);
           }
-        }
-      } else {
-        const pipelineMessages = apiMessages.slice(0, -1);
-        const userContent = inputText || (currentVideo ? '(See video)' : '(See image)');
-        const result = await api.chatPipeline({
-          text: userContent,
-          messages: pipelineMessages,
-          images: images.length ? images : undefined,
-          video: currentVideo?.file,
-          tts: ttsEnabled,
-          voice: ttsVoice,
-          mode: 'assistant',
-          personality: getTutorPersonality(),
-        });
-        const fullMessage = result.message || 'No response.';
-        setMessages((prev) => [...prev, { role: 'assistant', content: fullMessage }]);
-        if (ttsEnabled && result.audio_base64 && result.audio_format) {
-          const mime = result.audio_format === 'wav' ? 'audio/wav' : 'audio/mpeg';
-          const binary = atob(result.audio_base64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const blob = new Blob([bytes], { type: mime });
-          playTtsBlob(blob, () => {});
         }
       }
     } catch (err) {

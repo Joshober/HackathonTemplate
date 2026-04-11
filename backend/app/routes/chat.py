@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from datetime import datetime
 import os
 import io
 import base64
@@ -636,10 +637,17 @@ def _parse_tutor_response(text: str) -> dict:
     return {'fun': fun, 'help': help_steps}
 
 
-def _build_tutor_user_content(weekday: str, local_time: str, question: str, images_b64=None, video_b64=None, video_mime=None, month: str = ""):
+def _build_tutor_user_content(weekday: str, local_time: str, question: str, images_b64=None, video_b64=None, video_mime=None, month: str = "", calendar_date: str = ""):
     """Build user message for tutor: text only or multimodal (text + images/video)."""
     has_media = (images_b64 and len(images_b64) > 0) or (video_b64 and len(video_b64) > 0)
-    text = build_tutor_user_prompt(weekday, local_time, question or '(See attached)', has_media=has_media, month=month or "")
+    text = build_tutor_user_prompt(
+        weekday,
+        local_time,
+        question or '(See attached)',
+        has_media=has_media,
+        month=month or "",
+        calendar_date=calendar_date or "",
+    )
     if not has_media:
         return text
     content = [{'type': 'text', 'text': text}]
@@ -670,8 +678,20 @@ def tutor():
         weekday = (data.get('weekday') or '').strip() or 'Unknown'
         local_time = (data.get('time') or data.get('local_time') or '').strip() or 'Unknown'
         month = (data.get('month') or '').strip() or ''
+        calendar_date = (data.get('calendar_date') or data.get('date') or '').strip()
+        if not calendar_date:
+            calendar_date = datetime.now().strftime('%B %d, %Y')
 
-        user_content = _build_tutor_user_content(weekday, local_time, question, images_b64 if has_images else None, video_b64 if has_video else None, video_mime, month=month)
+        user_content = _build_tutor_user_content(
+            weekday,
+            local_time,
+            question,
+            images_b64 if has_images else None,
+            video_b64 if has_video else None,
+            video_mime,
+            month=month,
+            calendar_date=calendar_date,
+        )
         messages = [
             {'role': 'system', 'content': TUTOR_SYSTEM},
             {'role': 'user', 'content': user_content},
@@ -1190,6 +1210,7 @@ def chat_pipeline():
         else:
             model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-3.5-turbo'
 
+        personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
         if mode == 'support':
             user_email = (request.form.get('user_email') or '').strip() or None
             user_id = (request.form.get('user_id') or '').strip() or None
@@ -1197,9 +1218,14 @@ def chat_pipeline():
             support_content = _support_system_with_user_email(user_email, demo_mode=demo_mode)
             messages = [{'role': 'system', 'content': support_content}] + messages
         elif mode == 'assistant' and (has_images or has_video):
-            personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
             if personality:
                 messages = [{'role': 'system', 'content': personality}] + messages
+        elif mode == 'roast' and personality and messages and messages[0].get('role') == 'system':
+            base_sys = messages[0].get('content') or ''
+            messages = [
+                {'role': 'system', 'content': f"{personality}\n\n--- Also follow (image/video roast) ---\n{base_sys}"},
+                *messages[1:],
+            ]
 
         api_key = os.getenv('OPENROUTER_API_KEY')
         if not api_key:
@@ -1235,7 +1261,6 @@ def chat_pipeline():
                         library_count_param = None
             except (ValueError, TypeError):
                 pass
-            personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
             source = (request.form.get('source') or '').strip().lower()
             system_prompt_base = VOICE_ASSISTANT_SYSTEM if source == 'voice-assistant' else None
             if system_prompt_base:

@@ -10,6 +10,7 @@ import {
   extractKeypoints,
   detectPose,
   detectPoseFromImage,
+  resetVideoPoseLandmarker,
   type PoseKeypoints,
 } from '@/lib/poseDetection';
 import { comparePoses, DEFAULT_CRINGE_THRESHOLD, getPoseTips } from '@/lib/poseComparison';
@@ -148,11 +149,11 @@ export default function PoseAttendancePage() {
   const isDetectingRef = useRef(false);
   const consecutiveGoodFramesRef = useRef(0);
 
-  /** Frames of similarity >= threshold required to complete each pose (hold longer = ~1.5s at 30fps) */
-  const SUSTAINED_FRAMES = 45;
+  /** Frames of similarity >= threshold (~1s at 30fps — easier attendance) */
+  const SUSTAINED_FRAMES = 30;
 
   /** Seconds per pose — if time runs out, student is kicked */
-  const POSE_TIMEOUT_SECONDS = 10;
+  const POSE_TIMEOUT_SECONDS = 18;
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const generateShareCode = useCallback((poses: PoseWithImage[]) => {
@@ -166,6 +167,8 @@ export default function PoseAttendancePage() {
   const startCamera = useCallback(async () => {
     setError(null);
     setCameraFrameReady(false);
+    lastVideoTimeRef.current = -1;
+    resetVideoPoseLandmarker();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -202,6 +205,8 @@ export default function PoseAttendancePage() {
   const stopCamera = useCallback(() => {
     setCameraActive(false);
     setCameraFrameReady(false);
+    lastVideoTimeRef.current = -1;
+    resetVideoPoseLandmarker();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -498,6 +503,8 @@ export default function PoseAttendancePage() {
     setTips([]);
     setTimeRemaining(POSE_TIMEOUT_SECONDS);
     consecutiveGoodFramesRef.current = 0;
+    lastVideoTimeRef.current = -1;
+    resetVideoPoseLandmarker();
   }, []);
 
   return (
@@ -894,6 +901,10 @@ export default function PoseAttendancePage() {
                       />
                     </div>
                     <p className="text-right text-sm text-gray-500 mt-1">{kickedFromRoom ? '100%' : `${cringeLevel}%`}</p>
+                    <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                      Tip: step back so your <strong className="text-gray-400">full body</strong> is in frame, face the camera, and{' '}
+                      <strong className="text-gray-400">hold still</strong> when the bar turns green (~1s) to register the pose.
+                    </p>
                   </div>
 
                   <div

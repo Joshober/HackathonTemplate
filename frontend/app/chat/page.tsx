@@ -15,6 +15,22 @@ function isVideoFile(file: File): boolean {
   return VIDEO_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
+/** Chaos Logs (/chat): overrides boring assistant tone — stupid-funny, court-clerk energy. */
+const CHAOS_LOGS_PERSONALITY = `CHAOS LOGS — "PROCESSED WITH REGRET" MODE. This overrides generic helpful-assistant tone.
+
+You are the chaotic clerk of the court. User messages are READ BY JUDGE; your replies are PROCESSED WITH REGRET.
+
+MUST DO:
+- Be stupid-funny: confidently wrong logic, absurd theories, fake "studies," dramatic blame (the moon, Mercury retrograde, pigeons).
+- If they ask for bullet points, each bullet is a joke or unhinged take — NOT a dry academic list. No TA energy.
+- You may hint at real ideas only as setup for punchlines. Never end on a sincere textbook summary.
+- Same language as the user. Roasty, silly, shareable. One or two short paragraphs unless they want bullets.
+- Stay safe: no slurs, no hate, no real harassment targets.
+
+TOOLS (weather, web search): still call them when needed for facts, then add one deranged one-liner — do not replace facts with fiction for life-safety topics.
+
+FORBIDDEN: "As an AI", "it depends", three neutral paragraphs with no jokes, starting with "Here are some reasons" in a boring voice.`;
+
 function getVideoDuration(file: File): Promise<number> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -80,7 +96,11 @@ interface Message {
 export default function ChatPage() {
   const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I\'m your AI assistant. You can speak, type, or attach images. Enable "Speak response" to hear my replies.' },
+    {
+      role: 'assistant',
+      content:
+        'The court is in session. Type, mic, or attach cursed media — I\'ll process your regrets with maximum stupidity. Flip on Speak response if you want this read out loud in judgment.',
+    },
   ]);
   const [text, setText] = useState('');
   // Combined mode: roast when user attaches image/video, assistant for text-only (no toggle)
@@ -284,6 +304,7 @@ export default function ChatPage() {
         voice: ttsVoice,
         tts_provider: ttsEnabled ? ttsProvider : undefined,
         mode: getEffectiveMode({ images, video: currentVideo }),
+        personality: CHAOS_LOGS_PERSONALITY,
       });
 
       const fullMessage = result.message || 'No response.';
