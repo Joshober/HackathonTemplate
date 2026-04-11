@@ -140,6 +140,8 @@ export default function Chatbot() {
         chatMode,
         videoBase64,
         videoMime,
+        undefined,
+        undefined,
         pdfsBase64
       );
 

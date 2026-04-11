@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { getCurrentUser, login, loginEmailPassword, register, User } from '@/lib/auth';
 import Link from 'next/link';
 import LandingPage from '@/components/LandingPage';
-import Chatbot from '@/components/Chatbot';
 import { motion } from 'motion/react';
 
 export default function Home() {
@@ -103,7 +102,6 @@ export default function Home() {
   return (
     <>
       <LandingPage>{navContent}</LandingPage>
-      <Chatbot />
 
       {/* Login modal / card - fixed overlay when showEmailLogin or when user not logged in and we want to show login on same page */}
       {!isLoading && !user && showEmailLogin && (
