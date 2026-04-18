@@ -1,10 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ChevronDown } from 'lucide-react';
 import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } from '@/lib/api';
-import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
 import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
@@ -13,6 +10,10 @@ import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTyp
 import type { User } from '@/lib/auth';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
+import PreTripChecklistPanel from '@/components/travel/workflow/PreTripChecklistPanel';
+import ApprovalGuidancePanel from '@/components/travel/workflow/ApprovalGuidancePanel';
+import IssueEscalationPanel from '@/components/travel/workflow/IssueEscalationPanel';
+import PostTripFollowUpsPanel from '@/components/travel/workflow/PostTripFollowUpsPanel';
 
 function statusBadge(status: TravelOpportunityStatus | undefined) {
   const s = status || 'draft';
@@ -34,7 +35,6 @@ function statusBadge(status: TravelOpportunityStatus | undefined) {
 }
 
 export default function TravelHomeBody({ user }: { user: User }) {
-  const { stage } = useTravelStage();
   const [items, setItems] = useState<Item[]>([]);
   const [teamApprovedItems, setTeamApprovedItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,27 +248,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
     await refresh();
   };
 
-  const voteOption = async (itemId: string, key: string) => {
-    const item = items.find((i) => i._id === itemId);
-    if (!item?._id) return;
-    const t = getTravelPayload(item);
-    if (!t) return;
-    const email = voterEmail || 'self';
-    const teamOptionVotes = { ...(t.teamOptionVotes || {}), [email]: key };
-    await api.updateItem(item._id, {
-      travel: { ...t, teamOptionVotes } as unknown as TravelMetadata,
-    });
-    await refresh();
-  };
-
-  const voteCounts = (t: NonNullable<ReturnType<typeof getTravelPayload>>) => {
-    const votes = t.teamOptionVotes || {};
-    const counts: Record<string, number> = { a: 0, b: 0 };
-    for (const v of Object.values(votes)) {
-      if (v === 'a' || v === 'b') counts[v] = (counts[v] || 0) + 1;
-    }
-    return counts;
-  };
 
   if (loading && !items.length) {
     return (
@@ -287,7 +266,12 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }
 
   if (stage === 'plan') {
-    return <PlanStagePanel travelItems={travelItems} onSubmitForApproval={(item) => submitApproval(item)} />;
+    return (
+      <div className="space-y-4">
+        <PlanStagePanel travelItems={travelItems} onSubmitForApproval={(item) => submitApproval(item)} />
+        <PreTripChecklistPanel items={travelItems} onSaved={refresh} />
+      </div>
+    );
   }
 
   if (stage === 'approve') {
@@ -438,6 +422,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
         <Link href="/explorer" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
           Browse more opportunities on Explorer
         </Link>
+        <ApprovalGuidancePanel items={travelItems} onSaved={refresh} />
       </div>
     );
   }
@@ -517,9 +502,15 @@ export default function TravelHomeBody({ user }: { user: User }) {
         <Link href="/team" className="block text-center text-xs text-blue-600 hover:underline font-medium">
           Team tab
         </Link>
+        <IssueEscalationPanel items={travelItems} onSaved={refresh} />
       </div>
     );
   }
 
-  return <ReturnStagePanel user={user} />;
+  return (
+    <div className="space-y-4">
+      <PostTripFollowUpsPanel items={travelItems} onSaved={refresh} />
+      <ReturnStagePanel user={user} />
+    </div>
+  );
 }

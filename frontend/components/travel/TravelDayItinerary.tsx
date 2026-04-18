@@ -1,6 +1,8 @@
 'use client';
 
+import React, { useState } from 'react';
 import Link from 'next/link';
+import { AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import type { Item } from '@/lib/api';
 import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import type { TravelTicket } from '@/lib/travelTypes';
@@ -34,6 +36,9 @@ export default function TravelDayItinerary({
   /** Slim layout for Explorer tab */
   compact?: boolean;
 }) {
+  const [resolvedDisruption, setResolvedDisruption] = useState(false);
+  const [resolving, setResolving] = useState(false);
+
   const today = todayIso();
   const booked = items
     .filter(isTravelItem)
@@ -102,6 +107,55 @@ export default function TravelDayItinerary({
             : tripRecord?.checklistIntro || 'Trip record from your last pricing save.'}
         </p>
       </div>
+
+      {/* DISRUPTION COPILOT ALERT UI (MOCK) */}
+      {legacyTicket && !resolvedDisruption ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 space-y-3 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-600 animate-pulse" />
+            <h4 className="text-sm font-bold text-red-900">Urgent: Flight {ticket.flightNumber} Delayed</h4>
+          </div>
+          <p className="text-xs text-red-800">
+            A 2-hour delay has been detected. This creates a severe missed connection risk for your onward travel.
+          </p>
+          <div className="bg-white/60 p-3 rounded-xl border border-red-100">
+            <p className="text-[11px] font-bold text-gray-900 uppercase tracking-wider mb-2 text-red-900/60">Copilot Resolution Options</p>
+            <ul className="space-y-2">
+              <li className="text-xs flex items-center justify-between text-gray-800">
+                <span><strong>Option A:</strong> Rebook to 3:30 PM Delta (In-Policy)</span>
+                <button 
+                  onClick={() => {
+                    setResolving(true);
+                    setTimeout(() => setResolvedDisruption(true), 1500);
+                  }}
+                  disabled={resolving}
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-semibold disabled:opacity-50"
+                >
+                  {resolving ? <RefreshCw className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Rebook Now'}
+                </button>
+              </li>
+              <li className="text-xs flex items-center justify-between text-gray-800 border-t border-red-200/50 pt-2">
+                <span><strong>Option B:</strong> Wait for United & Claim Voucher</span>
+                <button className="px-3 py-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-800 rounded-lg font-semibold min-w-[85px]">
+                  Wait
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      ) : legacyTicket && resolvedDisruption ? (
+         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-2 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <span className="text-sm font-bold text-emerald-900">Disruption Resolved</span>
+          </div>
+          <p className="text-xs text-emerald-800">
+            Copilot successfully rebooked you on the 3:30 PM Delta flight. Your new e-ticket has been sent to your email and your HR team has been notified.
+          </p>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden shadow-sm">
         <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">

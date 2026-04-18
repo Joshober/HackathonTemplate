@@ -124,6 +124,26 @@ def build_travel_chat_context(
         "recentActivity": [],
         "clientHints": {},
         "contextQuality": None,
+        "privacy": {
+            "redactionApplied": True,
+            "retainedFields": [
+                "displayName",
+                "trip title",
+                "destination",
+                "trip dates",
+                "trip status",
+                "cost estimate",
+                "team city presets",
+            ],
+            "excludedFields": [
+                "passwords",
+                "payment card numbers",
+                "passport numbers",
+                "raw auth tokens",
+                "freeform private notes",
+            ],
+            "note": "Context is minimized before LLM use; only travel-planning-relevant fields are included.",
+        },
     }
 
     ui = ui_state if isinstance(ui_state, dict) else {}
