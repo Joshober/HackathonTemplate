@@ -1,5 +1,5 @@
 /**
- * Feature tests: ensure all app routes and features are present.
+ * Feature tests: ensure Travel Companion routes and API surface are present.
  * Run: npm run test
  */
 import { describe, it, expect } from 'vitest';
@@ -17,26 +17,7 @@ function pagePathForRoute(route: string): string {
   return path.join(APP_DIR, ...parts, 'page.tsx');
 }
 
-const EXPECTED_ROUTES = [
-  '',
-  'admin',
-  'dashboard',
-  'home',
-  'explorer',
-  'assistant',
-  'team',
-  'tutor',
-  'profile',
-  'profile/edit',
-  'profile/new',
-  'chat',
-  'support',
-  'voice-assistant',
-  'voice',
-  'bullshit-detect',
-  'pose-attendance',
-  'api/auth/callback',
-];
+const EXPECTED_ROUTES = ['', 'home', 'explorer', 'assistant', 'team', 'profile', 'profile/edit', 'profile/new', 'api/auth/callback'];
 
 describe('Feature: All routes exist', () => {
   it.each(EXPECTED_ROUTES)('route "%s" has a page', (route) => {
@@ -46,23 +27,13 @@ describe('Feature: All routes exist', () => {
   });
 });
 
-describe('Feature: Legacy demo routes redirect to Travel Companion', () => {
-  const legacyPaths = [
-    'dashboard/page.tsx',
-    'chat/page.tsx',
-    'tutor/page.tsx',
-    'support/page.tsx',
-    'voice-assistant/page.tsx',
-    'voice/page.tsx',
-    'bullshit-detect/page.tsx',
-    'pose-attendance/page.tsx',
-    'admin/page.tsx',
-  ];
-
-  it.each(legacyPaths)('%s redirects to /home', (rel) => {
-    const p = path.join(APP_DIR, ...rel.split('/'));
+describe('Feature: Legacy paths redirect in next.config', () => {
+  it('next.config defines redirects to /home', () => {
+    const p = path.join(__dirname, '../next.config.ts');
     const content = fs.readFileSync(p, 'utf-8');
-    expect(content).toContain("redirect('/home')");
+    expect(content).toContain('redirects');
+    expect(content).toContain("destination: '/home'");
+    expect(content).toContain("'/chat'");
   });
 });
 
@@ -75,27 +46,26 @@ describe('Feature: Travel bottom navigation', () => {
   });
 });
 
-describe('Feature: API client exports', () => {
+describe('Feature: API client exports (Travel product)', () => {
   const apiPath = path.join(__dirname, '../lib/api.ts');
   const content = fs.readFileSync(apiPath, 'utf-8');
 
   const EXPECTED_METHODS = [
-    'adminMe',
-    'getAdminSettings',
-    'updateAdminProfessorEmails',
-    'sendChatMessage',
-    'chatPipeline',
-    'bullshitDetect',
-    'bullshitDetectPipeline',
     'getProfile',
     'createProfile',
     'updateProfile',
+    'getItems',
+    'createItem',
+    'updateItem',
+    'searchExplorerOpportunities',
+    'fetchTravelPricingPreview',
     'transcribeAudio',
-    'textToSpeech',
     'generateVoice',
-    'sendEmail',
+    'chatPipeline',
     'createTicket',
-    'listTickets',
+    'listTeams',
+    'getTeam',
+    'sendTeamMessage',
   ];
 
   it.each(EXPECTED_METHODS)('api has method %s', (method) => {
@@ -108,7 +78,7 @@ describe('Feature: Travel day itinerary', () => {
     const p = path.join(__dirname, '../components/travel/TravelDayItinerary.tsx');
     const content = fs.readFileSync(p, 'utf-8');
     expect(content).toContain('Today');
-    expect(content).toContain('No ticket on file yet');
+    expect(content).toContain('No trip record on file yet');
   });
 });
 

@@ -33,8 +33,6 @@ def _fetch_page_title(url: str, timeout: float = 4.0, max_bytes: int = 120_000) 
             if len(buf) >= max_bytes:
                 break
         text = buf.decode("utf-8", errors="replace")
-    except OSError:
-        return None
     except Exception:
         return None
     try:

@@ -1,15 +1,44 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
 from flask import Blueprint, jsonify, request
 
 from app.routes.auth_backend import require_auth
-from app.services.amadeus_client import AmadeusError, client_or_none, summarize_flight_offer
+from app.services.amadeus_client import AmadeusError, client_or_none as amadeus_client_or_none, summarize_flight_offer
+from app.services.duffel_client import DuffelError, client_or_none as duffel_client_or_none, summarize_duffel_offer
 from app.services.travel_scrape_options import collect_scraped_options, scrape_enabled
 
 bp = Blueprint("travel_pricing", __name__)
+
+
+def _pick_flight_backend(amadeus, duffel) -> str:
+    """amadeus | duffel | none — TRAVEL_FLIGHT_PROVIDER: auto (default), amadeus, duffel, both."""
+    p = (os.getenv("TRAVEL_FLIGHT_PROVIDER") or "auto").strip().lower()
+    if p == "duffel":
+        return "duffel" if duffel else "none"
+    if p == "amadeus":
+        return "amadeus" if amadeus else ("duffel" if duffel else "none")
+    if p == "both":
+        if amadeus:
+            return "amadeus"
+        return "duffel" if duffel else "none"
+    # auto
+    if amadeus:
+        return "amadeus"
+    if duffel:
+        return "duffel"
+    return "none"
+
+
+def _response_mode(amadeus, duffel) -> str:
+    if amadeus:
+        return "amadeus"
+    if duffel:
+        return "duffel"
+    return "links_only"
 
 
 def _deep_links(origin_iata: str, city: str, outbound: str, inbound: str | None) -> dict[str, str | None]:
@@ -26,7 +55,7 @@ def _deep_links(origin_iata: str, city: str, outbound: str, inbound: str | None)
     }
 
 
-def _flight_bookable_summary(offers: list) -> dict:
+def _flight_bookable_amadeus(offers: list) -> dict:
     if not offers:
         return {"bookable": False, "reason": "No flight offers returned for these parameters."}
     summ0 = summarize_flight_offer(offers[0])
@@ -37,7 +66,22 @@ def _flight_bookable_summary(offers: list) -> dict:
         }
     return {
         "bookable": True,
-        "reason": "Test API returned flight offers — verify fare and ticketing deadlines before purchase.",
+        "reason": "Amadeus returned flight offers — verify fare and ticketing deadlines before purchase.",
+    }
+
+
+def _flight_bookable_duffel(offers: list) -> dict:
+    if not offers:
+        return {"bookable": False, "reason": "No flight offers returned for these parameters."}
+    pay = offers[0].get("payment_requirements") if isinstance(offers[0].get("payment_requirements"), dict) else {}
+    if pay.get("requires_instant_payment"):
+        return {
+            "bookable": True,
+            "reason": "Duffel: instant payment required — confirm fare rules before booking.",
+        }
+    return {
+        "bookable": True,
+        "reason": "Duffel returned offers — check expires_at and airline conditions before purchase.",
     }
 
 
@@ -51,10 +95,20 @@ def _hotel_bookable_summary(rows: list) -> dict:
 
 
 def _links_only_flight_hotel() -> tuple[dict, dict]:
-    u = "Bookability unknown without Amadeus API."
+    u = "Bookability unknown without a flight API (Amadeus or Duffel)."
     return (
-        {"offers": [], "error": "Amadeus not configured — use deep links to compare live sites.", "bookable": None, "reason": u},
-        {"offers": [], "error": "Amadeus not configured — use deep links to compare live sites.", "bookable": None, "reason": u},
+        {
+            "offers": [],
+            "error": "No flight API configured — set AMADEUS_* or DUFFEL_ACCESS_TOKEN, or use deep links.",
+            "bookable": None,
+            "reason": u,
+        },
+        {
+            "offers": [],
+            "error": "Amadeus not configured — use deep links for hotels.",
+            "bookable": None,
+            "reason": "Hotel live rates need Amadeus keys in this template.",
+        },
     )
 
 
@@ -85,8 +139,10 @@ def pricing_preview(user_id):
     if not isinstance(events, list) or not events:
         return jsonify({"error": "events must be a non-empty array."}), 400
 
-    amadeus = client_or_none()
-    mode = "amadeus" if amadeus else "links_only"
+    amadeus = amadeus_client_or_none()
+    duffel = duffel_client_or_none()
+    flight_backend = _pick_flight_backend(amadeus, duffel)
+    mode = _response_mode(amadeus, duffel)
     out_events: list[dict] = []
 
     for raw in events:
@@ -112,63 +168,112 @@ def pricing_preview(user_id):
             "destinationQuery": dest_q,
             "deepLinks": _deep_links(origin_iata, dest_q or "destination", ob or "", ib),
             "resolvedDestination": None,
+            "flightSource": flight_backend,
         }
 
-        flight_offers_raw: list = []
-        flight_err: str | None = None
-        hotel_rows: list = []
-        hotel_err: str | None = None
-
-        if amadeus and dest_q and ob:
+        dest_code: str | None = None
+        dest_label: str | None = None
+        if amadeus and dest_q:
             try:
-                code, label = amadeus.resolve_iata(dest_q)
-                row["resolvedDestination"] = {"iata": code, "label": label}
-                if code:
-                    flight_offers_raw = amadeus.flight_offers(
-                        origin_iata, code, ob, ib, adults=adults, max_offers=5
-                    )
-                else:
-                    flight_err = "Could not resolve destination to an IATA city/airport code."
-            except AmadeusError as e:
-                flight_err = str(e)
+                dest_code, dest_label = amadeus.resolve_iata(dest_q)
+            except AmadeusError:
+                dest_code, dest_label = None, None
+        if flight_backend == "duffel" and duffel and dest_q and (not dest_code):
+            try:
+                dest_code, dest_label = duffel.suggest_airport_iata(dest_q)
+            except DuffelError:
+                dest_code, dest_label = None, None
 
-            if ch_in:
+        if dest_code or dest_label:
+            row["resolvedDestination"] = {"iata": dest_code, "label": dest_label}
+
+        flight_summaries: list = []
+        flight_err: str | None = None
+        amadeus_flight_raw: list = []
+        duffel_flight_raw: list = []
+
+        if flight_backend == "amadeus" and amadeus and dest_q and ob:
+            if not dest_code:
                 try:
-                    hotel_rows = amadeus.hotel_offers_for_city(dest_q, ch_in, ch_out or ch_in, adults=adults)
+                    dest_code, dest_label = amadeus.resolve_iata(dest_q)
+                    row["resolvedDestination"] = {"iata": dest_code, "label": dest_label}
                 except AmadeusError as e:
-                    hotel_err = str(e)
-            else:
-                hotel_err = "Missing check-in date for hotel search."
-        elif not amadeus:
-            fblk, hblk = _links_only_flight_hotel()
-            row["flight"] = fblk
-            row["hotel"] = hblk
-            row["scrapedOptions"] = []
-            row["scrapeNote"] = None
-            if scrape_enabled():
-                opts, serr = collect_scraped_options(origin_iata, dest_q or "travel", ob or "2026-06-01", ib)
-                row["scrapedOptions"] = opts
-                if serr:
-                    row["scrapeNote"] = serr
-            out_events.append(row)
-            continue
+                    flight_err = str(e)
+            if dest_code and not flight_err:
+                try:
+                    amadeus_flight_raw = amadeus.flight_offers(
+                        origin_iata, dest_code, ob, ib, adults=adults, max_offers=5
+                    )
+                    flight_summaries = [summarize_flight_offer(o) for o in amadeus_flight_raw]
+                except AmadeusError as e:
+                    flight_err = str(e)
+            elif not dest_code and not flight_err:
+                flight_err = "Could not resolve destination to an IATA city/airport code."
+        elif flight_backend == "duffel" and duffel and dest_q and ob:
+            if not dest_code:
+                try:
+                    dest_code, dest_label = duffel.suggest_airport_iata(dest_q)
+                    row["resolvedDestination"] = {"iata": dest_code, "label": dest_label}
+                except DuffelError as e:
+                    flight_err = str(e)
+            if dest_code and not flight_err:
+                try:
+                    duffel_flight_raw = duffel.search_flight_offers(
+                        origin_iata, dest_code, ob, ib, adults=adults, max_offers=8
+                    )
+                    flight_summaries = [summarize_duffel_offer(o) for o in duffel_flight_raw]
+                except DuffelError as e:
+                    flight_err = str(e)
+            elif not dest_code and not flight_err:
+                flight_err = "Duffel could not resolve destination to an airport IATA code."
         else:
-            flight_err = flight_err or "Need destination and outbound date for flight search."
-            if not ch_in:
-                hotel_err = hotel_err or "Need check-in date for hotel search."
+            if not (dest_q and ob):
+                flight_err = "Need destination and outbound date for flight search."
+            elif flight_backend == "none":
+                flight_err = "Neither Amadeus nor Duffel is configured — use deep links."
 
-        fs = _flight_bookable_summary(flight_offers_raw)
+        if flight_err and not flight_summaries:
+            fs = {"bookable": False, "reason": flight_err}
+        elif duffel_flight_raw:
+            fs = _flight_bookable_duffel(duffel_flight_raw)
+        elif amadeus_flight_raw:
+            fs = _flight_bookable_amadeus(amadeus_flight_raw)
+        else:
+            fs = {
+                "bookable": False,
+                "reason": flight_err or "No flight offers returned for these parameters.",
+            }
+
         row["flight"] = {
-            "offers": [summarize_flight_offer(o) for o in flight_offers_raw],
-            "error": flight_err,
+            "offers": flight_summaries,
+            "error": flight_err if not flight_summaries else None,
             **fs,
         }
-        hs = _hotel_bookable_summary(hotel_rows)
-        row["hotel"] = {
-            "offers": hotel_rows[:8],
-            "error": hotel_err,
-            **hs,
-        }
+
+        hotel_rows: list = []
+        hotel_err: str | None = None
+        if not amadeus:
+            _, hblk = _links_only_flight_hotel()
+            row["hotel"] = hblk
+        elif ch_in and dest_q:
+            try:
+                hotel_rows = amadeus.hotel_offers_for_city(dest_q, ch_in, ch_out or ch_in, adults=adults)
+            except AmadeusError as e:
+                hotel_err = str(e)
+            hs = _hotel_bookable_summary(hotel_rows)
+            row["hotel"] = {
+                "offers": hotel_rows[:8],
+                "error": hotel_err,
+                **hs,
+            }
+        else:
+            hotel_err = "Missing check-in or destination for hotel search."
+            hs = _hotel_bookable_summary([])
+            row["hotel"] = {
+                "offers": [],
+                "error": hotel_err,
+                **hs,
+            }
 
         row["scrapedOptions"] = []
         row["scrapeNote"] = None
@@ -180,4 +285,14 @@ def pricing_preview(user_id):
 
         out_events.append(row)
 
-    return jsonify({"mode": mode, "scrapeEnabled": scrape_enabled(), "events": out_events}), 200
+    return (
+        jsonify(
+            {
+                "mode": mode,
+                "flightBackend": flight_backend,
+                "scrapeEnabled": scrape_enabled(),
+                "events": out_events,
+            }
+        ),
+        200,
+    )

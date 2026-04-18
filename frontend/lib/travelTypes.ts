@@ -44,6 +44,38 @@ export interface TravelTicket {
   cityLabel?: string;
 }
 
+/** Snapshot of live pricing (Amadeus or links-only) saved when user refreshes quotes in Approve. */
+export interface TravelPricingSnapshotEvent {
+  tripTitle: string;
+  destinationQuery: string;
+  resolvedIata?: string | null;
+  resolvedLabel?: string | null;
+  googleFlightsSearch?: string | null;
+  googleHotelsSearch?: string | null;
+  topFlightLine?: string;
+  topHotelLine?: string;
+  flightApiNote?: string | null;
+  hotelApiNote?: string | null;
+}
+
+export interface TravelPricingSnapshot {
+  savedAt: string;
+  originIata?: string;
+  mode?: string;
+  scrapeEnabled?: boolean;
+  events: TravelPricingSnapshotEvent[];
+}
+
+/** Human-readable trip record after finalize (not a GDS ticket). */
+export interface TravelTripRecord {
+  title: string;
+  locationSummary: string;
+  checklistIntro: string;
+  bookingLinks: { label: string; url: string }[];
+}
+
+export type TravelApprovalSetup = 'team_linked' | 'needs_team';
+
 export interface TravelItemPayload {
   location: string;
   costEstimate: number;
@@ -54,9 +86,17 @@ export interface TravelItemPayload {
   /** Server-backed when items API supports `travel` */
   opportunityStatus?: TravelOpportunityStatus;
   approvals?: TravelApprovalRow[];
+  /** When submitted without an active team, reviewers are empty until user picks a team. */
+  approvalSetup?: TravelApprovalSetup;
   notes?: string;
   bookingEstimate?: TravelBookingEstimate;
+  /** Legacy demo PNR — prefer tripRecord + travelPricingSnapshot for new bookings */
   ticket?: TravelTicket;
+  /** Persisted pricing quote snapshot + outbound booking links */
+  travelPricingSnapshot?: TravelPricingSnapshot;
+  tripRecord?: TravelTripRecord;
+  /** Email → selected option key (pre-book team poll) */
+  teamOptionVotes?: Record<string, string>;
   /** Post-trip / Return stage — AI-generated social copy */
   instagramCaption?: string;
   instagramCaptionGeneratedAt?: string;

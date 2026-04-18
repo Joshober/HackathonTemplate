@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = false);
     if (!mounted) return;
     if (ok) {
-      context.go('/dashboard');
+      context.go('/travel');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.error ?? 'Login failed')));
     }

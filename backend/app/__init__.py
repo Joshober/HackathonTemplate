@@ -42,12 +42,11 @@ def create_app():
     init_cloudinary()
     
     # Register blueprints (prioritize JP-Branch, add pipeline APIs)
-    from app.routes import items, health, profiles, chat, auth_backend, voice, transcription, speech, multiverse, email, tickets, pose_sessions, admin, teams, explorer, travel_pricing
+    from app.routes import items, health, profiles, chat, auth_backend, voice, transcription, speech, email, tickets, admin, teams, explorer, travel_pricing
     app.register_blueprint(items.bp, url_prefix='/api')
     app.register_blueprint(explorer.bp, url_prefix='/api')
     app.register_blueprint(travel_pricing.bp, url_prefix='/api')
     app.register_blueprint(admin.bp, url_prefix='/api')
-    app.register_blueprint(pose_sessions.bp, url_prefix='/api')
     app.register_blueprint(tickets.bp, url_prefix='/api')
     app.register_blueprint(profiles.bp, url_prefix='/api')
     app.register_blueprint(teams.bp, url_prefix='/api')
@@ -56,7 +55,6 @@ def create_app():
     app.register_blueprint(auth_backend.bp, url_prefix='/api')
     app.register_blueprint(transcription.bp, url_prefix='/api')
     app.register_blueprint(speech.bp, url_prefix='/api')
-    app.register_blueprint(multiverse.bp, url_prefix='/api/multiverse')
     app.register_blueprint(email.bp, url_prefix='/api')
     app.register_blueprint(health.bp)
     

@@ -35,20 +35,25 @@ export default function TravelDayItinerary({
   compact?: boolean;
 }) {
   const today = todayIso();
-  const bookedWithTicket = items
+  const booked = items
     .filter(isTravelItem)
     .map((item) => ({ item, t: getTravelPayload(item) }))
     .filter(
       (x): x is { item: Item; t: NonNullable<ReturnType<typeof getTravelPayload>> } =>
-        x.t != null && x.t.opportunityStatus === 'booked' && !!x.t.ticket
+        x.t != null && x.t.opportunityStatus === 'booked'
     );
 
-  if (bookedWithTicket.length === 0) {
+  const firstBooked = booked.find(
+    (x) => x.t.tripRecord || x.t.travelPricingSnapshot?.events?.length || x.t.ticket
+  );
+
+  if (!firstBooked) {
     return (
       <div className={`rounded-2xl border border-dashed border-white/15 ${compact ? 'p-4' : 'p-6'} text-center`}>
-        <p className="text-sm text-white/90 font-medium">No ticket on file yet</p>
+        <p className="text-sm text-white/90 font-medium">No trip record on file yet</p>
         <p className="text-xs text-travel-muted mt-2">
-          Finalize a bundle in the <strong>Approve</strong> stage to generate demo ticket details here.
+          In <strong>Approve</strong>, refresh live quotes (optional), then use <strong>Finalize bundle</strong> to save
+          your trip record and booking links here.
         </p>
         <Link href="/home" className="inline-block mt-4 text-sm text-blue-300 hover:underline">
           Go to Home
@@ -57,20 +62,33 @@ export default function TravelDayItinerary({
     );
   }
 
-  const { item, t } = bookedWithTicket[0];
-  const ticket = t.ticket as TravelTicket;
-  const isDepartToday = ticket.departDate === today;
+  const { item, t } = firstBooked;
+  const tripRecord = t.tripRecord;
+  const snapshot = t.travelPricingSnapshot;
+  const ticket = t.ticket as TravelTicket | undefined;
+  const legacyTicket = ticket?.recordLocator && ticket?.flightNumber;
 
-  const obligations: { time: string; label: string; done?: boolean }[] = [];
-  if (isDepartToday) {
-    obligations.push({ time: minutesBefore(ticket.departTime, 120), label: 'Arrive at airport (2h before departure)' });
-    obligations.push({ time: minutesBefore(ticket.departTime, 45), label: 'Be at gate for boarding' });
-    obligations.push({ time: ticket.departTime, label: `Flight ${ticket.flightNumber} departs` });
+  const obligations: { time: string; label: string }[] = [];
+  if (legacyTicket) {
+    const isDepartToday = ticket.departDate === today;
+    if (isDepartToday) {
+      obligations.push({ time: minutesBefore(ticket.departTime, 120), label: 'Arrive at airport (2h before departure)' });
+      obligations.push({ time: minutesBefore(ticket.departTime, 45), label: 'Be at gate for boarding' });
+      obligations.push({ time: ticket.departTime, label: `Flight ${ticket.flightNumber} departs` });
+    } else {
+      obligations.push({
+        time: '—',
+        label: `Next flight ${ticket.departDate} at ${ticket.departTime} — today: prep and confirmations.`,
+      });
+    }
   } else {
     obligations.push({
       time: '—',
-      label: `Next flight ${ticket.departDate} at ${ticket.departTime} — today: prep and confirmations.`,
+      label: 'Review booking links below and confirm check-in windows with your carrier or TMC.',
     });
+    if (snapshot?.events?.[0]?.topFlightLine) {
+      obligations.push({ time: '—', label: `Latest captured flight option: ${snapshot.events[0].topFlightLine}` });
+    }
   }
 
   return (
@@ -79,9 +97,9 @@ export default function TravelDayItinerary({
         <p className="text-[10px] font-semibold uppercase tracking-widest text-travel-muted">Today</p>
         <h3 className={`font-semibold text-white ${compact ? 'text-base' : 'text-lg'}`}>{formatTodayLabel()}</h3>
         <p className="text-xs text-travel-muted mt-1">
-          {isDepartToday
-            ? 'You have a flight today — key times below.'
-            : 'Ticket on file; departure is not today — prep checklist for today.'}
+          {legacyTicket
+            ? 'Legacy demo ticket on file — verify with airline.'
+            : tripRecord?.checklistIntro || 'Trip record from your last pricing save.'}
         </p>
       </div>
 
@@ -89,7 +107,7 @@ export default function TravelDayItinerary({
         <div className="px-4 py-3 bg-amber-500/10 border-b border-amber-500/20">
           <p className="text-xs font-semibold text-amber-100">Must attend</p>
           <p className="text-sm text-white mt-1">
-            {item.title} · {ticket.cityLabel || t.location}
+            {item.title} · {tripRecord?.locationSummary || t.location}
           </p>
         </div>
         {obligations.map((row, i) => (
@@ -100,44 +118,70 @@ export default function TravelDayItinerary({
         ))}
       </div>
 
-      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-emerald-200/90">Ticket</p>
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-          <div>
-            <dt className="text-travel-muted">Record locator</dt>
-            <dd className="text-white font-mono font-medium">{ticket.recordLocator}</dd>
-          </div>
-          <div>
-            <dt className="text-travel-muted">Flight</dt>
-            <dd className="text-white font-medium">
-              {ticket.airline} {ticket.flightNumber}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-travel-muted">Route</dt>
-            <dd className="text-white">
-              {ticket.origin} → {ticket.destination}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-travel-muted">Date / time</dt>
-            <dd className="text-white">
-              {ticket.departDate} · {ticket.departTime}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-travel-muted">Seat</dt>
-            <dd className="text-white">{ticket.seat ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-travel-muted">Gate / terminal</dt>
-            <dd className="text-white">
-              {ticket.gate ?? 'TBD'} · Term {ticket.terminal ?? '—'}
-            </dd>
-          </div>
-        </dl>
-        <p className="text-[10px] text-travel-muted">Demo data — always verify with airline or TMC.</p>
-      </div>
+      {tripRecord && tripRecord.bookingLinks.length > 0 ? (
+        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-200/90">Booking links</p>
+          <p className="text-xs text-travel-muted">{tripRecord.title}</p>
+          <ul className="space-y-2">
+            {tripRecord.bookingLinks.map((l, i) => (
+              <li key={i}>
+                <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-300 hover:underline">
+                  {l.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[10px] text-travel-muted">Links reflect saved pricing search — always confirm before purchase.</p>
+        </div>
+      ) : null}
+
+      {snapshot?.events?.length ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-2 text-xs">
+          <p className="font-semibold text-white/90">Saved pricing snapshot</p>
+          <p className="text-travel-muted">
+            Origin {snapshot.originIata ?? '—'} · {snapshot.mode === 'links_only' ? 'Links-only mode' : 'Amadeus test'}{' '}
+            · saved {new Date(snapshot.savedAt).toLocaleString()}
+          </p>
+          <ul className="space-y-1 text-travel-muted list-disc pl-4">
+            {snapshot.events.slice(0, 3).map((ev, i) => (
+              <li key={i}>
+                {ev.tripTitle}: {ev.topFlightLine || 'No flight line'} {ev.topHotelLine ? `· ${ev.topHotelLine}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {legacyTicket ? (
+        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4 space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-200/90">Legacy ticket (demo)</p>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            <div>
+              <dt className="text-travel-muted">Record locator</dt>
+              <dd className="text-white font-mono font-medium">{ticket.recordLocator}</dd>
+            </div>
+            <div>
+              <dt className="text-travel-muted">Flight</dt>
+              <dd className="text-white font-medium">
+                {ticket.airline} {ticket.flightNumber}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-travel-muted">Route</dt>
+              <dd className="text-white">
+                {ticket.origin} → {ticket.destination}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-travel-muted">Date / time</dt>
+              <dd className="text-white">
+                {ticket.departDate} · {ticket.departTime}
+              </dd>
+            </div>
+          </dl>
+          <p className="text-[10px] text-travel-muted">Demo data — always verify with airline or TMC.</p>
+        </div>
+      ) : null}
     </div>
   );
 }

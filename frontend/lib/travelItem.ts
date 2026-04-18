@@ -1,9 +1,13 @@
 import type { Item } from '@/lib/api';
 import type {
+  TravelApprovalSetup,
   TravelBookingEstimate,
   TravelItemPayload,
   TravelOpportunityStatus,
+  TravelPricingSnapshot,
+  TravelPricingSnapshotEvent,
   TravelTicket,
+  TravelTripRecord,
 } from '@/lib/travelTypes';
 
 const SENTINEL = '__TRAVEL_JSON__';
@@ -73,6 +77,74 @@ function pickBookingEstimate(raw: Record<string, unknown>): TravelBookingEstimat
   };
 }
 
+function pickPricingSnapshot(raw: Record<string, unknown>): TravelPricingSnapshot | undefined {
+  const s = raw.travelPricingSnapshot;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return undefined;
+  const o = s as Record<string, unknown>;
+  const eventsRaw = o.events;
+  if (!Array.isArray(eventsRaw)) return undefined;
+  const events: TravelPricingSnapshotEvent[] = eventsRaw
+    .filter((e): e is Record<string, unknown> => e != null && typeof e === 'object' && !Array.isArray(e))
+    .map((e) => ({
+      tripTitle: typeof e.tripTitle === 'string' ? e.tripTitle : '',
+      destinationQuery: typeof e.destinationQuery === 'string' ? e.destinationQuery : '',
+      resolvedIata: typeof e.resolvedIata === 'string' || e.resolvedIata === null ? (e.resolvedIata as string | null) : undefined,
+      resolvedLabel:
+        typeof e.resolvedLabel === 'string' || e.resolvedLabel === null ? (e.resolvedLabel as string | null) : undefined,
+      googleFlightsSearch:
+        typeof e.googleFlightsSearch === 'string' || e.googleFlightsSearch === null
+          ? (e.googleFlightsSearch as string | null)
+          : undefined,
+      googleHotelsSearch:
+        typeof e.googleHotelsSearch === 'string' || e.googleHotelsSearch === null
+          ? (e.googleHotelsSearch as string | null)
+          : undefined,
+      topFlightLine: typeof e.topFlightLine === 'string' ? e.topFlightLine : undefined,
+      topHotelLine: typeof e.topHotelLine === 'string' ? e.topHotelLine : undefined,
+      flightApiNote: typeof e.flightApiNote === 'string' || e.flightApiNote === null ? (e.flightApiNote as string | null) : undefined,
+      hotelApiNote: typeof e.hotelApiNote === 'string' || e.hotelApiNote === null ? (e.hotelApiNote as string | null) : undefined,
+    }));
+  return {
+    savedAt: typeof o.savedAt === 'string' ? o.savedAt : new Date().toISOString(),
+    originIata: typeof o.originIata === 'string' ? o.originIata : undefined,
+    mode: typeof o.mode === 'string' ? o.mode : undefined,
+    scrapeEnabled: typeof o.scrapeEnabled === 'boolean' ? o.scrapeEnabled : undefined,
+    events,
+  };
+}
+
+function pickTripRecord(raw: Record<string, unknown>): TravelTripRecord | undefined {
+  const tr = raw.tripRecord;
+  if (!tr || typeof tr !== 'object' || Array.isArray(tr)) return undefined;
+  const o = tr as Record<string, unknown>;
+  const title = typeof o.title === 'string' ? o.title : '';
+  const locationSummary = typeof o.locationSummary === 'string' ? o.locationSummary : '';
+  const checklistIntro = typeof o.checklistIntro === 'string' ? o.checklistIntro : '';
+  const linksRaw = o.bookingLinks;
+  const bookingLinks: TravelTripRecord['bookingLinks'] = [];
+  if (Array.isArray(linksRaw)) {
+    for (const row of linksRaw) {
+      if (!row || typeof row !== 'object') continue;
+      const r = row as Record<string, unknown>;
+      const label = typeof r.label === 'string' ? r.label : '';
+      const url = typeof r.url === 'string' ? r.url : '';
+      if (label && url) bookingLinks.push({ label, url });
+    }
+  }
+  if (!title && !bookingLinks.length) return undefined;
+  return { title, locationSummary, checklistIntro, bookingLinks };
+}
+
+function pickTeamOptionVotes(raw: Record<string, unknown>): Record<string, string> | undefined {
+  const v = raw.teamOptionVotes;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val === 'string' && val) out[k] = val;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function pickTicket(raw: Record<string, unknown>): TravelTicket | undefined {
   const t = raw.ticket;
   if (!t || typeof t !== 'object' || Array.isArray(t)) return undefined;
@@ -102,6 +174,7 @@ function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null
   const igAt =
     typeof raw.instagramCaptionGeneratedAt === 'string' ? raw.instagramCaptionGeneratedAt : undefined;
   const sourceUrl = typeof raw.sourceUrl === 'string' ? raw.sourceUrl : undefined;
+  const approvalSetup = raw.approvalSetup as TravelApprovalSetup | undefined;
   return {
     location,
     costEstimate: typeof raw.costEstimate === 'number' ? raw.costEstimate : Number(raw.costEstimate) || 0,
@@ -111,9 +184,13 @@ function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null
     addedBy: typeof raw.addedBy === 'string' ? raw.addedBy : undefined,
     opportunityStatus: raw.opportunityStatus as TravelOpportunityStatus | undefined,
     approvals: Array.isArray(raw.approvals) ? (raw.approvals as TravelItemPayload['approvals']) : undefined,
+    approvalSetup: approvalSetup === 'team_linked' || approvalSetup === 'needs_team' ? approvalSetup : undefined,
     notes: typeof raw.notes === 'string' ? raw.notes : undefined,
     bookingEstimate: pickBookingEstimate(raw),
     ticket: pickTicket(raw),
+    travelPricingSnapshot: pickPricingSnapshot(raw),
+    tripRecord: pickTripRecord(raw),
+    teamOptionVotes: pickTeamOptionVotes(raw),
     instagramCaption: ig,
     instagramCaptionGeneratedAt: igAt,
     sourceUrl,

@@ -1,13 +1,16 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, type Profile, type TeamDetail, type TeamSummary, TRAVEL_ACTIVE_TEAM_STORAGE_KEY } from '@/lib/api';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
+import { useTravelStage } from '@/lib/travelContext';
 import TeamChatPanel from '@/components/travel/TeamChatPanel';
 
 export default function TeamPage() {
   const { user, loading } = useTravelAuth();
+  const { setStage } = useTravelStage();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
@@ -174,6 +177,23 @@ export default function TeamPage() {
           Create a team, invite colleagues by email (they must sign in once), and chat with a shared travel assistant. Your profile
           still syncs from the server.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-white">Trip approvals</p>
+          <p className="text-xs text-travel-muted mt-0.5">
+            Open Home in the Approve stage to track reviewers, pricing, and sign-off. Reviewer names come from your active team
+            here.
+          </p>
+        </div>
+        <Link
+          href="/home"
+          onClick={() => setStage('approve')}
+          className="shrink-0 inline-flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-4 py-2.5 text-center transition-colors"
+        >
+          Approve a trip
+        </Link>
       </div>
 
       {err ? (

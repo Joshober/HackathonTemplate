@@ -20,7 +20,7 @@ class LandingScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Claude Home™',
+                  'Lockton Travel Companion',
                   style: Theme.of(context).textTheme.headlineLarge?.copyWith(
                         color: AppTheme.primary,
                         fontWeight: FontWeight.bold,
@@ -28,7 +28,7 @@ class LandingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Your sarcastic domestic assistant',
+                  'Plan → approve → travel → return (web app)',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.grey),
                 ),
                 const SizedBox(height: 48),
@@ -36,13 +36,8 @@ class LandingScreen extends StatelessWidget {
                   const CircularProgressIndicator(color: AppTheme.primary)
                 else if (auth.isAuthenticated) ...[
                   ElevatedButton(
-                    onPressed: () => context.go('/dashboard'),
-                    child: const Text('Dashboard'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () => context.go('/bullshit'),
-                    child: const Text('Reality Check (public)'),
+                    onPressed: () => context.go('/travel'),
+                    child: const Text('Travel Companion'),
                   ),
                 ] else ...[
                   ElevatedButton(
@@ -53,11 +48,6 @@ class LandingScreen extends StatelessWidget {
                   TextButton(
                     onPressed: () => context.push('/register'),
                     child: const Text('Register'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () => context.go('/bullshit'),
-                    child: const Text('Reality Check (no login)'),
                   ),
                 ],
               ],

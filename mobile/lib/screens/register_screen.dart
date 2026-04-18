@@ -49,7 +49,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = false);
     if (!mounted) return;
     if (ok) {
-      context.go('/dashboard');
+      context.go('/travel');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(auth.error ?? 'Registration failed')));
     }

@@ -67,6 +67,77 @@ export interface ExplorerOpportunity {
   city: string;
 }
 
+export interface TravelPricingFlightOfferSummary {
+  grandTotal?: string;
+  currency?: string;
+  carrierSummary?: string;
+  departureAt?: string;
+  arrivalAt?: string;
+  instantTicketingRequired?: boolean;
+  lastTicketingDate?: string;
+  numItineraries?: number;
+  /** Present when offer came from Duffel */
+  source?: string;
+}
+
+export interface TravelPricingHotelOfferRow {
+  hotelId?: string;
+  hotelName?: string;
+  checkIn?: string;
+  checkOut?: string;
+  total?: string;
+  currency?: string;
+  boardType?: string;
+}
+
+export interface TravelPricingDeepLinks {
+  googleFlightsSearch?: string | null;
+  googleHotelsSearch?: string | null;
+  googleFlightsShort?: string | null;
+  kayakExploreHint?: string | null;
+}
+
+export interface TravelPricingScrapedOption {
+  title: string;
+  snippet: string;
+  url: string;
+  kind: string;
+  sourceQuery: string;
+  pageTitle?: string;
+}
+
+export interface TravelPricingEventResult {
+  itemId?: string;
+  title: string;
+  destinationQuery: string;
+  deepLinks: TravelPricingDeepLinks;
+  resolvedDestination?: { iata: string | null; label: string | null } | null;
+  flight: {
+    offers: TravelPricingFlightOfferSummary[];
+    error?: string | null;
+    bookable?: boolean | null;
+    reason?: string;
+  };
+  hotel: {
+    offers: TravelPricingHotelOfferRow[];
+    error?: string | null;
+    bookable?: boolean | null;
+    reason?: string;
+  };
+  scrapedOptions: TravelPricingScrapedOption[];
+  scrapeNote?: string | null;
+  /** amadeus | duffel | none — which backend served flights for this row */
+  flightSource?: string;
+}
+
+export interface TravelPricingPreviewResponse {
+  mode: 'amadeus' | 'duffel' | 'links_only';
+  /** Global preference resolution: amadeus | duffel | none */
+  flightBackend?: string;
+  scrapeEnabled: boolean;
+  events: TravelPricingEventResult[];
+}
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const response = await fetch(`${API_URL}/api/auth/token`, {
@@ -237,6 +308,27 @@ export const api = {
     });
   },
 
+  async fetchTravelPricingPreview(body: {
+    originIata: string;
+    events: Array<{
+      itemId?: string;
+      title?: string;
+      destinationQuery?: string;
+      location?: string;
+      outboundDate: string;
+      inboundDate?: string;
+      checkIn?: string;
+      checkOut?: string;
+      adults?: number;
+    }>;
+  }): Promise<TravelPricingPreviewResponse> {
+    return fetchWithAuth('/api/travel/pricing-preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  },
+
   async createItem(item: {
     title: string;
     description: string;
@@ -389,45 +481,7 @@ export const api = {
     });
   },
 
-  // Chat API (public, no auth). Optional images, optional video (roast: video max 20s), optional mode 'assistant' | 'roast'.
-  async sendChatMessage(
-    messages: Array<{ role: string; content: string }>,
-    model?: string,
-    imagesBase64?: string[],
-    mode?: 'assistant' | 'roast' | 'support',
-    videoBase64?: string,
-    videoMime?: string,
-    userEmail?: string,
-    userId?: string
-  ): Promise<{ message: string; usage?: Record<string, unknown>; demo_account_deleted?: boolean }> {
-    const body: {
-      messages: typeof messages;
-      model?: string;
-      images?: string[];
-      mode?: string;
-      video_b64?: string;
-      video_mime?: string;
-      user_email?: string;
-      user_id?: string;
-    } = {
-      messages,
-      model: model || 'openai/gpt-3.5-turbo',
-    };
-    if (imagesBase64?.length) body.images = imagesBase64;
-    if (mode) body.mode = mode;
-    if (videoBase64) {
-      body.video_b64 = videoBase64;
-      body.video_mime = videoMime || 'video/mp4';
-    }
-    if (userEmail?.trim()) body.user_email = userEmail.trim();
-    if (userId?.trim()) body.user_id = userId.trim();
-    return fetchPublic('/api/chat', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-
-  // Voice API (public - text to speech: OpenAI TTS or Magic Hour) - from JP-Branch
+  // Voice API (public - text to speech: OpenAI TTS or Magic Hour)
   async generateVoice(params: {
     text: string;
     provider: 'openai' | 'magic_hour';
@@ -455,63 +509,6 @@ export const api = {
     });
   },
 
-  // Roast AI (public, no auth)
-  async analyzeRoast(image: File): Promise<RoastAnalyzeResponse> {
-    const formData = new FormData();
-    formData.append('image', image);
-    return fetchPublic('/api/multiverse/analyze', {
-      method: 'POST',
-      body: formData,
-    });
-  },
-
-  // Weekend Energy AI Tutor (auth) — FUN + HELP; optional images/video
-  async askTutor(
-    question: string,
-    options?: {
-      weekday?: string;
-      time?: string;
-      month?: string;
-      calendar_date?: string;
-      images?: string[];
-      video_b64?: string;
-      video_mime?: string;
-    }
-  ): Promise<{ fun: string; help: string[]; raw?: string }> {
-    const now = new Date();
-    const weekday = options?.weekday ?? now.toLocaleDateString('en-US', { weekday: 'long' });
-    const time = options?.time ?? now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-    const month = options?.month ?? now.toLocaleDateString('en-US', { month: 'long' });
-    const calendar_date =
-      options?.calendar_date ?? now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-    const body: {
-      question: string;
-      weekday: string;
-      time: string;
-      month?: string;
-      calendar_date?: string;
-      images?: string[];
-      video_b64?: string;
-      video_mime?: string;
-    } = {
-      question,
-      weekday,
-      time,
-      month,
-      calendar_date,
-    };
-    if (options?.images?.length) body.images = options.images;
-    if (options?.video_b64) {
-      body.video_b64 = options.video_b64;
-      body.video_mime = options.video_mime || 'video/mp4';
-    }
-    return fetchWithAuth('/api/tutor', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  },
-
   // Voice-to-Text API (Whisper - pipeline backend)
   async transcribeAudio(file: File, options?: { language?: string; model?: string }): Promise<{ text: string }> {
     const formData = new FormData();
@@ -524,49 +521,7 @@ export const api = {
     });
   },
 
-  // Bullshit detection (text only): returns read_aloud summary + analysis
-  async bullshitDetect(document: string, model?: string): Promise<{ read_aloud: string; analysis: string; usage?: Record<string, unknown> }> {
-    return fetchPublic('/api/chat/bullshit-detect', {
-      method: 'POST',
-      body: JSON.stringify({ document, model }),
-    });
-  },
-
-  // Bullshit detection pipeline: voice + text + images + video → analysis, optional TTS
-  async bullshitDetectPipeline(options: {
-    audio?: File;
-    text?: string;
-    images?: File[];
-    video?: File;
-    tts?: boolean;
-    voice?: string;
-    tts_provider?: 'openai' | 'magic_hour';
-    model?: string;
-  }): Promise<{
-    read_aloud: string;
-    analysis: string;
-    transcribed_text?: string;
-    audio_base64?: string;
-    audio_format?: 'mp3' | 'wav';
-    tts_error?: string;
-    usage?: Record<string, unknown>;
-  }> {
-    const formData = new FormData();
-    if (options.text) formData.append('text', options.text);
-    formData.append('tts', String(options.tts ?? false));
-    if (options.voice) formData.append('voice', options.voice);
-    if (options.tts_provider) formData.append('tts_provider', options.tts_provider);
-    if (options.model) formData.append('model', options.model);
-    if (options.audio) formData.append('audio', options.audio);
-    if (options.images?.length) options.images.forEach((f) => formData.append('images', f));
-    if (options.video) formData.append('video', options.video);
-    return fetchPublic('/api/chat/bullshit-detect-pipeline', {
-      method: 'POST',
-      body: formData,
-    });
-  },
-
-  // Chat Pipeline: STT -> Chat (text+images+video) -> TTS (same features as Chatbot: mode, video for roast)
+  // Chat Pipeline: STT -> Chat (text+images+video) -> TTS (travel assistant)
   async chatPipeline(options: {
     audio?: File;
     text?: string;
@@ -624,70 +579,6 @@ export const api = {
     });
   },
 
-  /** Library occupancy count from sensor (backend). */
-  async getLibraryCount(): Promise<{ count: number } | { error: string }> {
-    const res = await fetch(`${API_URL}/api/librarycount`, { method: 'GET', credentials: 'include' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { error: (data as { error?: string }).error || `Error ${res.status}` };
-    return data as { count: number } | { error: string };
-  },
-
-  // Text-to-Speech API (OpenAI TTS - pipeline backend)
-  async textToSpeech(
-    text: string,
-    options?: { voice?: string; model?: string }
-  ): Promise<Blob> {
-    const response = await fetch(`${API_URL}/api/speech`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        voice: options?.voice || 'coral',
-        model: options?.model || 'tts-1-hd',
-      }),
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'An error occurred' }));
-      throw new Error(error.error || error.message || `HTTP error! status: ${response.status}`);
-    }
-
-    return response.blob();
-  },
-
-  async getEmailStatus(): Promise<{ smtp_configured: boolean }> {
-    return fetchPublic('/api/email/status');
-  },
-
-  async sendEmail(params: { to: string; subject: string; body: string; body_html?: string; reply_to?: string }): Promise<{ message: string }> {
-    return fetchPublic('/api/email/send', {
-      method: 'POST',
-      body: JSON.stringify({
-        to: params.to,
-        subject: params.subject,
-        body: params.body,
-        body_html: params.body_html,
-        reply_to: params.reply_to,
-      }),
-    });
-  },
-
-  async sendTestEmail(params?: { to?: string }): Promise<{ message: string }> {
-    return fetchPublic('/api/email/test', {
-      method: 'POST',
-      body: JSON.stringify(params ?? {}),
-    });
-  },
-
-  /** Trigger demo password-reset flow directly (no AI). Sends profile to DEMO_EMAIL_RECIPIENTS and deletes profile. */
-  async demoPasswordReset(params: { user_id: string; user_email?: string }): Promise<{ message: string }> {
-    return fetchPublic('/api/email/demo-password-reset', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: params.user_id, user_email: params.user_email ?? '' }),
-    });
-  },
-
   async createTicket(params: {
     title: string;
     description: string;
@@ -698,64 +589,6 @@ export const api = {
     return fetchPublic('/api/tickets', {
       method: 'POST',
       body: JSON.stringify(params),
-    });
-  },
-
-  async listTickets(params?: { limit?: number }): Promise<{ tickets: Array<{ _id: string; title: string; description: string; status: string; user_email?: string; conversation_summary?: string; createdAt: string }> }> {
-    const q = params?.limit != null ? `?limit=${params.limit}` : '';
-    return fetchPublic(`/api/tickets${q}`);
-  },
-
-  async createPoseSession(poses: Array<{ pose: number[]; image: string | null }>): Promise<{ password: string }> {
-    return fetchWithAuth('/api/pose-sessions', {
-      method: 'POST',
-      body: JSON.stringify({ poses }),
-    });
-  },
-
-  async getPoseSession(password: string): Promise<{ poses: Array<{ pose: number[]; image: string | null }> }> {
-    const res = await fetch(`${API_URL}/api/pose-sessions/${encodeURIComponent(password.trim())}`, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Invalid password' }));
-      throw new Error(err.error || 'Invalid password');
-    }
-    return res.json();
-  },
-
-  /** Role flags for the logged-in user (401 → null). */
-  async adminMe(): Promise<{ email: string; isAdmin: boolean; isProfessor: boolean } | null> {
-    try {
-      return (await fetchWithAuth('/api/admin/me')) as {
-        email: string;
-        isAdmin: boolean;
-        isProfessor: boolean;
-      };
-    } catch {
-      return null;
-    }
-  },
-
-  async getAdminSettings(): Promise<{
-    admin_emails: string[];
-    builtin_professor_emails: string[];
-    additional_professor_emails: string[];
-    effective_professor_emails: string[];
-    smtp_configured: boolean;
-    smtp_user_hint: string | null;
-  }> {
-    return fetchWithAuth('/api/admin/settings');
-  },
-
-  async updateAdminProfessorEmails(additional: string[]): Promise<{
-    additional_professor_emails: string[];
-    effective_professor_emails: string[];
-  }> {
-    return fetchWithAuth('/api/admin/settings', {
-      method: 'PUT',
-      body: JSON.stringify({ additional_professor_emails: additional }),
     });
   },
 
@@ -834,21 +667,3 @@ export const api = {
     ) as Promise<{ caption: string }>;
   },
 };
-
-// Roast AI types (aligned with backend JSON)
-export interface TruthResponse {
-  truth_caption: string;
-  truth_objects: string[];
-  scene_type: string;
-  truth_ocr: string;
-  confidence: string;
-}
-
-export interface RoastAnalyzeResponse {
-  truth: TruthResponse;
-  roast: string;
-  truth_source: 'local' | 'openrouter';
-  roast_source: string;
-  latency_ms_truth: number;
-  latency_ms_roast: number;
-}

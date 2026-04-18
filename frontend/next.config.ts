@@ -1,8 +1,21 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@mediapipe/tasks-vision'],
   output: 'standalone',
+  async redirects() {
+    const legacy = [
+      '/dashboard',
+      '/chat',
+      '/tutor',
+      '/support',
+      '/voice-assistant',
+      '/voice',
+      '/bullshit-detect',
+      '/pose-attendance',
+      '/admin',
+    ];
+    return legacy.map((source) => ({ source, destination: '/home', permanent: false }));
+  },
   images: {
     remotePatterns: [
       {

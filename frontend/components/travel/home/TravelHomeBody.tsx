@@ -2,18 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { api, type Item, type TravelMetadata } from '@/lib/api';
+import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } from '@/lib/api';
 import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
 import { getTravelPayload, humanDescriptionLine, isTravelItem } from '@/lib/travelItem';
-import { loadVotes, setVote } from '@/lib/travelVotes';
 import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTypes';
 import type { User } from '@/lib/auth';
 import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
 import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
-import { mergeBookedTravel } from '@/lib/travelTicketMock';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
 
@@ -41,7 +39,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [votes, setVotesState] = useState(() => loadVotes());
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -58,6 +55,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
   const travelItems = useMemo(() => items.filter(isTravelItem), [items]);
   const approvePanel = useApproveBookingPanel(items, refresh);
+  const voterEmail = user.email?.trim() || '';
 
   useEffect(() => {
     refresh();
@@ -66,33 +64,81 @@ export default function TravelHomeBody({ user }: { user: User }) {
   const submitApproval = async (item: Item) => {
     const t = getTravelPayload(item);
     if (!t || !item._id) return;
-    const approvals: TravelApprovalRow[] = [
-      { name: 'Alex Rivera', role: 'Manager', status: 'pending' },
-      { name: 'Jordan Lee', role: 'Finance', status: 'pending' },
-      { name: 'Sam Okonkwo', role: 'Travel desk', status: 'approved' },
-    ];
+    let approvals: TravelApprovalRow[] = [];
+    let approvalSetup: 'team_linked' | 'needs_team' = 'needs_team';
+    const teamId =
+      typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY)?.trim() : '';
+    if (teamId) {
+      try {
+        const detail = await api.getTeam(teamId);
+        if (detail.members?.length) {
+          approvals = detail.members.map((m) => ({
+            name: (m.displayName || m.email || 'Team member').trim(),
+            role: 'Reviewer',
+            status: 'pending' as const,
+          }));
+          approvalSetup = 'team_linked';
+        }
+      } catch {
+        /* keep needs_team */
+      }
+    }
     await api.updateItem(item._id, {
       travel: {
         ...t,
         opportunityStatus: 'submitted',
         approvals,
+        approvalSetup,
         addedBy: t.addedBy || user.email,
-      },
+      } as unknown as TravelMetadata,
     });
     await refresh();
   };
 
-  const markBooked = async (item: Item) => {
+  const markAllReviewersApproved = async (item: Item) => {
     const t = getTravelPayload(item);
-    if (!t || !item._id) return;
-    const merged = mergeBookedTravel(t, { bundleIndex: 0, tripTitle: item.title });
-    await api.updateItem(item._id, { travel: merged as unknown as TravelMetadata });
+    if (!item._id || !t) return;
+    const base = t.approvals?.length ? t.approvals : [];
+    if (base.length) {
+      const approvals = base.map((a) => ({ ...a, status: 'approved' as const }));
+      await api.updateItem(item._id, {
+        travel: {
+          ...t,
+          approvals,
+          opportunityStatus: 'approved',
+        } as unknown as TravelMetadata,
+      });
+    } else {
+      await api.updateItem(item._id, {
+        travel: {
+          ...t,
+          opportunityStatus: 'approved',
+        } as unknown as TravelMetadata,
+      });
+    }
     await refresh();
   };
 
-  const voteOption = (itemId: string, key: string) => {
-    setVote(itemId, key);
-    setVotesState(loadVotes());
+  const voteOption = async (itemId: string, key: string) => {
+    const item = items.find((i) => i._id === itemId);
+    if (!item?._id) return;
+    const t = getTravelPayload(item);
+    if (!t) return;
+    const email = voterEmail || 'self';
+    const teamOptionVotes = { ...(t.teamOptionVotes || {}), [email]: key };
+    await api.updateItem(item._id, {
+      travel: { ...t, teamOptionVotes } as unknown as TravelMetadata,
+    });
+    await refresh();
+  };
+
+  const voteCounts = (t: NonNullable<ReturnType<typeof getTravelPayload>>) => {
+    const votes = t.teamOptionVotes || {};
+    const counts: Record<string, number> = { a: 0, b: 0 };
+    for (const v of Object.values(votes)) {
+      if (v === 'a' || v === 'b') counts[v] = (counts[v] || 0) + 1;
+    }
+    return counts;
   };
 
   if (loading && !items.length) {
@@ -125,8 +171,20 @@ export default function TravelHomeBody({ user }: { user: User }) {
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-white">Approval status</h2>
-          <p className="text-sm text-travel-muted mt-1">Who has signed off, and what is still open.</p>
+          <p className="text-sm text-travel-muted mt-1">Reviewers come from your active team on the Team tab.</p>
         </div>
+        {inReview.some((i) => getTravelPayload(i)?.approvalSetup === 'needs_team') ? (
+          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p className="font-medium text-white">No active team selected</p>
+            <p className="text-xs text-amber-100/90 mt-1">
+              Pick a team on the Team tab so reviewer names populate on the next submit. You can still record offline
+              approvals below if you already have sign-off.
+            </p>
+            <Link href="/team" className="inline-block mt-2 text-xs text-blue-300 hover:underline">
+              Open Team
+            </Link>
+          </div>
+        ) : null}
         {inReview.length === 0 ? (
           <p className="text-sm text-travel-muted">No items in approval. Submit a plan from the Plan stage.</p>
         ) : (
@@ -134,6 +192,9 @@ export default function TravelHomeBody({ user }: { user: User }) {
             const t = getTravelPayload(item);
             const approvals = t?.approvals || [];
             const img = t?.imageUrl || item.imageUrls?.[0];
+            const allPending = approvals.length > 0 && approvals.every((a) => a.status === 'pending');
+            const showOfflineApprove =
+              t?.opportunityStatus === 'submitted' && (approvals.length === 0 || allPending);
             return (
               <OpportunityCard
                 key={item._id}
@@ -141,18 +202,32 @@ export default function TravelHomeBody({ user }: { user: User }) {
                 subtitle={humanDescriptionLine(item, t)}
                 imageUrl={img}
                 footer={
-                  <ul className="space-y-2">
-                    {approvals.map((a, idx) => (
-                      <li key={idx} className="flex items-center justify-between text-sm gap-2">
-                        <span className="text-white/90">
-                          {a.name}{' '}
-                          <span className="text-travel-muted text-xs">({a.role})</span>
-                        </span>
-                        {statusBadge(a.status as TravelOpportunityStatus)}
-                      </li>
-                    ))}
-                    {approvals.length === 0 ? <li className="text-travel-muted text-sm">No approvers attached yet.</li> : null}
-                  </ul>
+                  <div className="space-y-3">
+                    <ul className="space-y-2">
+                      {approvals.map((a, idx) => (
+                        <li key={idx} className="flex items-center justify-between text-sm gap-2">
+                          <span className="text-white/90">
+                            {a.name} <span className="text-travel-muted text-xs">({a.role})</span>
+                          </span>
+                          {statusBadge(a.status as TravelOpportunityStatus)}
+                        </li>
+                      ))}
+                      {approvals.length === 0 ? (
+                        <li className="text-travel-muted text-sm">No reviewers listed — select a team and re-submit from Plan.</li>
+                      ) : null}
+                    </ul>
+                    {showOfflineApprove ? (
+                      <button
+                        type="button"
+                        onClick={() => void markAllReviewersApproved(item)}
+                        className="w-full py-2 rounded-xl bg-violet-600/90 hover:bg-violet-500 text-white text-xs font-semibold"
+                      >
+                        {approvals.length
+                          ? 'Record offline approvals (mark all approved)'
+                          : 'Approve trip (no team reviewers on file)'}
+                      </button>
+                    ) : null}
+                  </div>
                 }
               />
             );
@@ -161,7 +236,10 @@ export default function TravelHomeBody({ user }: { user: User }) {
         <div className="pt-4 border-t border-white/10 space-y-6">
           <div>
             <h3 className="text-base font-semibold text-white mb-1">Booking & cost</h3>
-            <p className="text-xs text-travel-muted">Compare bundles and run totals while approvals are in flight.</p>
+            <p className="text-xs text-travel-muted">
+              Refresh live quotes on Explorer (Approve stage), then finalize a bundle — your trip record stores those
+              links.
+            </p>
           </div>
           <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
           <TravelCostCalculator
@@ -197,8 +275,8 @@ export default function TravelHomeBody({ user }: { user: User }) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-white">Today & ticket</h2>
-          <p className="text-sm text-travel-muted mt-1">What you need to do today and your ticket details (demo).</p>
+          <h2 className="text-lg font-semibold text-white">Today & trip record</h2>
+          <p className="text-sm text-travel-muted mt-1">Day-of checklist and booking links from your saved pricing snapshot.</p>
         </div>
         <TravelDayItinerary items={items} />
 
@@ -211,11 +289,19 @@ export default function TravelHomeBody({ user }: { user: User }) {
               </span>
             </summary>
             <div className="px-4 pb-4 space-y-4 border-t border-white/10 pt-3">
+              <p className="text-[11px] text-travel-muted">
+                Votes are saved on each trip so teammates see the same counts. Finalize bundles in{' '}
+                <Link href="/home" className="text-blue-300 hover:underline">
+                  Approve
+                </Link>{' '}
+                to attach flight and hotel links.
+              </p>
               {travelItems.map((item) => {
                 const t = getTravelPayload(item);
-                if (t?.opportunityStatus === 'booked') return null;
+                if (!t || t.opportunityStatus === 'booked') return null;
                 const img = t?.imageUrl || item.imageUrls?.[0];
-                const current = item._id ? votes[item._id] : '';
+                const current = voterEmail && t.teamOptionVotes ? t.teamOptionVotes[voterEmail] : '';
+                const counts = voteCounts(t);
                 return (
                   <OpportunityCard
                     key={item._id}
@@ -224,13 +310,16 @@ export default function TravelHomeBody({ user }: { user: User }) {
                     imageUrl={img}
                     footer={
                       <div className="space-y-2">
+                        <p className="text-[10px] text-travel-muted">
+                          Team votes: A {counts.a} · B {counts.b}
+                        </p>
                         {options.map((o) => {
                           const picked = current === o.key;
                           return (
                             <button
                               key={o.key}
                               type="button"
-                              onClick={() => item._id && voteOption(item._id, o.key)}
+                              onClick={() => item._id && void voteOption(item._id, o.key)}
                               className={`w-full text-left px-3 py-2 rounded-xl border text-sm transition-colors ${
                                 picked
                                   ? 'border-emerald-400/50 bg-emerald-500/10 text-white'
@@ -242,15 +331,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
                           );
                         })}
                       </div>
-                    }
-                    action={
-                      <button
-                        type="button"
-                        onClick={() => markBooked(item)}
-                        className="w-full py-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-sm font-medium"
-                      >
-                        Lock trip & ticket (demo)
-                      </button>
                     }
                   />
                 );

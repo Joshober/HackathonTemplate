@@ -10,6 +10,7 @@ import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundl
 import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
+import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
 
 const MAX_CITIES = 5;
 
@@ -126,6 +127,7 @@ export default function ExplorerPage() {
             Same tools as Home — compare flight bundles and run the calculator while approvals are in progress.
           </p>
         </div>
+        <ApprovedEventsLivePricing items={panelItems} />
         <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
         <TravelCostCalculator
           key={approvePanel.eligibleFinalizeItem?._id ?? 'calc-ex'}
@@ -150,8 +152,8 @@ export default function ExplorerPage() {
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Today & ticket</h2>
-          <p className="text-sm text-travel-muted mt-1">Mirror of Home — your day-of agenda and ticket (demo).</p>
+          <h2 className="text-lg font-semibold text-white">Today & trip record</h2>
+          <p className="text-sm text-travel-muted mt-1">Same trip record as Home — checklist and links from your saved pricing.</p>
         </div>
         <TravelDayItinerary items={panelItems} compact />
       </div>
