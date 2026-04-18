@@ -6,6 +6,7 @@ import os
 import time
 import requests
 from app.prompts.roast import SYSTEM as ROAST_SYSTEM, build_user_prompt
+from app.config.openrouter_models import DEFAULT_CHAT_MODEL
 from app.utils.json_repair import parse_json_with_retry, JSON_PARSE_FAILED
 
 REPAIR_PROMPT = JSON_PARSE_FAILED
@@ -57,7 +58,7 @@ def _openrouter_roast(
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("Ollama failed or is not running. Set OPENROUTER_API_KEY to use cloud fallback.")
-    model = os.getenv("OPENROUTER_HUMOR_MODEL") or os.getenv("OPENROUTER_VISION_MODEL") or "openai/gpt-3.5-turbo"
+    model = os.getenv("OPENROUTER_HUMOR_MODEL") or os.getenv("OPENROUTER_VISION_MODEL") or DEFAULT_CHAT_MODEL
     url = "https://openrouter.ai/api/v1/chat/completions"
     user_content = build_user_prompt(truth_caption, truth_objects, scene_type)
     payload = {

@@ -16,6 +16,7 @@ from PIL import Image
 
 from app.db.mongodb import get_db
 from app.routes.auth_backend import require_auth, get_user_info_from_request as get_user_info_from_token
+from app.config.openrouter_models import DEFAULT_VISION_MODEL
 from app.services.team_chat import run_team_travel_assistant
 from app.services.team_items_access import format_item_document
 from app.services.google_calendar import get_google_calendar_token_doc
@@ -697,7 +698,7 @@ def instagram_caption(user_id, team_id, item_id):
     if not api_key:
         return jsonify({'error': 'OPENROUTER_API_KEY is not configured'}), 500
 
-    model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+    model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
     user_text = f'Event title: {title}\nLocation: {loc or "unknown"}\nWrite the Instagram caption for this photo.'
     content = [
         {'type': 'text', 'text': user_text},

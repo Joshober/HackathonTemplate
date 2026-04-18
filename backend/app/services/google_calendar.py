@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import requests
@@ -179,4 +179,116 @@ def fetch_google_freebusy(
             continue
         out.append((start.astimezone(timezone.utc), end.astimezone(timezone.utc)))
     return out
+
+
+def fetch_google_freebusy_strict(
+    db,
+    user_id: str,
+    time_min_iso: str,
+    time_max_iso: str,
+) -> list[tuple[datetime, datetime]] | None:
+    """
+    Like fetch_google_freebusy but returns None when the token is missing or the API call fails,
+    so callers can distinguish 'unknown' from 'free'.
+    """
+    token = get_valid_google_access_token(db, user_id)
+    if not token:
+        return None
+    resp = requests.post(
+        GOOGLE_FREEBUSY_URL,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "timeMin": time_min_iso,
+            "timeMax": time_max_iso,
+            "items": [{"id": "primary"}],
+        },
+        timeout=20,
+    )
+    data = resp.json() if resp.content else {}
+    if not resp.ok:
+        return None
+    calendars = data.get("calendars") if isinstance(data, dict) else None
+    primary = calendars.get("primary") if isinstance(calendars, dict) else None
+    busy = primary.get("busy") if isinstance(primary, dict) else None
+    if not isinstance(busy, list):
+        return []
+    out: list[tuple[datetime, datetime]] = []
+    for block in busy:
+        if not isinstance(block, dict):
+            continue
+        s_raw = block.get("start")
+        e_raw = block.get("end")
+        if not isinstance(s_raw, str) or not isinstance(e_raw, str):
+            continue
+        try:
+            start = datetime.fromisoformat(s_raw.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(e_raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if end <= start:
+            continue
+        out.append((start.astimezone(timezone.utc), end.astimezone(timezone.utc)))
+    return out
+
+
+def is_range_free_on_google_calendar(
+    db,
+    user_id: str,
+    range_start: date,
+    range_end: date,
+) -> bool | None:
+    """
+    True: primary calendar has no busy blocks overlapping [range_start 00:00 UTC, range_end end-of-day UTC].
+    False: at least one busy block overlaps that window.
+    None: no Google Calendar connection or FreeBusy could not be fetched.
+    """
+    if not get_google_calendar_token_doc(db, user_id):
+        return None
+    if range_end < range_start:
+        range_end = range_start
+    time_min = datetime(
+        range_start.year,
+        range_start.month,
+        range_start.day,
+        0,
+        0,
+        0,
+        tzinfo=timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_max = datetime(
+        range_end.year,
+        range_end.month,
+        range_end.day,
+        23,
+        59,
+        59,
+        tzinfo=timezone.utc,
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    busy_blocks = fetch_google_freebusy_strict(db, user_id, time_min, time_max)
+    if busy_blocks is None:
+        return None
+    trip_start = datetime(
+        range_start.year,
+        range_start.month,
+        range_start.day,
+        0,
+        0,
+        0,
+        tzinfo=timezone.utc,
+    )
+    trip_end = datetime(
+        range_end.year,
+        range_end.month,
+        range_end.day,
+        23,
+        59,
+        59,
+        tzinfo=timezone.utc,
+    )
+    if not busy_blocks:
+        return True
+    for bs, be in busy_blocks:
+        if bs < trip_end and be > trip_start:
+            return False
+    return True
 

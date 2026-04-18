@@ -7,6 +7,7 @@ import os
 import time
 import base64
 import requests
+from app.config.openrouter_models import DEFAULT_VISION_MODEL
 from app.prompts.truth import SYSTEM as TRUTH_SYSTEM, USER as TRUTH_USER
 from app.utils.json_repair import parse_json_with_retry, JSON_PARSE_FAILED
 
@@ -95,7 +96,7 @@ def _openrouter_vision(image_base64: str) -> tuple[dict, float]:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("Ollama failed or is not running. Set OPENROUTER_API_KEY to use cloud vision as fallback.")
-    model = os.getenv("OPENROUTER_VISION_MODEL") or "meta-llama/llama-3.2-11b-vision-instruct"
+    model = os.getenv("OPENROUTER_VISION_MODEL") or DEFAULT_VISION_MODEL
     url = "https://openrouter.ai/api/v1/chat/completions"
     # Standard vision format: image_url with data URL
     data_url = f"data:image/jpeg;base64,{image_base64}"

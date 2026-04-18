@@ -358,6 +358,52 @@ export interface ExplorerAiHelpResponse {
   model?: string | null;
 }
 
+export interface TravelCopilotSuggestedAction {
+  label: string;
+  prompt: string;
+}
+
+/** Only these three AI Service modes are supported for the travel copilot. */
+export type TravelAssistantMode = 'travel_coach' | 'personal_assistant' | 'analytics';
+
+export interface TravelCopilotResponse {
+  reply: string;
+  mode: string;
+  contextUsed: Record<string, boolean>;
+  suggestedActions: TravelCopilotSuggestedAction[];
+  usage?: Record<string, unknown>;
+}
+
+/** AI Admin Solver — structured JSON from backend + optional pending confirmation. */
+export interface AdminAiSolverStructured {
+  responseType?: string;
+  intent?: string;
+  confidence?: number;
+  requiresConfirmation?: boolean;
+  reasoningSummary?: string;
+  actionPayload?: Record<string, unknown> | null;
+  userFacingMessage?: string;
+  weatherDigest?: unknown;
+  structuredRecommendations?: string[];
+  validationErrors?: string[];
+  pendingActionBlocked?: boolean;
+}
+
+export interface AdminAiSolverResponse {
+  ok?: boolean;
+  structured?: AdminAiSolverStructured;
+  contextUsed?: Record<string, boolean>;
+  pendingActionId?: string | null;
+  usage?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface AdminMeResponse {
+  email: string;
+  isAdmin: boolean;
+  isProfessor: boolean;
+}
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const response = await fetch(`${API_URL}/api/auth/token`, {
@@ -867,6 +913,71 @@ export const api = {
     return fetchPublic('/api/chat/pipeline', {
       method: 'POST',
       body: formData,
+    });
+  },
+
+  /** Context-aware travel copilot (MongoDB + OpenRouter tools). Requires auth. */
+  async chatTravelCopilot(params: {
+    message: string;
+    sessionId?: string;
+    currentPage?: string;
+    uiState?: Record<string, unknown>;
+    assistantMode?: TravelAssistantMode;
+    messages?: Array<{ role: string; content: string }>;
+    personality?: string;
+    model?: string;
+  }): Promise<TravelCopilotResponse> {
+    return fetchWithAuth('/api/chat/copilot', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: params.message,
+        sessionId: params.sessionId,
+        currentPage: params.currentPage,
+        uiState: params.uiState,
+        assistantMode: params.assistantMode ?? 'travel_coach',
+        messages: params.messages,
+        personality: params.personality,
+        model: params.model,
+      }),
+    }) as Promise<TravelCopilotResponse>;
+  },
+
+  async getAdminMe(): Promise<AdminMeResponse> {
+    return fetchWithAuth('/api/admin/me') as Promise<AdminMeResponse>;
+  },
+
+  async adminAiSolver(params: {
+    message: string;
+    currentPage?: string;
+    selectedTeamId?: string;
+    selectedTripId?: string;
+    selectedDateRange?: { start?: string; end?: string };
+    uiState?: Record<string, unknown>;
+    model?: string;
+  }): Promise<AdminAiSolverResponse> {
+    return fetchWithAuth('/api/admin/ai/solver', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: params.message,
+        currentPage: params.currentPage,
+        selectedTeamId: params.selectedTeamId,
+        selectedTripId: params.selectedTripId,
+        selectedDateRange: params.selectedDateRange,
+        uiState: params.uiState,
+        model: params.model,
+      }),
+    }) as Promise<AdminAiSolverResponse>;
+  },
+
+  async adminAiSolverConfirm(params: { pendingActionId: string }): Promise<{
+    ok?: boolean;
+    executed?: Record<string, unknown>;
+    intent?: string;
+    error?: string;
+  }> {
+    return fetchWithAuth('/api/admin/ai/solver/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ pendingActionId: params.pendingActionId, confirm: true }),
     });
   },
 

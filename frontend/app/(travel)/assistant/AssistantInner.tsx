@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { api, type TravelAssistantMode } from '@/lib/api';
 import { LOCKTON_TRAVEL_PERSONALITY } from '@/lib/travelAssistant';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 
-type Msg = { role: 'user' | 'assistant'; content: string; ttsError?: string };
+type Msg = {
+  role: 'user' | 'assistant';
+  content: string;
+  ttsError?: string;
+  suggestedActions?: Array<{ label: string; prompt: string }>;
+};
 
 function pickRecorderMime(): string | undefined {
   const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
@@ -26,14 +31,57 @@ const VAD_MIN_SPEECH_MS = 350;
 const VAD_MIN_RECORD_MS = 450;
 const VAD_MAX_RECORD_MS = 120_000;
 
-const QUICK = [
+/** Product “AI Services” modes — only these three are exposed. */
+const AI_SERVICE_MODES: {
+  id: TravelAssistantMode;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    id: 'travel_coach',
+    label: 'Travel Coach',
+    hint: 'Destinations, rough costs, staying policy-smart.',
+  },
+  {
+    id: 'personal_assistant',
+    label: 'Personal Assistant',
+    hint: 'Summaries and next steps using your saved trip context.',
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    hint: 'Compare options, cost bands, and tradeoffs (estimates).',
+  },
+];
+
+const QUICK_TRAVEL_COACH = [
   { label: 'Suggest destinations', text: 'Suggest 3 US cities good for a 2-day client meeting this quarter, with a sentence each on why.' },
   { label: 'Estimate costs', text: 'Give a rough per-day cost band (flight + hotel + meals) for a domestic client trip, as estimates only.' },
   { label: 'Check policy', text: 'What kinds of things should I double-check in a typical corporate travel policy before booking?' },
 ];
 
+const QUICK_PERSONAL_ASSISTANT = [
+  { label: 'Summarize my trips', text: 'Summarize what you see in my app context about my trips and what I should do next.' },
+  { label: 'Trip checklist', text: 'Give me a short checklist before I travel based on my saved trip details.' },
+  { label: 'Draft a reply', text: 'Help me draft a short email to my manager about my upcoming trip timing and destination.' },
+];
+
+const QUICK_ANALYTICS = [
+  { label: 'Compare options', text: 'Using my booking estimates or snapshots in context, compare economy vs flexible-style tradeoffs (estimates only).' },
+  { label: 'Cost breakdown', text: 'Walk through a rough cost breakdown for my trip using any numbers in app context; label gaps clearly.' },
+  { label: 'Sensitivity check', text: 'What inputs would most change the total cost for this trip (e.g. dates, hotel tier)?' },
+];
+
 export default function AssistantInner() {
   const { user, loading } = useTravelAuth();
+  const pathname = usePathname() || '/travel/assistant';
+  const sessionIdRef = useRef<string>('');
+  if (typeof window !== 'undefined' && !sessionIdRef.current) {
+    sessionIdRef.current =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `sess-${Date.now()}`;
+  }
   const search = useSearchParams();
   const topic = search.get('topic');
   const memoryDone = useRef(false);
@@ -45,6 +93,7 @@ export default function AssistantInner() {
     },
   ]);
   const [input, setInput] = useState('');
+  const [assistantMode, setAssistantMode] = useState<TravelAssistantMode>('travel_coach');
   const [pending, setPending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -84,6 +133,17 @@ export default function AssistantInner() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const quickActions = useMemo(() => {
+    if (assistantMode === 'personal_assistant') return QUICK_PERSONAL_ASSISTANT;
+    if (assistantMode === 'analytics') return QUICK_ANALYTICS;
+    return QUICK_TRAVEL_COACH;
+  }, [assistantMode]);
+
+  const modeHint = useMemo(
+    () => AI_SERVICE_MODES.find((m) => m.id === assistantMode)?.hint ?? '',
+    [assistantMode],
+  );
+
   const stopPlayback = useCallback(() => {
     const a = playbackRef.current;
     if (a) {
@@ -108,20 +168,6 @@ export default function AssistantInner() {
       isRecordingRef.current = false;
     };
   }, [stopPlayback]);
-
-  const playPipelineAudio = useCallback(
-    (base64: string, format: 'mp3' | 'wav') => {
-      stopPlayback();
-      const mime = format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
-      const audio = new Audio(`data:${mime};base64,${base64}`);
-      playbackRef.current = audio;
-      audio.onended = () => {
-        if (playbackRef.current === audio) playbackRef.current = null;
-      };
-      void audio.play().catch(() => {});
-    },
-    [stopPlayback]
-  );
 
   const speakAssistantText = useCallback(
     async (text: string, messageIndex: number) => {
@@ -301,24 +347,44 @@ export default function AssistantInner() {
       }));
 
       try {
-        const result = await api.chatPipeline({
-          text: trimmed,
+        const result = await api.chatTravelCopilot({
+          message: trimmed,
           messages: priorForPipeline,
-          mode: 'assistant',
+          sessionId: sessionIdRef.current || undefined,
+          currentPage: pathname,
           personality: LOCKTON_TRAVEL_PERSONALITY,
-          userEmail: user?.email,
-          userId: user?.sub,
-          tts: ttsEnabled,
-          voice: 'coral',
-          tts_provider: 'openai',
+          assistantMode,
         });
-        const reply = result.message || 'No response.';
+        const reply = result.reply || 'No response.';
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: reply, ttsError: result.tts_error },
+          {
+            role: 'assistant',
+            content: reply,
+            suggestedActions: result.suggestedActions,
+          },
         ]);
-        if (ttsEnabled && result.audio_base64 && result.audio_format) {
-          playPipelineAudio(result.audio_base64, result.audio_format);
+        if (ttsEnabled && reply.trim()) {
+          try {
+            const blob = await api.generateVoice({
+              text: reply.trim().slice(0, 4096),
+              provider: 'openai',
+              voice: 'coral',
+            });
+            const url = URL.createObjectURL(blob);
+            stopPlayback();
+            const audio = new Audio(url);
+            playbackRef.current = audio;
+            audio.onended = () => {
+              URL.revokeObjectURL(url);
+              if (playbackRef.current === audio) playbackRef.current = null;
+            };
+            void audio.play().catch(() => {
+              URL.revokeObjectURL(url);
+            });
+          } catch {
+            /* ignore TTS failure */
+          }
         }
       } catch (e) {
         setErr(e instanceof Error ? e.message : 'Request failed');
@@ -328,7 +394,7 @@ export default function AssistantInner() {
         setPending(false);
       }
     },
-    [messages, pending, user, ttsEnabled, stopPlayback, playPipelineAudio]
+    [messages, pending, pathname, assistantMode, ttsEnabled, stopPlayback]
   );
 
   useEffect(() => {
@@ -343,12 +409,37 @@ export default function AssistantInner() {
     <div className="mx-auto flex min-h-[68vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
       <div className="border-b border-gray-100 px-5 py-4">
         <h2 className="text-lg font-semibold text-gray-900">AI assistant</h2>
-        <p className="mt-1 text-xs text-travel-muted">Powered by your existing chat pipeline (estimates only).</p>
+        <p className="mt-1 text-xs text-travel-muted">
+          OpenRouter (Gemini) + MongoDB context + DuckDuckGo web search when needed. Estimates only unless stated.
+        </p>
+        <p className="mt-1 text-xs text-teal-800/90">{modeHint}</p>
+        <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="AI service mode">
+          {AI_SERVICE_MODES.map((m) => {
+            const active = assistantMode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                disabled={pending}
+                onClick={() => setAssistantMode(m.id)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                  active
+                    ? 'border-teal-400 bg-teal-50 text-teal-900 shadow-sm'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-3">
         <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Quick actions</div>
         <div className="flex flex-wrap gap-2">
-        {QUICK.map((q) => (
+        {quickActions.map((q) => (
           <button
             key={q.label}
             type="button"
@@ -403,6 +494,21 @@ export default function AssistantInner() {
             )}
             {m.role === 'assistant' && m.ttsError ? (
               <p className="text-xs text-amber-800 mt-2">{m.ttsError}</p>
+            ) : null}
+            {m.role === 'assistant' && m.suggestedActions?.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5 border-t border-gray-100 pt-2">
+                {m.suggestedActions.map((a) => (
+                  <button
+                    key={a.label}
+                    type="button"
+                    onClick={() => send(a.prompt)}
+                    disabled={pending}
+                    className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
             ) : null}
           </div>
         ))}
