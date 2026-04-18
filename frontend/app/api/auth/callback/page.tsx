@@ -10,7 +10,7 @@ function CallbackContent() {
   useEffect(() => {
     const code = searchParams.get('code');
     if (code) {
-      setTimeout(() => router.push('/dashboard'), 1000);
+      setTimeout(() => router.push('/home'), 1000);
     } else {
       router.push('/');
     }

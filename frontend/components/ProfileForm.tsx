@@ -58,7 +58,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
       if (onSuccess) {
         onSuccess();
       } else {
-        router.push('/dashboard');
+        router.push('/home');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile');

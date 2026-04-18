@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getCurrentUser, login, User } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import DashboardShell from '@/components/DashboardShell';
+import TravelSubpageLayout from '@/components/travel/TravelSubpageLayout';
 import ProfileForm from '@/components/ProfileForm';
 import { api, Profile } from '@/lib/api';
 
@@ -17,7 +17,7 @@ export default function EditProfilePage() {
 
   useEffect(() => {
     loadUser();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   const loadUser = async () => {
@@ -28,7 +28,6 @@ export default function EditProfilePage() {
         return;
       }
       setUser(currentUser);
-      loadProfile();
     } catch {
       await login();
     } finally {
@@ -36,8 +35,9 @@ export default function EditProfilePage() {
     }
   };
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     if (!user) return;
+    setLoading(true);
     try {
       const data = await api.getProfile();
       setProfile(data);
@@ -48,12 +48,16 @@ export default function EditProfilePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, router]);
+
+  useEffect(() => {
+    if (user) loadProfile();
+  }, [user, loadProfile]);
 
   if (isLoading || loading || !user) {
     return (
-      <div className="min-h-screen bg-[#08050c] flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-[#080a0f] flex items-center justify-center">
+        <div className="text-travel-muted text-sm">Loading…</div>
       </div>
     );
   }
@@ -67,19 +71,16 @@ export default function EditProfilePage() {
   };
 
   return (
-    <DashboardShell>
+    <TravelSubpageLayout title="Edit profile">
       <div className="mb-6">
-        <Link
-          href="/profile"
-          className="text-primary hover:text-primary/80 text-sm font-medium mb-4 inline-block"
-        >
-          ← Back to Profile
+        <Link href="/profile" className="text-blue-300 hover:underline text-sm font-medium mb-4 inline-block">
+          ← Back to profile
         </Link>
-        <h1 className="text-3xl font-bold text-white">Edit Profile</h1>
+        <h1 className="text-2xl font-bold text-white">Edit profile</h1>
       </div>
-      <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
         <ProfileForm profile={profile} onSuccess={handleProfileUpdate} />
       </div>
-    </DashboardShell>
+    </TravelSubpageLayout>
   );
 }

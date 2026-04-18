@@ -113,7 +113,7 @@ export default function ItemForm({ item, onSuccess }: ItemFormProps) {
       if (onSuccess) {
         onSuccess();
       } else {
-        router.push('/dashboard');
+        router.push('/home');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save item';

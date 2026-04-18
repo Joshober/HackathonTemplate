@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getCurrentUser, login, User } from '@/lib/auth';
-import DashboardShell from '@/components/DashboardShell';
+import TravelSubpageLayout from '@/components/travel/TravelSubpageLayout';
 import ProfileForm from '@/components/ProfileForm';
 
 export default function NewProfilePage() {
@@ -30,18 +30,18 @@ export default function NewProfilePage() {
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-[#0c0712] flex items-center justify-center">
-        <div className="text-gray-400">Loading...</div>
+      <div className="min-h-screen bg-[#080a0f] flex items-center justify-center">
+        <div className="text-travel-muted text-sm">Loading…</div>
       </div>
     );
   }
 
   return (
-    <DashboardShell>
-      <h1 className="text-3xl font-bold text-white mb-6">Create Profile</h1>
-      <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8">
+    <TravelSubpageLayout title="Create profile">
+      <h1 className="text-2xl font-bold text-white mb-6">Create profile</h1>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
         <ProfileForm />
       </div>
-    </DashboardShell>
+    </TravelSubpageLayout>
   );
 }

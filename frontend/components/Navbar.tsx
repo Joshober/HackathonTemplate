@@ -3,84 +3,60 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getCurrentUser, logout, User } from '@/lib/auth';
-import { api } from '@/lib/api';
 
+/** Optional top nav — Travel Companion only. */
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    loadUser();
+    (async () => {
+      try {
+        setUser(await getCurrentUser());
+      } catch {
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, []);
 
-  const loadUser = async () => {
-    try {
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-      if (currentUser) {
-        const roles = await api.adminMe();
-        setIsAdmin(!!roles?.isAdmin);
-      } else {
-        setIsAdmin(false);
-      }
-    } catch (error) {
-      console.error('Error loading user:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
-
-  const linkClass = 'text-slate-400 hover:text-primary px-3 py-2 text-sm font-medium transition-colors border-b-2 border-transparent hover:border-primary pb-0.5';
+  const linkClass =
+    'text-slate-400 hover:text-white px-3 py-2 text-sm font-medium transition-colors border-b-2 border-transparent hover:border-blue-400/50 pb-0.5';
 
   return (
-    <nav className="bg-background-dark/95 backdrop-blur-sm border-b border-primary/10">
+    <nav className="bg-[#0c0e14]/95 backdrop-blur-sm border-b border-white/[0.06]">
       <div className="max-w-6xl mx-auto px-5 py-4 flex justify-between items-center">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-background-dark font-bold text-lg">
-            <span className="material-symbols-outlined">terminal</span>
-          </div>
-          <span className="font-heading font-bold text-lg tracking-tight">Claude Home™</span>
+        <Link href="/" className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-blue-400">flight_takeoff</span>
+          <span className="font-semibold text-white tracking-tight">Travel Companion</span>
         </Link>
         <div className="flex items-center gap-4">
           {!isLoading && user && (
             <>
-              <Link href="/dashboard" className={linkClass}>Dashboard</Link>
-              {isAdmin && (
-                <Link href="/admin" className={linkClass}>
-                  Admin
-                </Link>
-              )}
-              <Link href="/profile" className={linkClass}>Profile</Link>
-              <Link href="/voice" className={linkClass}>Voice</Link>
-              <Link href="/voice-assistant" className={linkClass}>Voice Assistant</Link>
-              <span className="text-slate-500 text-sm truncate max-w-[140px]">
-                {user.name || user.email}
-              </span>
+              <Link href="/home" className={linkClass}>
+                App
+              </Link>
+              <Link href="/profile" className={linkClass}>
+                Profile
+              </Link>
+              <span className="text-slate-500 text-sm truncate max-w-[140px]">{user.name || user.email}</span>
               <button
-                onClick={handleLogout}
-                className="text-slate-400 hover:text-primary px-4 py-2 text-sm font-medium border-2 border-primary/20 rounded-lg hover:border-primary/50 transition-colors"
+                type="button"
+                onClick={() => logout()}
+                className="text-slate-400 hover:text-white px-4 py-2 text-sm font-medium border border-white/15 rounded-lg hover:bg-white/5 transition-colors"
               >
-                Logout
+                Log out
               </button>
             </>
           )}
           {!isLoading && !user && (
-            <>
-              <Link href="/voice" className={linkClass}>Voice</Link>
-              <Link href="/voice-assistant" className={linkClass}>Voice Assistant</Link>
-              <Link href="/" className="px-5 py-2.5 rounded-lg bg-primary text-background-dark font-bold text-sm uppercase tracking-wide hover:bg-primary/90 transition-colors">
-                Login
-              </Link>
-            </>
+            <Link
+              href="/home"
+              className="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-500 transition-colors"
+            >
+              Sign in
+            </Link>
           )}
         </div>
       </div>

@@ -101,12 +101,6 @@ export default function LandingPage({ children }: LandingPageProps) {
               >
                 Start planning
               </Link>
-              <Link
-                href="/dashboard"
-                className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-white/10 text-slate-300 hover:bg-white/5 text-center text-sm font-medium transition-colors"
-              >
-                Legacy tools
-              </Link>
             </motion.div>
           </div>
         </section>
@@ -175,8 +169,8 @@ export default function LandingPage({ children }: LandingPageProps) {
       <footer className="border-t border-white/[0.06] py-12 px-5 bg-black/20">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-sm text-slate-500">
           <p>Travel Companion — demo experience for Lockton-style enterprise travel.</p>
-          <Link href="/support" className="text-slate-400 hover:text-white transition-colors">
-            Support
+          <Link href="/assistant" className="text-slate-400 hover:text-white transition-colors">
+            AI assistant
           </Link>
         </div>
       </footer>
