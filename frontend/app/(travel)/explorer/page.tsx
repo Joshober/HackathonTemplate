@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
@@ -17,11 +17,11 @@ import {
   type TeamCalendarCoverage,
 } from '@/lib/api';
 import PolicyHint from '@/components/travel/PolicyHint';
-import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
-import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
+import { dedupeItemsById, filterTeamTripIdeas } from '@/lib/travelTeamPipeline';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
+import ApproveExplorerPlanningPanel from '@/components/travel/approve/ApproveExplorerPlanningPanel';
 
 const MAX_CITIES = 5;
 const MAX_PER_CITY = 8;
@@ -90,6 +90,23 @@ export default function ExplorerPage() {
   const [manualEndDate, setManualEndDate] = useState('');
   const [manualAvailabilitySaving, setManualAvailabilitySaving] = useState(false);
   const [manualAvailabilityCount, setManualAvailabilityCount] = useState(0);
+  const [approvePlanningWindow, setApprovePlanningWindow] = useState<{ start: string; end: string } | null>(null);
+  const [approveOverlapPresets, setApproveOverlapPresets] = useState<{ start: string; end: string }[]>([]);
+  const [teamFeedItems, setTeamFeedItems] = useState<Item[]>([]);
+
+  const onApprovePlanningWindow = useCallback((w: { start: string; end: string } | null) => {
+    setApprovePlanningWindow(w);
+  }, []);
+
+  const onApproveOverlapPresets = useCallback((windows: { start: string; end: string }[]) => {
+    setApproveOverlapPresets(windows);
+  }, []);
+
+  /** Same rows as Home Approve "Team trip ideas": team return-feed only, deduped, same status filter. */
+  const approvePipelineItems = useMemo(
+    () => filterTeamTripIdeas(dedupeItemsById(teamFeedItems)),
+    [teamFeedItems],
+  );
 
   const refreshPanelItems = useCallback(async () => {
     try {
@@ -104,6 +121,25 @@ export default function ExplorerPage() {
       void refreshPanelItems();
     }
   }, [stage, refreshPanelItems]);
+
+  useEffect(() => {
+    if (stage !== 'approve' || !teamId) {
+      setTeamFeedItems([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .getTeamReturnFeed(teamId)
+      .then((items) => {
+        if (!cancelled) setTeamFeedItems(items);
+      })
+      .catch(() => {
+        if (!cancelled) setTeamFeedItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stage, teamId]);
 
   useEffect(() => {
     const activeTeamId = typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY) : null;
@@ -484,24 +520,33 @@ export default function ExplorerPage() {
 
   if (stage === 'approve') {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Booking & cost optimization</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Team window, events, and quotes</h2>
           <p className="text-sm text-travel-muted mt-1">
-            Same tools as Home — compare flight bundles and run the calculator while approvals are in progress.
+            See where manual availability overlaps, find events while everyone is free, then refresh deep flight and
+            hotel quotes for trips in the approval pipeline.
           </p>
         </div>
-        <ApprovedEventsLivePricing items={panelItems} />
-        <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
-        <TravelCostCalculator
-          key={approvePanel.eligibleFinalizeItem?._id ?? 'calc-ex'}
-          initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
-          initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
-          initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
-          initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
-          busy={approvePanel.calcBusy}
-          onApply={approvePanel.onApplyCalculator}
-          applyLabel="Save estimate to first in-approval trip"
+        <ApproveExplorerPlanningPanel
+          teamId={teamId}
+          teamCities={teamCities}
+          pipelineItems={approvePipelineItems}
+          onPlanningWindowChange={onApprovePlanningWindow}
+          onOverlapPresetsChange={onApproveOverlapPresets}
+          onAddEventOption={addEventOptionToPlan}
+          busyOptionId={busyId}
+        />
+        {toast ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
+        ) : null}
+        <ApprovedEventsLivePricing
+          items={approvePipelineItems}
+          planningWindow={approvePlanningWindow}
+          overlapPresets={approveOverlapPresets}
+          originHintCities={teamCities}
+          onFinalizeBooking={approvePanel.onFinalize}
+          finalizeBusy={approvePanel.finalizeBusy}
         />
         {approvePanel.approveMsg ? (
           <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
@@ -968,6 +1013,14 @@ export default function ExplorerPage() {
           {availabilityCoverage.removedByAvailability != null
             ? ` · Removed by availability: ${availabilityCoverage.removedByAvailability}`
             : ''}
+          {availabilityCoverage.includedWithMissingEventTime != null &&
+          availabilityCoverage.includedWithMissingEventTime > 0 ? (
+            <span className="block mt-1 text-blue-950">
+              {availabilityCoverage.includedWithMissingEventTime} result
+              {availabilityCoverage.includedWithMissingEventTime === 1 ? '' : 's'} with no event time — included using your
+              availability window (see labels on cards).
+            </span>
+          ) : null}
         </div>
       ) : null}
       <div className="flex items-center gap-2">
@@ -1004,13 +1057,28 @@ export default function ExplorerPage() {
               <OpportunityCard
                 key={opt.optionId}
                 title={opt.title}
-                subtitle={opt.startAt ? new Date(opt.startAt).toLocaleString() : opt.snippet}
+                subtitle={
+                  opt.startAt
+                    ? new Date(opt.startAt).toLocaleString()
+                    : opt.eventTimeMissing || opt.availability?.eventTimeMissing
+                      ? 'No event time on listing'
+                      : opt.snippet
+                }
                 imageUrl={opt.imageUrl}
                 footer={
                   <div className="space-y-1 text-xs text-travel-muted">
                     <p>
                       Availability: {opt.availability?.availableCount ?? 0}/{opt.availability?.totalMembers ?? 0}
+                      {opt.availability?.evaluatedAgainst === 'availability_window' ? (
+                        <span className="block text-amber-900 mt-0.5">
+                          Checked vs window {opt.availability.evaluationWindowStart?.slice(0, 10)} →{' '}
+                          {opt.availability.evaluationWindowEnd?.slice(0, 10)} (listing had no show time).
+                        </span>
+                      ) : null}
                     </p>
+                    {opt.cost?.pricingUsedAvailabilityWindow ? (
+                      <p className="text-amber-800">Estimate uses window start — not a confirmed event date.</p>
+                    ) : null}
                     <p>Estimated total: ${Math.round(opt.cost?.totalEstimated || 0)}</p>
                   </div>
                 }

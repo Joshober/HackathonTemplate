@@ -573,7 +573,18 @@ def get_team_manual_availability(user_id, team_id):
     return jsonify({'teamId': team_id, 'members': rows}), 200
 
 
-RETURN_FEED_STATUSES = ('approved', 'booked', 'completed')
+# Team-scoped items surfaced in /return-feed: planning pipeline + finalized trips.
+# (Return-stage UI filters client-side so drafts are not mixed into post-trip tools.)
+RETURN_FEED_STATUSES = (
+    'draft',
+    'ready_for_approval',
+    'submitted',
+    'pending',
+    'needs_changes',
+    'approved',
+    'booked',
+    'completed',
+)
 
 INSTAGRAM_CAPTION_SYSTEM = (
     'You write Instagram captions for a professional travel / conference team. '

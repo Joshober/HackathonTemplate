@@ -7,13 +7,11 @@ import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } f
 import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
-import { getTravelPayload, humanDescriptionLine, isTravelItem } from '@/lib/travelItem';
+import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
+import { filterTeamTripIdeas } from '@/lib/travelTeamPipeline';
 import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTypes';
 import type { User } from '@/lib/auth';
-import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
-import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
-import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
 
 function statusBadge(status: TravelOpportunityStatus | undefined) {
@@ -69,7 +67,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }, [activeTeamId]);
 
   const travelItems = useMemo(() => items.filter(isTravelItem), [items]);
-  const approvePanel = useApproveBookingPanel(items, refresh);
   const voterEmail = user.email?.trim() || '';
 
   useEffect(() => {
@@ -172,14 +169,10 @@ export default function TravelHomeBody({ user }: { user: User }) {
       try {
         const detail = await api.getTeam(teamId);
         if (detail.members?.length) {
-          const meEmail = user.email?.trim().toLowerCase() || '';
           approvals = detail.members.map((m) => ({
             name: (m.displayName || m.email || 'Team member').trim(),
             role: 'Reviewer',
-            status:
-              m.userId === user.sub || (m.email || '').trim().toLowerCase() === meEmail
-                ? ('approved' as const)
-                : ('pending' as const),
+            status: 'pending' as const,
           }));
           approvalSetup = 'team_linked';
         }
@@ -192,7 +185,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
       ...(teamIdToAttach ? { teamId: teamIdToAttach } : {}),
       travel: {
         ...t,
-        opportunityStatus: 'approved',
+        opportunityStatus: 'submitted',
         approvals,
         approvalSetup,
         addedBy: t.addedBy || user.email,
@@ -201,7 +194,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
     if (teamIdToAttach) {
       const actor = user.name || user.email || 'A teammate';
       const location = t.location || 'Unknown location';
-      const msg = `[SYSTEM] ${actor} approved "${item.title}" in ${location} from Home swipe.`;
+      const msg = `[SYSTEM] ${actor} submitted "${item.title}" in ${location} for team approval (Plan).`;
       try {
         await api.sendTeamMessage(teamIdToAttach, msg, { invokeAssistant: false });
         await sendAvailabilityRequestMessage(teamIdToAttach, item, location);
@@ -298,10 +291,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }
 
   if (stage === 'approve') {
-    const teamApproved = teamApprovedItems.filter((i) => {
-      const st = getTravelPayload(i)?.opportunityStatus;
-      return st === 'submitted' || st === 'pending' || st === 'approved' || st === 'booked' || st === 'completed' || st === 'needs_changes';
-    });
+    const teamTripIdeas = filterTeamTripIdeas(teamApprovedItems);
 
     return (
       <div className="space-y-4">
@@ -387,32 +377,45 @@ export default function TravelHomeBody({ user }: { user: User }) {
         {activeTeamId ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">Active team trips</h3>
-              <span className="text-xs text-travel-muted">{teamApproved.length}</span>
+              <h3 className="text-sm font-semibold text-gray-900">Team trip ideas</h3>
+              <span className="text-xs text-travel-muted">{teamTripIdeas.length}</span>
             </div>
-            {teamApproved.length === 0 ? (
-              <p className="text-sm text-travel-muted">No team trips in approval or approved yet.</p>
+            <p className="text-xs text-travel-muted -mt-2">
+              Options the planner added (Explorer) or sent from Plan — reviewers sign off here.
+            </p>
+            {teamTripIdeas.length === 0 ? (
+              <p className="text-sm text-travel-muted">
+                No shared ideas yet. Add trips on Explorer with this team selected, or send cards from Plan.
+              </p>
             ) : (
-              teamApproved.map((item) => {
+              teamTripIdeas.map((item) => {
                 const t = getTravelPayload(item);
                 const img = t?.imageUrl || item.imageUrls?.[0];
                 const approvals = t?.approvals || [];
                 const allPending = approvals.length > 0 && approvals.every((a) => a.status === 'pending');
-                const showOfflineApprove = t?.opportunityStatus === 'submitted' && (approvals.length === 0 || allPending);
+                const st = t?.opportunityStatus;
+                const showOfflineApprove =
+                  (st === 'submitted' || st === 'pending') && (approvals.length === 0 || allPending);
                 const approvedBy = approvals.filter((a) => a.status === 'approved').map((a) => a.name.trim()).filter(Boolean);
                 return (
                   <OpportunityCard
                     key={`team-approved-${item._id}`}
                     title={item.title}
-                    subtitle={undefined}
+                    subtitle={t?.location}
                     imageUrl={img}
                     footer={
                       <div className="space-y-3">
-                        <p className="text-sm text-travel-muted">
-                          {approvedBy.length
-                            ? `Approved by: ${approvedBy.join(', ')}`
-                            : 'No team members have approved this yet.'}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">{statusBadge(st)}</div>
+                        {st === 'draft' || st === 'ready_for_approval' ? (
+                          <p className="text-sm text-travel-muted">
+                            In the planner queue — open <span className="font-medium text-gray-800">Plan</span> to send
+                            this for team approval.
+                          </p>
+                        ) : approvedBy.length ? (
+                          <p className="text-sm text-travel-muted">Approved by: {approvedBy.join(', ')}</p>
+                        ) : (
+                          <p className="text-sm text-travel-muted">No team members have approved this yet.</p>
+                        )}
                         {showOfflineApprove ? (
                           <button
                             type="button"
@@ -432,31 +435,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
             )}
           </div>
         ) : null}
-        <div className="pt-4 border-t border-gray-200 space-y-6">
-          <div>
-            <h3 className="text-base font-semibold text-gray-900 mb-1">Booking & cost</h3>
-            <p className="text-xs text-travel-muted">
-              Refresh live quotes on Explorer (Approve stage), then finalize a bundle — your trip record stores those
-              links.
-            </p>
-          </div>
-          <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
-          <TravelCostCalculator
-            key={approvePanel.eligibleFinalizeItem?._id ?? 'calc'}
-            initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
-            initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
-            initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
-            initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
-            busy={approvePanel.calcBusy}
-            onApply={approvePanel.onApplyCalculator}
-            applyLabel="Save estimate to first in-approval trip"
-          />
-          {approvePanel.approveMsg ? (
-            <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
-              {approvePanel.approveMsg}
-            </p>
-          ) : null}
-        </div>
         <Link href="/explorer" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
           Browse more opportunities on Explorer
         </Link>

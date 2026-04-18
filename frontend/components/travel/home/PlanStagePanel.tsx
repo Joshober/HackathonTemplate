@@ -47,7 +47,7 @@ function ApprovedEventsSlider({ items }: { items: Item[] }) {
       <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
         <p className="text-sm text-travel-muted">No approved trips yet.</p>
         <p className="text-xs text-gray-500 mt-1">
-          Swipe right on a suggestion below to submit for approval, then finish sign-off in the Approve stage.
+          Swipe right on a suggestion below to send it to the team for sign-off on the Approve stage.
         </p>
       </div>
     );
@@ -180,7 +180,7 @@ function TopSwipeCard({
             ))}
           </div>
           <p className="text-xs text-travel-muted">
-            Swipe right to approve (send to the Approve stage). Swipe left to veto (remove from this stack).
+            Swipe right to submit for team approval (Approve stage). Swipe left to veto (remove from this stack).
           </p>
         </div>
       </article>

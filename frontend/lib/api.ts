@@ -120,6 +120,8 @@ export interface ExplorerAvailabilityCoverage {
   total?: number;
   withEventTime?: number;
   removedByAvailability?: number;
+  /** Kept after filter using team availability window (no specific event time on listing). */
+  includedWithMissingEventTime?: number;
 }
 
 export interface ExplorerEventOption {
@@ -134,12 +136,18 @@ export interface ExplorerEventOption {
   snippet?: string;
   startAt?: string;
   endAt?: string;
+  /** True when the source listing had no event time; availability used team search window. */
+  eventTimeMissing?: boolean;
   availability?: {
     availableCount: number;
     totalMembers: number;
     conflictMemberIds: string[];
     availabilityScore: number;
     meetsMajority: boolean;
+    eventTimeMissing?: boolean;
+    evaluatedAgainst?: 'event_time' | 'availability_window' | null;
+    evaluationWindowStart?: string | null;
+    evaluationWindowEnd?: string | null;
   };
   cost?: {
     mode?: string;
@@ -147,6 +155,8 @@ export interface ExplorerEventOption {
     hotelTotal?: number;
     ticketEstimate?: number;
     totalEstimated?: number;
+    /** Flight/hotel estimate used first day of team window — not a confirmed event date. */
+    pricingUsedAvailabilityWindow?: boolean;
   };
 }
 
@@ -187,6 +197,11 @@ export interface TravelPricingHotelOfferRow {
   total?: string;
   currency?: string;
   boardType?: string;
+  /** Minutes from Google Hotels nearby_places transit hints (approximate). */
+  distanceMinutes?: number | null;
+  distanceHint?: string | null;
+  listingUrl?: string | null;
+  source?: string;
 }
 
 export interface TravelPricingDeepLinks {
@@ -222,6 +237,9 @@ export interface TravelPricingEventResult {
     error?: string | null;
     bookable?: boolean | null;
     reason?: string;
+    /** Average of per-listing distanceMinutes when from SerpAPI Google Hotels. */
+    averageDistanceMinutes?: number | null;
+    distanceSummary?: string | null;
   };
   scrapedOptions: TravelPricingScrapedOption[];
   scrapeNote?: string | null;

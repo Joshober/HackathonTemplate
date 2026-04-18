@@ -148,6 +148,7 @@ def _build_event_option_rows(opportunities: list[dict[str, Any]]) -> list[dict[s
                     "snippet": g.get("snippet"),
                     "startAt": opt.get("startAt"),
                     "endAt": opt.get("endAt"),
+                    "eventTimeMissing": bool(opt.get("eventTimeMissing")),
                 }
             )
     rows.sort(key=lambda r: (str(r.get("city") or ""), str(r.get("startAt") or "")))
@@ -159,17 +160,29 @@ def _option_availability(
     member_ids: list[str],
     busy_by_user: dict[str, list[tuple[datetime, datetime]]],
     manual_available_by_user: dict[str, list[tuple[datetime, datetime]]],
+    fallback_window: tuple[datetime, datetime] | None = None,
 ) -> dict[str, Any]:
+    event_time_missing = False
     start = _parse_iso_dt(option.get("startAt"))
+    end = _parse_iso_dt(option.get("endAt"))
     if not start:
-        return {
-            "availableCount": 0,
-            "totalMembers": len(member_ids),
-            "conflictMemberIds": member_ids,
-            "availabilityScore": 0.0,
-            "meetsMajority": False,
-        }
-    end = _parse_iso_dt(option.get("endAt")) or (start + timedelta(hours=2))
+        if fallback_window is not None:
+            event_time_missing = True
+            start, end = fallback_window[0], fallback_window[1]
+        else:
+            return {
+                "availableCount": 0,
+                "totalMembers": len(member_ids),
+                "conflictMemberIds": member_ids,
+                "availabilityScore": 0.0,
+                "meetsMajority": False,
+                "eventTimeMissing": True,
+                "evaluatedAgainst": None,
+                "evaluationWindowStart": None,
+                "evaluationWindowEnd": None,
+            }
+    if not end or end <= start:
+        end = start + timedelta(hours=2)
     available = 0
     conflicts = []
     for uid in member_ids:
@@ -195,6 +208,10 @@ def _option_availability(
         "conflictMemberIds": conflicts,
         "availabilityScore": round(score, 4),
         "meetsMajority": available >= max(1, (total // 2) + 1) if total else False,
+        "eventTimeMissing": event_time_missing,
+        "evaluatedAgainst": "availability_window" if event_time_missing else "event_time",
+        "evaluationWindowStart": start.isoformat(),
+        "evaluationWindowEnd": end.isoformat(),
     }
 
 
@@ -367,6 +384,11 @@ def explorer_opportunities(user_id):
                     parsed.append((start_dt.astimezone(timezone.utc), end_dt.astimezone(timezone.utc)))
                 if parsed:
                     manual_available_by_user[uid] = parsed
+            fallback_win = (
+                (availability_start, availability_end)
+                if availability_start and availability_end
+                else None
+            )
             opportunities, stats = filter_opportunities_by_busy(
                 opportunities=opportunities,
                 busy_by_user=busy_by_user,
@@ -374,35 +396,60 @@ def explorer_opportunities(user_id):
                 exclude_unknown_event_times=True,
                 available_by_user=manual_available_by_user,
                 required_user_ids=member_ids,
+                fallback_window=fallback_win,
             )
             availability_coverage.update(stats)
     event_options = _build_event_option_rows(opportunities)
     enriched_options = []
+    availability_fallback = (
+        (availability_start, availability_end)
+        if availability_start and availability_end
+        else None
+    )
     for opt in event_options:
-        a = _option_availability(opt, member_ids, busy_by_user, manual_available_by_user) if member_ids else {
-            "availableCount": 0,
-            "totalMembers": 0,
-            "conflictMemberIds": [],
-            "availabilityScore": 0.0,
-            "meetsMajority": True,
-        }
+        a = (
+            _option_availability(
+                opt,
+                member_ids,
+                busy_by_user,
+                manual_available_by_user,
+                availability_fallback,
+            )
+            if member_ids
+            else {
+                "availableCount": 0,
+                "totalMembers": 0,
+                "conflictMemberIds": [],
+                "availabilityScore": 0.0,
+                "meetsMajority": True,
+                "eventTimeMissing": not bool(_parse_iso_dt(opt.get("startAt"))),
+                "evaluatedAgainst": None,
+                "evaluationWindowStart": None,
+                "evaluationWindowEnd": None,
+            }
+        )
         if member_ids and not a.get("meetsMajority"):
             continue
         start_day = None
         dt = _parse_iso_dt(opt.get("startAt"))
         if dt:
             start_day = dt.date().isoformat()
+        elif availability_start:
+            start_day = availability_start.date().isoformat()
         live_cost = _try_live_cost(str(opt.get("city") or ""), start_day)
         ticket_est = _estimate_ticket_cost(opt)
         total_cost = float(live_cost.get("flightTotal") or 0) + float(live_cost.get("hotelTotal") or 0) + ticket_est
+        pricing_used_window = bool(not dt and availability_start)
         enriched_options.append(
             {
                 **opt,
                 "availability": a,
+                "eventTimeMissing": bool(a.get("eventTimeMissing")),
                 "cost": {
                     **live_cost,
                     "ticketEstimate": ticket_est,
                     "totalEstimated": round(total_cost, 2),
+                    "pricingUsedAvailabilityWindow": pricing_used_window,
                 },
             }
         )

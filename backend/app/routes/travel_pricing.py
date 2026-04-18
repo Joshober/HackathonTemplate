@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 from app.routes.auth_backend import require_auth
 from app.services.amadeus_client import AmadeusError, client_or_none as amadeus_client_or_none, summarize_flight_offer
 from app.services.duffel_client import DuffelError, client_or_none as duffel_client_or_none, summarize_duffel_offer
+from app.services.serpapi_travel import serpapi_google_hotels_enabled, serpapi_google_hotels_offer_rows
 from app.services.travel_scrape_options import collect_scraped_options, scrape_enabled
 
 bp = Blueprint("travel_pricing", __name__)
@@ -44,7 +45,8 @@ def _response_mode(amadeus, duffel) -> str:
 def _deep_links(origin_iata: str, city: str, outbound: str, inbound: str | None) -> dict[str, str | None]:
     city_q = quote_plus(city or "travel")
     flights_q = quote_plus(f"flights from {origin_iata} to {city} on {outbound}")
-    hotels_q = quote_plus(f"hotels in {city} check in {outbound}")
+    stay_tail = f" check out {inbound}" if inbound else ""
+    hotels_q = quote_plus(f"hotels in {city} check in {outbound}{stay_tail}")
     extra = f" return {inbound}" if inbound else ""
     flights_q2 = quote_plus(f"flights from {origin_iata} to {city} on {outbound}{extra}")
     return {
@@ -94,22 +96,22 @@ def _hotel_bookable_summary(rows: list) -> dict:
     }
 
 
-def _links_only_flight_hotel() -> tuple[dict, dict]:
-    u = "Bookability unknown without a flight API (Amadeus or Duffel)."
-    return (
-        {
-            "offers": [],
-            "error": "No flight API configured — set AMADEUS_* or DUFFEL_ACCESS_TOKEN, or use deep links.",
-            "bookable": None,
-            "reason": u,
-        },
-        {
-            "offers": [],
-            "error": "Amadeus not configured — use deep links for hotels.",
-            "bookable": None,
-            "reason": "Hotel live rates need Amadeus keys in this template.",
-        },
+def _hotel_without_amadeus_block(scrape_on: bool) -> dict:
+    """Duffel/other flights can work without Amadeus; hotels use SerpAPI Google Hotels, deep links, and scrape."""
+    scrape_hint = (
+        " TRAVEL_SCRAPE_OPTIONS=1 adds DuckDuckGo hotel links; with SERPAPI_API_KEY set TRAVEL_SERPAPI_GOOGLE_HOTELS=1 "
+        "or TRAVEL_SERPAPI_SCRAPE=1 for live Google Hotels prices and distance hints."
+        if scrape_on
+        else " Set SERPAPI_API_KEY and TRAVEL_SERPAPI_GOOGLE_HOTELS=1 (or TRAVEL_SERPAPI_SCRAPE=1) for Google Hotels "
+        "prices; TRAVEL_SCRAPE_OPTIONS=1 adds more web links."
     )
+    return {
+        "offers": [],
+        "error": None,
+        "bookable": True,
+        "reason": ("No Amadeus hotel API — use SerpAPI Google Hotels when configured, else deep links and web options.")
+        + scrape_hint,
+    }
 
 
 def _ensure_checkout_after_checkin(check_in: str, check_out: str) -> str:
@@ -253,8 +255,41 @@ def pricing_preview(user_id):
         hotel_rows: list = []
         hotel_err: str | None = None
         if not amadeus:
-            _, hblk = _links_only_flight_hotel()
-            row["hotel"] = hblk
+            row["hotel"] = _hotel_without_amadeus_block(scrape_enabled())
+            if serpapi_google_hotels_enabled() and dest_q and ch_in and ch_out:
+                gh_offers, gh_err = serpapi_google_hotels_offer_rows(
+                    dest_q,
+                    ch_in[:10],
+                    ch_out[:10],
+                    adults=adults,
+                    max_properties=10,
+                )
+                if gh_offers:
+                    dists = [
+                        x["distanceMinutes"]
+                        for x in gh_offers
+                        if isinstance(x.get("distanceMinutes"), (int, float))
+                    ]
+                    avg_dist = int(round(sum(dists) / len(dists))) if dists else None
+                    dist_summary = None
+                    if avg_dist is not None:
+                        dist_summary = (
+                            f"Avg ~{avg_dist} min across these listings (Google Hotels transit times to nearby places; "
+                            "not exact door-to-event distance)."
+                        )
+                    row["hotel"] = {
+                        "offers": gh_offers,
+                        "error": gh_err,
+                        "bookable": True,
+                        "reason": "Live prices from Google Hotels via SerpAPI — verify on the provider before booking.",
+                        "averageDistanceMinutes": avg_dist,
+                        "distanceSummary": dist_summary,
+                    }
+                elif gh_err:
+                    h0 = dict(row["hotel"])
+                    prev = (h0.get("error") or "").strip()
+                    h0["error"] = f"{prev + '; ' if prev else ''}{gh_err}".strip("; ")
+                    row["hotel"] = h0
         elif ch_in and dest_q:
             try:
                 hotel_rows = amadeus.hotel_offers_for_city(dest_q, ch_in, ch_out or ch_in, adults=adults)

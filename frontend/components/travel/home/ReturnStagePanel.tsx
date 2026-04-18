@@ -14,6 +14,14 @@ function approvedStatuses(st: TravelOpportunityStatus | undefined) {
   return s === 'approved' || s === 'booked' || s === 'completed';
 }
 
+/** Return tab: post-trip moments + finalized trips only (not Explorer/Plan drafts). */
+function isReturnFeedCard(item: Item): boolean {
+  const t = getTravelPayload(item);
+  if (!t) return false;
+  if (t.tripType === 'post_trip') return true;
+  return approvedStatuses(t.opportunityStatus);
+}
+
 function initialSavedTeamId(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY);
@@ -207,6 +215,8 @@ export default function ReturnStagePanel({ user }: { user: User }) {
     );
   }
 
+  const visibleFeed = feed.filter(isReturnFeedCard);
+
   return (
     <div className="space-y-6">
       {toast ? (
@@ -296,12 +306,14 @@ export default function ReturnStagePanel({ user }: { user: User }) {
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-travel-muted">Feed</p>
-        {feed.length === 0 ? (
+        {visibleFeed.length === 0 ? (
           <p className="text-sm text-travel-muted">
-            No shared trips yet. Share an approved plan above or add a post-trip event.
+            {feed.length === 0
+              ? 'No shared trips yet. Share an approved plan above or add a post-trip event.'
+              : 'No approved or post-trip cards yet. Planning ideas stay on Home (Approve) until the team signs off.'}
           </p>
         ) : (
-          feed.map((item) => {
+          visibleFeed.map((item) => {
             const t = getTravelPayload(item);
             const img = t?.imageUrl || item.imageUrls?.[0];
             const cap = t?.instagramCaption;

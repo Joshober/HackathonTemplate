@@ -512,24 +512,38 @@ def filter_opportunities_by_busy(
     exclude_unknown_event_times: bool = True,
     available_by_user: dict[str, list[tuple[datetime, datetime]]] | None = None,
     required_user_ids: list[str] | None = None,
+    *,
+    fallback_window: tuple[datetime, datetime] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     if not busy_by_user:
         busy_by_user = {}
     available_by_user = available_by_user or {}
     required_ids = [u for u in (required_user_ids or []) if isinstance(u, str) and u.strip()]
     if not busy_by_user and not available_by_user and not required_ids:
-        return opportunities, {"total": len(opportunities), "withEventTime": 0, "removedByAvailability": 0}
+        return opportunities, {
+            "total": len(opportunities),
+            "withEventTime": 0,
+            "removedByAvailability": 0,
+            "includedWithMissingEventTime": 0,
+        }
     out: list[dict[str, Any]] = []
     with_event_time = 0
     removed = 0
+    included_missing_event_time = 0
     for opp in opportunities:
         window = _opportunity_window(opp)
         if window is None:
-            if exclude_unknown_event_times:
+            if fallback_window is not None:
+                window = fallback_window
+                opp["eventTimeMissing"] = True
+            elif exclude_unknown_event_times:
                 removed += 1
                 continue
-            out.append(opp)
-            continue
+            else:
+                out.append(opp)
+                continue
+        else:
+            opp["eventTimeMissing"] = False
         with_event_time += 1
         o_start, o_end = window
         any_conflict = False
@@ -565,7 +579,14 @@ def filter_opportunities_by_busy(
             removed += 1
             continue
         out.append(opp)
-    return out, {"total": len(opportunities), "withEventTime": with_event_time, "removedByAvailability": removed}
+        if opp.get("eventTimeMissing"):
+            included_missing_event_time += 1
+    return out, {
+        "total": len(opportunities),
+        "withEventTime": with_event_time,
+        "removedByAvailability": removed,
+        "includedWithMissingEventTime": included_missing_event_time,
+    }
 
 
 def expand_event_options(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -595,7 +616,8 @@ def expand_event_options(opportunities: list[dict[str, Any]]) -> list[dict[str, 
             }
             grouped[key] = row
         start_at = opp.get("startAt")
-        if isinstance(start_at, str) and start_at.strip():
+        has_event_time = isinstance(start_at, str) and start_at.strip()
+        if has_event_time:
             option_id = _result_id(f"{key}:{start_at.strip()}")
             row["options"].append(
                 {
@@ -603,6 +625,20 @@ def expand_event_options(opportunities: list[dict[str, Any]]) -> list[dict[str, 
                     "sourceEventId": opp.get("id"),
                     "startAt": start_at.strip(),
                     "endAt": opp.get("endAt"),
+                    "eventTimeMissing": False,
+                }
+            )
+        else:
+            # Listing has no specific event time — still emit an option row; API marks availability vs team window.
+            und_ref = str(opp.get("id") or opp.get("url") or opp.get("snippet") or "")[:200]
+            option_id = _result_id(f"{key}:undated:{und_ref}")
+            row["options"].append(
+                {
+                    "optionId": option_id,
+                    "sourceEventId": opp.get("id"),
+                    "startAt": None,
+                    "endAt": opp.get("endAt"),
+                    "eventTimeMissing": True,
                 }
             )
     out = []
@@ -610,12 +646,12 @@ def expand_event_options(opportunities: list[dict[str, Any]]) -> list[dict[str, 
         seen = set()
         opts = []
         for o in row["options"]:
-            k = (o.get("startAt"), o.get("endAt"))
-            if k in seen:
+            oid = o.get("optionId")
+            if not oid or oid in seen:
                 continue
-            seen.add(k)
+            seen.add(oid)
             opts.append(o)
-        opts.sort(key=lambda x: str(x.get("startAt") or ""))
+        opts.sort(key=lambda x: (str(x.get("startAt") or "\uffff"), x.get("optionId") or ""))
         row["options"] = opts
         row["optionCount"] = len(opts)
         out.append(row)
