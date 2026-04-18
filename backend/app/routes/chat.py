@@ -1011,11 +1011,13 @@ def chat_copilot(user_id):
             system_prompt_base=system_prompt_base,
         )
 
+        cq = ctx.get('contextQuality') if isinstance(ctx.get('contextQuality'), dict) else {}
         return jsonify(
             {
                 'reply': assistant_message,
                 'mode': assistant_mode,
                 'contextUsed': context_used_flags(ctx),
+                'contextQuality': cq,
                 'suggestedActions': suggested_actions(ctx, assistant_mode),
                 'usage': usage_merged,
             }

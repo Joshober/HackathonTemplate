@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { api, type TravelAssistantMode } from '@/lib/api';
+import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type TravelAssistantMode } from '@/lib/api';
 import { LOCKTON_TRAVEL_PERSONALITY } from '@/lib/travelAssistant';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 
@@ -100,6 +100,11 @@ export default function AssistantInner() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
+  const [lastContextUsed, setLastContextUsed] = useState<Record<string, boolean> | null>(null);
+  const [lastContextQuality, setLastContextQuality] = useState<{
+    summaryLine?: string;
+    gaps?: string[];
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<BlobPart[]>([]);
@@ -347,6 +352,13 @@ export default function AssistantInner() {
       }));
 
       try {
+        const uiState: Record<string, unknown> = {};
+        if (typeof window !== 'undefined') {
+          const team = window.localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY);
+          const stage = window.localStorage.getItem('travelCompanionStage');
+          if (team?.trim()) uiState.activeTeamId = team.trim();
+          if (stage?.trim()) uiState.journeyStage = stage.trim();
+        }
         const result = await api.chatTravelCopilot({
           message: trimmed,
           messages: priorForPipeline,
@@ -354,8 +366,11 @@ export default function AssistantInner() {
           currentPage: pathname,
           personality: LOCKTON_TRAVEL_PERSONALITY,
           assistantMode,
+          uiState: Object.keys(uiState).length ? uiState : undefined,
         });
         const reply = result.reply || 'No response.';
+        setLastContextUsed(result.contextUsed ?? null);
+        setLastContextQuality(result.contextQuality ?? null);
         setMessages((prev) => [
           ...prev,
           {
@@ -410,9 +425,45 @@ export default function AssistantInner() {
       <div className="border-b border-gray-100 px-5 py-4">
         <h2 className="text-lg font-semibold text-gray-900">AI assistant</h2>
         <p className="mt-1 text-xs text-travel-muted">
-          OpenRouter (Gemini) + MongoDB context + DuckDuckGo web search when needed. Estimates only unless stated.
+          Replies label <span className="font-medium text-gray-700">[App context]</span> vs{' '}
+          <span className="font-medium text-gray-700">[Web search]</span> vs tools. MongoDB trip data + DuckDuckGo when
+          needed. Estimates unless your saved trip has API-backed quotes.
         </p>
         <p className="mt-1 text-xs text-teal-800/90">{modeHint}</p>
+        {lastContextUsed ? (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-600">
+            <span className="font-semibold text-gray-500">Linked:</span>
+            {lastContextUsed.hasSavedTrips ? (
+              <span className="rounded-full bg-teal-100 px-2 py-0.5 text-teal-900">Trips</span>
+            ) : (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">No trips</span>
+            )}
+            {lastContextUsed.hasActiveTrip ? (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-900">Active trip</span>
+            ) : null}
+            {lastContextUsed.contextHasDestination ? (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-900">Destination</span>
+            ) : null}
+            {lastContextUsed.contextHasDates ? (
+              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-indigo-900">Dates</span>
+            ) : null}
+            {lastContextUsed.contextHasCost ? (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-900">Cost in app</span>
+            ) : null}
+            {lastContextUsed.contextHasGaps ? (
+              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-orange-900">Gaps to fill</span>
+            ) : (
+              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">Context OK</span>
+            )}
+          </div>
+        ) : (
+          <p className="mt-2 text-[10px] text-gray-400">Send a message to show what context is linked to this chat.</p>
+        )}
+        {lastContextQuality?.summaryLine ? (
+          <p className="mt-1.5 text-[11px] leading-snug text-gray-600 line-clamp-2" title={lastContextQuality.summaryLine}>
+            <span className="font-medium text-gray-700">Primary trip:</span> {lastContextQuality.summaryLine}
+          </p>
+        ) : null}
         <div className="mt-3 flex flex-wrap gap-2" role="tablist" aria-label="AI service mode">
           {AI_SERVICE_MODES.map((m) => {
             const active = assistantMode === m.id;

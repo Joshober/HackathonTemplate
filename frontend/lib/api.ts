@@ -366,10 +366,19 @@ export interface TravelCopilotSuggestedAction {
 /** Only these three AI Service modes are supported for the travel copilot. */
 export type TravelAssistantMode = 'travel_coach' | 'personal_assistant' | 'analytics';
 
+/** Backend-computed summary of trip context completeness (Mongo + UI hints). */
+export interface TravelCopilotContextQuality {
+  tripRef?: string;
+  summaryLine?: string;
+  completeness?: Record<string, boolean>;
+  gaps?: string[];
+}
+
 export interface TravelCopilotResponse {
   reply: string;
   mode: string;
   contextUsed: Record<string, boolean>;
+  contextQuality?: TravelCopilotContextQuality;
   suggestedActions: TravelCopilotSuggestedAction[];
   usage?: Record<string, unknown>;
 }

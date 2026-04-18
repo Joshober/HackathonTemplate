@@ -106,15 +106,24 @@ def build_travel_chat_context(
         "preferences": {},
         "savedTrips": [],
         "activeTrip": None,
+        "primaryTrip": None,
         "selectedFlight": None,
         "selectedHotel": None,
         "savedPlaces": [],
         "policyContext": {
             "note": "Confirm spend limits and approvals with your organization; this assistant gives general guidance only.",
+            "checklist": [
+                "Spend limits and class of service vs policy",
+                "Pre-approval or manager sign-off if required",
+                "Receipts and per-diem rules",
+                "Insurance / duty of care for international legs",
+            ],
         },
         "integrations": {"calendarConnected": False, "googleConnected": False},
         "teams": [],
         "recentActivity": [],
+        "clientHints": {},
+        "contextQuality": None,
     }
 
     ui = ui_state if isinstance(ui_state, dict) else {}
@@ -122,6 +131,10 @@ def build_travel_chat_context(
         ctx["integrations"]["calendarConnected"] = True
     if ui.get("googleConnected") is True:
         ctx["integrations"]["googleConnected"] = True
+    for key in ("activeTeamId", "journeyStage", "focusedTripId"):
+        raw = ui.get(key)
+        if raw is not None and str(raw).strip():
+            ctx["clientHints"][_clip(str(key), 40)] = _clip(str(raw), 120)
 
     try:
         prof = db.profiles.find_one({"userId": user_id})
@@ -151,6 +164,7 @@ def build_travel_chat_context(
 
     ctx["savedTrips"] = trips[:_MAX_LIST]
     ctx["activeTrip"] = active
+    ctx["primaryTrip"] = active if active else (trips[0] if trips else None)
 
     if trips:
         t0 = trips[0]
@@ -192,6 +206,8 @@ def build_travel_chat_context(
         {"action": "context_loaded", "detail": f"{len(trips)} travel item(s) in app"},
     ]
 
+    ctx["contextQuality"] = _compute_context_quality(ctx)
+
     raw = json.dumps(ctx, default=str, ensure_ascii=False)
     if len(raw) > _MAX_JSON_CHARS:
         ctx["truncated"] = True
@@ -204,21 +220,97 @@ def build_travel_chat_context(
     return ctx
 
 
+def _compute_context_quality(ctx: dict[str, Any]) -> dict[str, Any]:
+    """
+    Human-readable summary of how complete the user's trip context is + gaps to fill.
+    Helps the model prioritize App context and ask one focused question when needed.
+    """
+    pt = ctx.get("primaryTrip") or ctx.get("activeTrip")
+    if not isinstance(pt, dict):
+        return {
+            "summaryLine": "No saved travel items with trip metadata in app context.",
+            "completeness": {
+                "hasDestination": False,
+                "hasDates": False,
+                "hasCostEstimate": False,
+                "hasFlightOrHotelHints": False,
+                "hasApprovalOrStatus": False,
+            },
+            "gaps": ["Add or save a trip in Plan with destination and dates"],
+        }
+
+    loc = (pt.get("location") or "").strip()
+    dq = (pt.get("destinationQuery") or "").strip()
+    has_dest = bool(loc or dq)
+    sd = (pt.get("startDate") or "").strip()
+    ed = (pt.get("endDate") or "").strip()
+    has_dates = bool(sd and ed)
+    ce = pt.get("costEstimate")
+    has_cost = isinstance(ce, (int, float))
+    has_fh = bool(pt.get("topFlightLine") or pt.get("topHotelLine"))
+    st = (pt.get("opportunityStatus") or "").strip()
+    has_st = bool(st)
+
+    gaps: list[str] = []
+    if not has_dest:
+        gaps.append("destination not set in saved trip")
+    if not has_dates:
+        gaps.append("start/end dates incomplete")
+    if not has_cost and not (isinstance(pt.get("bookingEstimate"), dict) and pt.get("bookingEstimate")):
+        gaps.append("no cost estimate in app context")
+    if not has_fh:
+        gaps.append("no flight/hotel snapshot lines in context")
+    if not has_st:
+        gaps.append("approval / trip status not shown in context")
+
+    summary = _clip(pt.get("title"), 120) or "Saved trip"
+    if loc:
+        summary += f" → {_clip(loc, 80)}"
+    elif dq:
+        summary += f" → {_clip(dq, 80)}"
+    if sd and ed:
+        summary += f" ({sd} – {ed})"
+
+    return {
+        "tripRef": pt.get("itemRef"),
+        "summaryLine": summary,
+        "completeness": {
+            "hasDestination": has_dest,
+            "hasDates": has_dates,
+            "hasCostEstimate": has_cost,
+            "hasFlightOrHotelHints": has_fh,
+            "hasApprovalOrStatus": has_st,
+        },
+        "gaps": gaps[:8] if gaps else [],
+    }
+
+
 def context_used_flags(ctx: dict[str, Any]) -> dict[str, bool]:
+    cq = ctx.get("contextQuality") if isinstance(ctx.get("contextQuality"), dict) else {}
+    comp = cq.get("completeness") if isinstance(cq.get("completeness"), dict) else {}
     return {
         "hasProfile": bool(ctx.get("profile")),
         "hasSavedTrips": bool(ctx.get("savedTrips")),
         "hasActiveTrip": bool(ctx.get("activeTrip")),
+        "hasPrimaryTrip": bool(ctx.get("primaryTrip")),
         "hasPreferences": bool((ctx.get("preferences") or {}).get("travelTags")),
         "hasFlightHint": bool(ctx.get("selectedFlight")),
         "hasHotelHint": bool(ctx.get("selectedHotel")),
         "hasTeams": bool(ctx.get("teams")),
+        "contextHasDestination": bool(comp.get("hasDestination")),
+        "contextHasDates": bool(comp.get("hasDates")),
+        "contextHasCost": bool(comp.get("hasCostEstimate")),
+        "contextHasGaps": bool(cq.get("gaps")),
     }
 
 
 def suggested_actions(ctx: dict[str, Any], mode: str | None) -> list[dict[str, str]]:
     """Lightweight UX hints — not model-generated."""
     out: list[dict[str, str]] = []
+    cq = ctx.get("contextQuality") if isinstance(ctx.get("contextQuality"), dict) else {}
+    gaps = cq.get("gaps") if isinstance(cq.get("gaps"), list) else []
+    summ = (cq.get("summaryLine") or "").strip()
+
     if not ctx.get("savedTrips"):
         out.append(
             {
@@ -226,25 +318,49 @@ def suggested_actions(ctx: dict[str, Any], mode: str | None) -> list[dict[str, s
                 "prompt": "Walk me through starting a trip in the app: destination, dates, and what to enter in Plan.",
             }
         )
-    if ctx.get("activeTrip"):
+    elif ctx.get("activeTrip") or ctx.get("primaryTrip"):
         out.append(
             {
                 "label": "Refine this trip",
-                "prompt": f"Given my current trip context, what should I lock next before booking?",
+                "prompt": "Given my saved trip in app context, what should I lock next before booking? End with one clear next step.",
             }
         )
+        if gaps:
+            out.append(
+                {
+                    "label": "Fill context gaps",
+                    "prompt": f"My app context may be incomplete ({'; '.join(gaps[:3])}). What single detail should I add first and why?",
+                }
+            )
     else:
         out.append(
             {
                 "label": "Estimate costs",
-                "prompt": "Give a rough per-day cost band for a domestic client trip using my tags if any; estimates only.",
+                "prompt": "Give a rough per-day cost band for a domestic client trip using my tags if any; label [Web search] vs [App context].",
             }
         )
+
+    if summ and "→" in summ:
+        out.append(
+            {
+                "label": "Sources for this trip",
+                "prompt": f"For my trip ({summ}), separate what comes from [App context] vs anything you would get from [Web search]. End with a next step.",
+            }
+        )
+
     if (mode or "").lower() == "analytics":
         out.append(
             {
                 "label": "Compare options",
-                "prompt": "Compare tradeoffs between economy vs flexible fares for my trip style (estimates).",
+                "prompt": "Compare tradeoffs between economy vs flexible fares for my trip style (estimates). Flag missing data.",
             }
         )
-    return out[:5]
+    elif (mode or "").lower() == "personal_assistant":
+        out.append(
+            {
+                "label": "Next step checklist",
+                "prompt": "From my app context, give a 3-item checklist and the single most important next action before I travel.",
+            }
+        )
+
+    return out[:6]
