@@ -29,6 +29,7 @@ export function TravelStageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? window.localStorage.getItem('travelCompanionStage') : null;
     if (saved === 'plan' || saved === 'approve' || saved === 'travel' || saved === 'return') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate persisted journey stage after mount (avoids SSR/localStorage mismatch)
       setStageState(saved);
     }
   }, []);

@@ -68,13 +68,13 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
   };
 
   const inputClass =
-    'w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50';
-  const labelClass = 'block text-sm font-medium text-gray-300 mb-1';
+    'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30';
+  const labelClass = 'block text-sm font-medium text-gray-700 mb-1';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl">
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl">
           {error}
         </div>
       )}
@@ -83,7 +83,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
         <label className={labelClass}>Profile Image</label>
         <div className="flex items-center gap-4">
           {imagePreview && (
-            <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-white/20 flex-shrink-0">
+            <div className="relative w-24 h-24 rounded-full overflow-hidden border-2 border-gray-200 flex-shrink-0">
               <Image
                 src={imagePreview}
                 alt="Profile preview"
@@ -97,7 +97,7 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
               type="file"
               accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
               onChange={handleImageChange}
-              className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary/20 file:text-primary hover:file:bg-primary/30"
+              className="block w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-800 hover:file:bg-blue-100"
             />
             <p className="mt-1 text-xs text-gray-500">PNG, JPG, GIF or WEBP. Max 5MB.</p>
           </div>
@@ -137,14 +137,14 @@ export default function ProfileForm({ profile, onSuccess }: ProfileFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="flex-1 bg-primary hover:bg-primary/90 text-background-dark px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/50"
+          className="flex-1 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
         >
           {loading ? 'Saving...' : profile?._id ? 'Update Profile' : 'Create Profile'}
         </button>
         <button
           type="button"
           onClick={() => router.back()}
-          className="px-4 py-2.5 border border-white/20 text-gray-300 rounded-xl font-medium hover:bg-white/5 transition-colors"
+          className="px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 bg-white transition-colors shadow-sm"
         >
           Cancel
         </button>

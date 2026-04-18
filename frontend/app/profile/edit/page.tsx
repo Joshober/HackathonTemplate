@@ -17,7 +17,6 @@ export default function EditProfilePage() {
 
   useEffect(() => {
     loadUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   const loadUser = async () => {
@@ -56,7 +55,7 @@ export default function EditProfilePage() {
 
   if (isLoading || loading || !user) {
     return (
-      <div className="min-h-screen bg-[#080a0f] flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-travel-muted text-sm">Loading…</div>
       </div>
     );
@@ -73,12 +72,12 @@ export default function EditProfilePage() {
   return (
     <TravelSubpageLayout title="Edit profile">
       <div className="mb-6">
-        <Link href="/profile" className="text-blue-300 hover:underline text-sm font-medium mb-4 inline-block">
+        <Link href="/profile" className="text-blue-600 hover:underline text-sm font-medium mb-4 inline-block">
           ← Back to profile
         </Link>
-        <h1 className="text-2xl font-bold text-white">Edit profile</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Edit profile</h1>
       </div>
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <ProfileForm profile={profile} onSuccess={handleProfileUpdate} />
       </div>
     </TravelSubpageLayout>

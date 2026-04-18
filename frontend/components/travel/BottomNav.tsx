@@ -2,41 +2,46 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Compass, Home, LayoutGrid, MessageSquare, Users } from 'lucide-react';
 
-const tabs: { href: string; label: string; icon: string }[] = [
-  { href: '/home', label: 'Home', icon: 'home' },
-  { href: '/explorer', label: 'Explorer', icon: 'travel_explore' },
-  { href: '/assistant', label: 'AI', icon: 'smart_toy' },
-  { href: '/team', label: 'Team', icon: 'groups' },
-  { href: '/profile', label: 'Profile', icon: 'person' },
+const tabs: { href: string; label: string; Icon: typeof Home }[] = [
+  { href: '/home', label: 'Home', Icon: Home },
+  { href: '/explorer', label: 'Explorer', Icon: Compass },
+  { href: '/assistant', label: 'AI', Icon: MessageSquare },
+  { href: '/team', label: 'Team', Icon: Users },
+  { href: '/profile', label: 'More', Icon: LayoutGrid },
 ];
 
 export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav
-      className="shrink-0 border-t border-white/[0.06] bg-[#0c0e14]/95 backdrop-blur-xl pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 px-2"
-      aria-label="Main"
-    >
-      <div className="flex max-w-md mx-auto justify-between items-stretch gap-1">
+    <nav className="shine-overlay max-w-md mx-auto" aria-label="Main">
+      <div className="glass-panel rounded-[28px] p-1.5 flex items-center justify-around shadow-2xl border border-black/[0.06]">
         {tabs.map((t) => {
           const active = pathname === t.href || (t.href !== '/home' && pathname?.startsWith(t.href));
+          const Icon = t.Icon;
           return (
             <Link
               key={t.href}
               href={t.href}
-              className={`flex flex-col items-center justify-center gap-0.5 min-w-0 flex-1 py-1.5 rounded-xl transition-colors ${
-                active ? 'text-white bg-white/[0.08]' : 'text-travel-muted hover:text-white/80'
-              }`}
+              className="relative flex flex-col items-center justify-center gap-1 flex-1 py-2 transition-all duration-300 min-w-0"
             >
+              {active ? <div className="absolute inset-0 glass-button rounded-[20px] mx-1" /> : null}
+              <div className="relative z-10">
+                <Icon
+                  className={`w-6 h-6 transition-colors mx-auto ${active ? 'text-gray-900' : 'text-gray-500'}`}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              </div>
               <span
-                className="material-symbols-outlined text-[22px]"
-                style={{ fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}
+                className={`relative z-10 text-[10px] font-medium transition-colors truncate w-full text-center ${
+                  active ? 'text-gray-900' : 'text-gray-500'
+                }`}
               >
-                {t.icon}
+                {t.label}
               </span>
-              <span className="text-[10px] font-medium truncate w-full text-center">{t.label}</span>
             </Link>
           );
         })}

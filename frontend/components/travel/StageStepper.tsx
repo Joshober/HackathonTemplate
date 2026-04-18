@@ -1,39 +1,29 @@
 'use client';
 
 import { useTravelStage } from '@/lib/travelContext';
-import type { TravelStageId } from '@/lib/travelTypes';
-
-const stageColor: Record<TravelStageId, string> = {
-  plan: 'var(--stage-plan)',
-  approve: 'var(--stage-approve)',
-  travel: 'var(--stage-travel)',
-  return: 'var(--stage-return)',
-};
 
 export default function StageStepper() {
-  const { stages, stage, stageIndex, setStage } = useTravelStage();
+  const { stages, stageIndex, setStage } = useTravelStage();
 
   return (
-    <div className="px-4 pt-3 pb-2">
-      <p className="text-[10px] font-semibold uppercase tracking-widest text-travel-muted mb-2">Journey</p>
-      <div className="flex rounded-xl overflow-hidden border border-white/[0.06] bg-travel-surface/80 p-0.5 gap-0.5">
-        {stages.map((s, i) => {
-          const active = s.id === stage;
-          const done = i < stageIndex;
+    <div className="px-4 pb-3 pt-1">
+      <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
+        {stages.map((s, index) => {
+          const isCompleted = index < stageIndex;
+          const isActive = index === stageIndex;
           return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setStage(s.id)}
-              className={`flex-1 min-w-0 py-2 px-1 rounded-lg text-[11px] font-medium transition-all ${
-                active ? 'text-white shadow-sm' : done ? 'text-white/70' : 'text-travel-muted'
-              }`}
-              style={{
-                background: active ? stageColor[s.id] : done ? 'rgba(255,255,255,0.06)' : 'transparent',
-              }}
-            >
-              {s.label}
-            </button>
+            <div key={s.id} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setStage(s.id)}
+                className={`text-sm font-semibold transition-all duration-300 ${
+                  isActive ? 'text-gray-900' : isCompleted ? 'text-gray-600' : 'text-gray-400'
+                }`}
+              >
+                {s.label}
+              </button>
+              {index < stages.length - 1 ? <span className="text-gray-400 text-xs select-none">→</span> : null}
+            </div>
           );
         })}
       </div>

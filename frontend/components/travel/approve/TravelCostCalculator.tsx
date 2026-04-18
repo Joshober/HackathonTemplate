@@ -45,10 +45,13 @@ export default function TravelCostCalculator({
     return estimate;
   }, [flightLow, flightHigh, hotelPerNight, nights]);
 
+  const inputCls =
+    'mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-2 text-sm text-gray-900 shadow-sm';
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4 shadow-sm">
       <div>
-        <h3 className="text-base font-semibold text-white">Travel cost calculator</h3>
+        <h3 className="text-base font-semibold text-gray-900">Travel cost calculator</h3>
         <p className="text-xs text-travel-muted mt-1">Adjust inputs — totals update on-device.</p>
       </div>
       <div className="grid grid-cols-2 gap-3 text-xs">
@@ -59,7 +62,7 @@ export default function TravelCostCalculator({
             min={0}
             value={flightLow}
             onChange={(e) => setFlightLow(Number(e.target.value) || 0)}
-            className="mt-1 w-full rounded-lg bg-black/30 border border-white/10 px-2 py-2 text-sm text-white"
+            className={inputCls}
           />
         </label>
         <label className="text-travel-muted col-span-1">
@@ -69,7 +72,7 @@ export default function TravelCostCalculator({
             min={0}
             value={flightHigh}
             onChange={(e) => setFlightHigh(Number(e.target.value) || 0)}
-            className="mt-1 w-full rounded-lg bg-black/30 border border-white/10 px-2 py-2 text-sm text-white"
+            className={inputCls}
           />
         </label>
         <label className="text-travel-muted col-span-1">
@@ -79,7 +82,7 @@ export default function TravelCostCalculator({
             min={0}
             value={hotelPerNight}
             onChange={(e) => setHotelPerNight(Number(e.target.value) || 0)}
-            className="mt-1 w-full rounded-lg bg-black/30 border border-white/10 px-2 py-2 text-sm text-white"
+            className={inputCls}
           />
         </label>
         <label className="text-travel-muted col-span-1">
@@ -89,12 +92,12 @@ export default function TravelCostCalculator({
             min={1}
             value={nights}
             onChange={(e) => setNights(Math.max(1, Number(e.target.value) || 1))}
-            className="mt-1 w-full rounded-lg bg-black/30 border border-white/10 px-2 py-2 text-sm text-white"
+            className={inputCls}
           />
         </label>
       </div>
-      <div className="rounded-xl bg-black/25 border border-white/10 p-3 text-sm space-y-1">
-        <p className="text-white/90">
+      <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-sm space-y-1">
+        <p className="text-gray-900">
           Trip total (range):{' '}
           <strong>
             ${derived.totalLow.toLocaleString()} – ${derived.totalHigh.toLocaleString()}
@@ -110,7 +113,7 @@ export default function TravelCostCalculator({
           type="button"
           disabled={busy}
           onClick={() => onApply(derived)}
-          className="w-full py-2.5 rounded-xl border border-blue-500/40 bg-blue-600/20 hover:bg-blue-600/30 text-blue-100 text-sm font-medium disabled:opacity-50"
+          className="w-full py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 text-sm font-medium disabled:opacity-50"
         >
           {busy ? 'Saving…' : applyLabel}
         </button>

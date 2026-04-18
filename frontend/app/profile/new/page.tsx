@@ -30,7 +30,7 @@ export default function NewProfilePage() {
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen bg-[#080a0f] flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-travel-muted text-sm">Loading…</div>
       </div>
     );
@@ -38,8 +38,8 @@ export default function NewProfilePage() {
 
   return (
     <TravelSubpageLayout title="Create profile">
-      <h1 className="text-2xl font-bold text-white mb-6">Create profile</h1>
-      <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Create profile</h1>
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <ProfileForm />
       </div>
     </TravelSubpageLayout>

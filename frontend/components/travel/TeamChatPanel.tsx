@@ -90,23 +90,23 @@ export default function TeamChatPanel({
   return (
     <div className="flex flex-col h-full min-h-[56vh] gap-3">
       <div>
-        <h2 className="text-lg font-semibold text-white">Team chat</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Team chat</h2>
         <p className="text-xs text-travel-muted mt-1">
           Saved for your team. The assistant reads this thread (with speaker names) and can use web search, weather, and
           Explorer-style city event search (DuckDuckGo), like the AI page. Estimates only — not live prices.
         </p>
       </div>
-      <label className="flex items-center gap-2 text-xs text-white/85 cursor-pointer select-none">
+      <label className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer select-none">
         <input
           type="checkbox"
           checked={askAssistant}
           onChange={(e) => setAskAssistant(e.target.checked)}
-          className="rounded border-white/20 bg-black/30"
+          className="rounded border-gray-300"
         />
         <span>
           Ask travel assistant to reply
           <span className="text-travel-muted font-normal"> — off for teammate-only notes; use </span>
-          <code className="text-[10px] text-white/70">@assistant</code>
+          <code className="text-[10px] text-gray-600 bg-gray-100 px-1 rounded">@assistant</code>
           <span className="text-travel-muted font-normal"> to invoke anyway.</span>
         </span>
       </label>
@@ -117,13 +117,13 @@ export default function TeamChatPanel({
             type="button"
             onClick={() => send(q.text)}
             disabled={pending || loadingHistory}
-            className="text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] text-white/90 hover:bg-white/10 disabled:opacity-50"
+            className="text-xs px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 shadow-sm"
           >
             {q.label}
           </button>
         ))}
       </div>
-      <div className="flex-1 min-h-[240px] space-y-3 rounded-2xl border border-white/10 bg-black/25 p-3 overflow-y-auto">
+      <div className="flex-1 min-h-[240px] space-y-3 rounded-2xl border border-gray-200 bg-gray-50/80 p-3 overflow-y-auto">
         {loadingHistory ? (
           <p className="text-xs text-travel-muted text-center py-8">Loading messages…</p>
         ) : messages.length === 0 ? (
@@ -142,7 +142,7 @@ export default function TeamChatPanel({
                 <p className="text-[10px] uppercase tracking-wide text-travel-muted px-1">{label}</p>
                 <div
                   className={`text-sm leading-relaxed rounded-xl px-3 py-2 ${
-                    isUser ? 'bg-blue-600/25 text-white' : 'bg-white/[0.06] text-white/90'
+                    isUser ? 'bg-blue-100 text-gray-900 border border-blue-200' : 'bg-white text-gray-800 border border-gray-100 shadow-sm'
                   }`}
                 >
                   {m.content}
@@ -153,7 +153,7 @@ export default function TeamChatPanel({
         )}
         <div ref={bottomRef} />
       </div>
-      {err ? <p className="text-xs text-red-300">{err}</p> : null}
+      {err ? <p className="text-xs text-red-700">{err}</p> : null}
       <form
         className="flex gap-2 shrink-0"
         onSubmit={(e) => {
@@ -165,7 +165,7 @@ export default function TeamChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Message the team…"
-          className="flex-1 rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30"
+          className="flex-1 rounded-xl bg-white border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm"
         />
         <button
           type="submit"

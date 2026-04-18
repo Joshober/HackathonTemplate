@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { ChevronDown } from 'lucide-react';
 import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } from '@/lib/api';
 import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
@@ -18,14 +19,14 @@ import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
 function statusBadge(status: TravelOpportunityStatus | undefined) {
   const s = status || 'draft';
   const map: Record<string, string> = {
-    draft: 'bg-white/10 text-white/80',
-    ready_for_approval: 'bg-stage-plan/20 text-blue-200',
-    submitted: 'bg-stage-approve/20 text-violet-200',
-    pending: 'bg-amber-500/15 text-amber-200',
-    approved: 'bg-stage-travel/20 text-emerald-200',
-    needs_changes: 'bg-red-500/15 text-red-200',
-    booked: 'bg-stage-travel/25 text-emerald-100',
-    completed: 'bg-stage-return/20 text-orange-200',
+    draft: 'bg-gray-100 text-gray-700',
+    ready_for_approval: 'bg-blue-50 text-blue-800',
+    submitted: 'bg-violet-50 text-violet-800',
+    pending: 'bg-amber-50 text-amber-800',
+    approved: 'bg-emerald-50 text-emerald-800',
+    needs_changes: 'bg-red-50 text-red-800',
+    booked: 'bg-emerald-100 text-emerald-900',
+    completed: 'bg-orange-50 text-orange-800',
   };
   return (
     <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${map[s] || map.draft}`}>
@@ -151,7 +152,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
   if (err) {
     return (
-      <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
         {err}
       </div>
     );
@@ -170,17 +171,17 @@ export default function TravelHomeBody({ user }: { user: User }) {
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Approval status</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Approval status</h2>
           <p className="text-sm text-travel-muted mt-1">Reviewers come from your active team on the Team tab.</p>
         </div>
         {inReview.some((i) => getTravelPayload(i)?.approvalSetup === 'needs_team') ? (
-          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            <p className="font-medium text-white">No active team selected</p>
-            <p className="text-xs text-amber-100/90 mt-1">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium text-gray-900">No active team selected</p>
+            <p className="text-xs text-amber-800/90 mt-1">
               Pick a team on the Team tab so reviewer names populate on the next submit. You can still record offline
               approvals below if you already have sign-off.
             </p>
-            <Link href="/team" className="inline-block mt-2 text-xs text-blue-300 hover:underline">
+            <Link href="/team" className="inline-block mt-2 text-xs text-blue-600 hover:underline font-medium">
               Open Team
             </Link>
           </div>
@@ -206,7 +207,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
                     <ul className="space-y-2">
                       {approvals.map((a, idx) => (
                         <li key={idx} className="flex items-center justify-between text-sm gap-2">
-                          <span className="text-white/90">
+                          <span className="text-gray-900">
                             {a.name} <span className="text-travel-muted text-xs">({a.role})</span>
                           </span>
                           {statusBadge(a.status as TravelOpportunityStatus)}
@@ -220,7 +221,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
                       <button
                         type="button"
                         onClick={() => void markAllReviewersApproved(item)}
-                        className="w-full py-2 rounded-xl bg-violet-600/90 hover:bg-violet-500 text-white text-xs font-semibold"
+                        className="w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold"
                       >
                         {approvals.length
                           ? 'Record offline approvals (mark all approved)'
@@ -233,9 +234,9 @@ export default function TravelHomeBody({ user }: { user: User }) {
             );
           })
         )}
-        <div className="pt-4 border-t border-white/10 space-y-6">
+        <div className="pt-4 border-t border-gray-200 space-y-6">
           <div>
-            <h3 className="text-base font-semibold text-white mb-1">Booking & cost</h3>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Booking & cost</h3>
             <p className="text-xs text-travel-muted">
               Refresh live quotes on Explorer (Approve stage), then finalize a bundle — your trip record stores those
               links.
@@ -253,12 +254,12 @@ export default function TravelHomeBody({ user }: { user: User }) {
             applyLabel="Save estimate to first in-approval trip"
           />
           {approvePanel.approveMsg ? (
-            <p className="text-xs text-center text-travel-muted border border-white/10 rounded-lg py-2 px-3">
+            <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
               {approvePanel.approveMsg}
             </p>
           ) : null}
         </div>
-        <Link href="/explorer" className="block text-center text-xs text-blue-300 hover:underline pt-2">
+        <Link href="/explorer" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
           Browse more opportunities on Explorer
         </Link>
       </div>
@@ -275,23 +276,21 @@ export default function TravelHomeBody({ user }: { user: User }) {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-white">Today & trip record</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Today & trip record</h2>
           <p className="text-sm text-travel-muted mt-1">Day-of checklist and booking links from your saved pricing snapshot.</p>
         </div>
         <TravelDayItinerary items={items} />
 
         {hasNotBooked && travelItems.length > 0 ? (
-          <details className="rounded-2xl border border-white/10 bg-white/[0.02] group">
-            <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-white/90 list-none flex items-center justify-between">
+          <details className="rounded-2xl border border-gray-200 bg-white group shadow-sm">
+            <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-gray-900 list-none flex items-center justify-between">
               <span>Team option voting (pre-book)</span>
-              <span className="material-symbols-outlined text-travel-muted group-open:rotate-180 transition-transform">
-                expand_more
-              </span>
+              <ChevronDown className="w-5 h-5 text-gray-500 group-open:rotate-180 transition-transform shrink-0" aria-hidden />
             </summary>
-            <div className="px-4 pb-4 space-y-4 border-t border-white/10 pt-3">
+            <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-3">
               <p className="text-[11px] text-travel-muted">
                 Votes are saved on each trip so teammates see the same counts. Finalize bundles in{' '}
-                <Link href="/home" className="text-blue-300 hover:underline">
+                <Link href="/home" className="text-blue-600 hover:underline font-medium">
                   Approve
                 </Link>{' '}
                 to attach flight and hotel links.
@@ -322,8 +321,8 @@ export default function TravelHomeBody({ user }: { user: User }) {
                               onClick={() => item._id && void voteOption(item._id, o.key)}
                               className={`w-full text-left px-3 py-2 rounded-xl border text-sm transition-colors ${
                                 picked
-                                  ? 'border-emerald-400/50 bg-emerald-500/10 text-white'
-                                  : 'border-white/10 text-travel-muted hover:border-white/20'
+                                  ? 'border-emerald-300 bg-emerald-50 text-gray-900'
+                                  : 'border-gray-200 text-travel-muted hover:border-gray-300 bg-white'
                               }`}
                             >
                               {o.label}
@@ -339,7 +338,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
           </details>
         ) : null}
 
-        <Link href="/team" className="block text-center text-xs text-blue-300 hover:underline">
+        <Link href="/team" className="block text-center text-xs text-blue-600 hover:underline font-medium">
           Team tab
         </Link>
       </div>

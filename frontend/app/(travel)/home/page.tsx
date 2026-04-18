@@ -18,7 +18,7 @@ export default function TravelHomePage() {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 shadow-sm">
         <p className="text-xs text-travel-muted min-w-0">
           What&apos;s next: use the stage bar above to move through Plan → Approve → Travel → Return.
         </p>

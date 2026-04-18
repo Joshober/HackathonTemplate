@@ -172,16 +172,16 @@ export default function TeamPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-white">Team</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Team</h2>
         <p className="text-sm text-travel-muted mt-1">
           Create a team, invite colleagues by email (they must sign in once), and chat with a shared travel assistant. Your profile
           still syncs from the server.
         </p>
       </div>
 
-      <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.06] px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-white">Trip approvals</p>
+          <p className="text-sm font-medium text-gray-900">Trip approvals</p>
           <p className="text-xs text-travel-muted mt-0.5">
             Open Home in the Approve stage to track reviewers, pricing, and sign-off. Reviewer names come from your active team
             here.
@@ -197,17 +197,17 @@ export default function TeamPage() {
       </div>
 
       {err ? (
-        <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{err}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>
       ) : null}
 
       {teams.length === 0 ? (
-        <form onSubmit={onCreateTeam} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3 max-w-md">
-          <p className="text-sm font-medium text-white">Create your first team</p>
+        <form onSubmit={onCreateTeam} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 max-w-md shadow-sm">
+          <p className="text-sm font-medium text-gray-900">Create your first team</p>
           <input
             value={createName}
             onChange={(e) => setCreateName(e.target.value)}
             placeholder="Team name"
-            className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30"
+            className="w-full rounded-xl bg-white border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm"
           />
           <button
             type="submit"
@@ -226,7 +226,7 @@ export default function TeamPage() {
             id="team-select"
             value={activeTeamId ?? ''}
             onChange={(e) => setActiveTeamId(e.target.value || null)}
-            className="flex-1 rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+            className="flex-1 rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 shadow-sm"
           >
             {teams.map((t) => (
               <option key={t.id} value={t.id}>
@@ -255,7 +255,7 @@ export default function TeamPage() {
               }
             }}
             disabled={busy}
-            className="text-xs px-3 py-2 rounded-xl border border-white/15 text-white/90 hover:bg-white/10 disabled:opacity-50"
+            className="text-xs px-3 py-2 rounded-xl border border-gray-200 text-gray-800 hover:bg-gray-50 disabled:opacity-50 bg-white shadow-sm"
           >
             + New team
           </button>
@@ -264,20 +264,20 @@ export default function TeamPage() {
 
       <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 lg:items-stretch min-h-[72vh]">
         <aside className="w-full lg:w-[min(100%,280px)] shrink-0 flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted mb-3">You</p>
             <div className="flex items-center gap-3">
               {profile?.profileImageUrl ? (
-                <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/10">
+                <div className="relative w-12 h-12 rounded-full overflow-hidden border border-gray-200">
                   <Image src={profile.profileImageUrl} alt="" fill className="object-cover" unoptimized />
                 </div>
               ) : (
-                <div className="w-12 h-12 rounded-full bg-blue-500/30 flex items-center justify-center text-sm font-bold">
+                <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-sm font-bold border border-blue-200">
                   {(profile?.displayName || user.name || user.email || '?').charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0">
-                <p className="font-medium text-white truncate">{profile?.displayName || user.name || 'Traveler'}</p>
+                <p className="font-medium text-gray-900 truncate">{profile?.displayName || user.name || 'Traveler'}</p>
                 <p className="text-xs text-travel-muted truncate">{user.email}</p>
               </div>
             </div>
@@ -285,7 +285,7 @@ export default function TeamPage() {
 
           {activeTeamId && teamDetail ? (
             <>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 flex-1 min-h-0">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-h-0 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted mb-3">Members</p>
                 {detailLoading ? (
                   <p className="text-xs text-travel-muted">Loading…</p>
@@ -294,19 +294,19 @@ export default function TeamPage() {
                     {teamDetail.members.map((m) => (
                       <li
                         key={m.userId}
-                        className="flex items-center gap-3 rounded-xl border border-white/10 px-3 py-3 bg-black/20"
+                        className="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-3 bg-gray-50"
                       >
                         {m.profileImageUrl ? (
-                          <div className="relative w-10 h-10 shrink-0 rounded-full overflow-hidden border border-white/10">
+                          <div className="relative w-10 h-10 shrink-0 rounded-full overflow-hidden border border-gray-200">
                             <Image src={m.profileImageUrl} alt="" fill className="object-cover" unoptimized />
                           </div>
                         ) : (
-                          <div className="w-10 h-10 shrink-0 rounded-full bg-violet-500/25 flex items-center justify-center text-sm font-semibold text-violet-100">
+                          <div className="w-10 h-10 shrink-0 rounded-full bg-violet-100 flex items-center justify-center text-sm font-semibold text-violet-900 border border-violet-200">
                             {(m.displayName || m.email || '?').charAt(0).toUpperCase()}
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">
+                          <p className="text-sm font-medium text-gray-900 truncate">
                             {m.displayName || m.email || m.userId}
                             {m.userId === user.sub ? <span className="text-travel-muted font-normal"> · you</span> : null}
                           </p>
@@ -318,7 +318,7 @@ export default function TeamPage() {
                 )}
               </div>
 
-              <form onSubmit={onAddMember} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-2">
+              <form onSubmit={onAddMember} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted">Invite by email</p>
                 <p className="text-[10px] text-travel-muted">They must log in once so their email is synced.</p>
                 <div className="flex gap-2">
@@ -327,12 +327,12 @@ export default function TeamPage() {
                     value={addEmail}
                     onChange={(e) => setAddEmail(e.target.value)}
                     placeholder="colleague@company.com"
-                    className="flex-1 rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/30"
+                    className="flex-1 rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm"
                   />
                   <button
                     type="submit"
                     disabled={busy || !addEmail.trim()}
-                    className="shrink-0 px-3 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 text-sm text-white"
+                    className="shrink-0 px-3 rounded-xl bg-gray-100 hover:bg-gray-200 border border-gray-200 disabled:opacity-50 text-sm text-gray-900"
                   >
                     Add
                   </button>
@@ -343,7 +343,7 @@ export default function TeamPage() {
                 type="button"
                 onClick={() => void onLeaveTeam()}
                 disabled={busy}
-                className="text-xs text-travel-muted hover:text-red-300/90 underline disabled:opacity-50"
+                className="text-xs text-travel-muted hover:text-red-700 underline disabled:opacity-50"
               >
                 Leave this team
               </button>
@@ -353,7 +353,7 @@ export default function TeamPage() {
           <p className="text-xs text-travel-muted text-center px-1">Team data is stored in MongoDB for this app.</p>
         </aside>
 
-        <section className="flex-1 min-w-0 flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 lg:p-5">
+        <section className="flex-1 min-w-0 flex flex-col rounded-2xl border border-gray-200 bg-white p-4 lg:p-5 shadow-sm">
           <TeamChatPanel teamId={activeTeamId} user={user} />
         </section>
       </div>

@@ -23,14 +23,14 @@ function waitingStatuses(st: TravelOpportunityStatus | undefined) {
 function statusBadge(st: TravelOpportunityStatus | undefined) {
   const s = st || 'draft';
   const map: Record<string, string> = {
-    draft: 'bg-white/10 text-white/80',
-    ready_for_approval: 'bg-stage-plan/20 text-blue-200',
-    submitted: 'bg-stage-approve/20 text-violet-200',
-    pending: 'bg-amber-500/15 text-amber-200',
-    approved: 'bg-stage-travel/20 text-emerald-200',
-    needs_changes: 'bg-red-500/15 text-red-200',
-    booked: 'bg-stage-travel/25 text-emerald-100',
-    completed: 'bg-stage-return/20 text-orange-200',
+    draft: 'bg-gray-100 text-gray-700',
+    ready_for_approval: 'bg-blue-50 text-blue-800',
+    submitted: 'bg-violet-50 text-violet-800',
+    pending: 'bg-amber-50 text-amber-800',
+    approved: 'bg-emerald-50 text-emerald-800',
+    needs_changes: 'bg-red-50 text-red-800',
+    booked: 'bg-emerald-100 text-emerald-900',
+    completed: 'bg-orange-50 text-orange-800',
   };
   return (
     <span
@@ -44,9 +44,9 @@ function statusBadge(st: TravelOpportunityStatus | undefined) {
 function ApprovedEventsSlider({ items }: { items: Item[] }) {
   if (items.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
+      <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
         <p className="text-sm text-travel-muted">No approved trips yet.</p>
-        <p className="text-xs text-travel-muted/80 mt-1">
+        <p className="text-xs text-gray-500 mt-1">
           Swipe right on a suggestion below to submit for approval, then finish sign-off in the Approve stage.
         </p>
       </div>
@@ -55,7 +55,7 @@ function ApprovedEventsSlider({ items }: { items: Item[] }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-travel-muted">Approved & booked</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Approved & booked</p>
       <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory custom-scrollbar">
         {items.map((item) => {
           const t = getTravelPayload(item);
@@ -64,17 +64,17 @@ function ApprovedEventsSlider({ items }: { items: Item[] }) {
           return (
             <div
               key={item._id}
-              className="snap-center shrink-0 w-[min(220px,72vw)] rounded-2xl border border-white/[0.08] bg-travel-surface/90 overflow-hidden shadow-lg shadow-black/25"
+              className="snap-center shrink-0 w-[min(220px,72vw)] rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm"
             >
-              <div className="relative h-24 w-full bg-white/5">
+              <div className="relative h-24 w-full bg-gray-100">
                 {img ? (
                   <Image src={img} alt={item.title} fill className="object-cover" sizes="220px" unoptimized />
                 ) : (
-                  <div className="h-full w-full bg-gradient-to-br from-emerald-500/15 to-transparent" />
+                  <div className="h-full w-full bg-gradient-to-br from-emerald-100 to-gray-50" />
                 )}
               </div>
               <div className="p-3 space-y-2">
-                <p className="text-sm font-semibold text-white leading-snug line-clamp-2">{item.title}</p>
+                <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{item.title}</p>
                 <div className="flex flex-wrap gap-1">{statusBadge(st)}</div>
                 {t?.location ? <p className="text-[11px] text-travel-muted truncate">{t.location}</p> : null}
               </div>
@@ -91,13 +91,11 @@ function TopSwipeCard({
   busy,
   onSwipeRight,
   onSwipeLeft,
-  onVito,
 }: {
   item: Item;
   busy: boolean;
   onSwipeRight: () => Promise<void>;
   onSwipeLeft: () => void;
-  onVito: () => void;
 }) {
   const t = getTravelPayload(item);
   const st = (t?.opportunityStatus || 'draft') as TravelOpportunityStatus;
@@ -108,16 +106,15 @@ function TopSwipeCard({
   const nopeOpacity = useTransform(x, [-100, -24], [1, 0]);
 
   const commit = useCallback(
-    async (dir: 'left' | 'right' | 'vito') => {
+    async (dir: 'left' | 'right') => {
       if (busy) return;
       const target = dir === 'right' ? EXIT_X : -EXIT_X;
       await animate(x, target, { type: 'spring', stiffness: 420, damping: 34 });
       if (dir === 'right') await onSwipeRight();
-      else if (dir === 'vito') onVito();
       else onSwipeLeft();
       x.set(0);
     },
-    [busy, onSwipeLeft, onSwipeRight, onVito, x],
+    [busy, onSwipeLeft, onSwipeRight, x],
   );
 
   const onDragEnd = (_: unknown, info: { offset: { x: number }; velocity: { x: number } }) => {
@@ -138,31 +135,31 @@ function TopSwipeCard({
       onDragEnd={onDragEnd}
       className="absolute inset-0 touch-pan-x"
     >
-      <article className="h-full rounded-2xl border border-white/[0.08] bg-travel-surface/95 overflow-hidden shadow-2xl shadow-black/40 select-none cursor-grab active:cursor-grabbing">
+      <article className="h-full rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-2xl shadow-gray-900/10 select-none cursor-grab active:cursor-grabbing">
         <div className="pointer-events-none absolute inset-0 z-10 flex items-start justify-center pt-6 gap-6">
           <motion.span
             style={{ opacity: nopeOpacity }}
-            className="rounded-lg border-4 border-red-400/90 px-3 py-1 text-lg font-black uppercase tracking-widest text-red-200/95 rotate-[-12deg]"
+            className="rounded-lg border-4 border-red-400/80 px-3 py-1 text-lg font-black uppercase tracking-widest text-red-700 rotate-[-12deg] bg-white/70 backdrop-blur-sm"
           >
-            Skip
+            Veto
           </motion.span>
           <motion.span
             style={{ opacity: likeOpacity }}
-            className="rounded-lg border-4 border-emerald-400/90 px-3 py-1 text-lg font-black uppercase tracking-widest text-emerald-100/95 rotate-[12deg]"
+            className="rounded-lg border-4 border-emerald-400/80 px-3 py-1 text-lg font-black uppercase tracking-widest text-emerald-700 rotate-[12deg] bg-white/70 backdrop-blur-sm"
           >
-            Submit
+            Approve
           </motion.span>
         </div>
         {img ? (
-          <div className="relative h-44 w-full bg-white/5">
+          <div className="relative h-44 w-full bg-gray-100">
             <Image src={img} alt={item.title} fill className="object-cover" sizes="400px" unoptimized />
           </div>
         ) : (
-          <div className="h-36 bg-gradient-to-br from-blue-500/20 to-transparent" />
+          <div className="h-36 bg-gradient-to-br from-blue-200 to-violet-200" />
         )}
         <div className="p-4 space-y-3">
           <div>
-            <h3 className="text-lg font-semibold text-white leading-snug">{item.title}</h3>
+            <h3 className="text-lg font-semibold text-gray-900 leading-snug">{item.title}</h3>
             <p className="text-sm text-travel-muted mt-1">
               {[t?.location, t?.costEstimate != null ? `Est. $${t.costEstimate.toLocaleString()}` : null, t?.addedBy || 'You']
                 .filter(Boolean)
@@ -172,40 +169,14 @@ function TopSwipeCard({
           <div className="flex flex-wrap items-center gap-2">
             {statusBadge(st)}
             {t?.tags?.map((tag) => (
-              <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-travel-muted">
+              <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                 {tag}
               </span>
             ))}
           </div>
           <p className="text-xs text-travel-muted">
-            Drag right to submit, left to skip, or use <span className="text-violet-200/90">Vito</span> to hand this one to Vito.
+            Swipe right to approve (send to the Approve stage). Swipe left to veto (remove from this stack).
           </p>
-          <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void commit('left')}
-              className="flex-1 py-2.5 rounded-xl border border-white/15 text-sm font-medium text-white/90 hover:bg-white/5 disabled:opacity-40"
-            >
-              Skip
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void commit('right')}
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold disabled:opacity-40"
-            >
-              {busy ? 'Submitting…' : 'Submit for approval'}
-            </button>
-          </div>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void commit('vito')}
-            className="w-full py-2.5 rounded-xl border border-violet-400/35 bg-violet-600/25 text-violet-100 text-sm font-semibold hover:bg-violet-600/35 disabled:opacity-40"
-          >
-            Vito
-          </button>
         </div>
       </article>
     </motion.div>
@@ -354,10 +325,6 @@ export default function PlanStagePanel({
                           busy={busyId === item._id}
                           onSwipeRight={() => handleSwipeRight(item)}
                           onSwipeLeft={() => handleSwipeLeft(item)}
-                          onVito={() => {
-                            handleSwipeLeft(item);
-                            showToast("Vito has this suggestion — you're clear to move on.");
-                          }}
                         />
                       </div>
                     );

@@ -17,23 +17,23 @@ function defaultIsoDate(offsetDays: number): string {
 type DateRow = { outbound: string; inbound: string };
 
 function bookableLabel(v: boolean | null | undefined) {
-  if (v === true) return <span className="text-emerald-300">Likely bookable (verify)</span>;
-  if (v === false) return <span className="text-amber-200">Not bookable via API</span>;
+  if (v === true) return <span className="text-emerald-700 font-medium">Likely bookable (verify)</span>;
+  if (v === false) return <span className="text-amber-800 font-medium">Not bookable via API</span>;
   return <span className="text-travel-muted">Unknown</span>;
 }
 
 function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
   return (
-    <div className="space-y-3 text-xs border-t border-white/10 pt-3">
+    <div className="space-y-3 text-xs border-t border-gray-100 pt-3">
       {ev.resolvedDestination?.iata ? (
         <p className="text-travel-muted">
-          Resolved destination: <span className="text-white font-mono">{ev.resolvedDestination.iata}</span>
+          Resolved destination: <span className="text-gray-900 font-mono font-medium">{ev.resolvedDestination.iata}</span>
           {ev.resolvedDestination.label ? ` · ${ev.resolvedDestination.label}` : null}
         </p>
       ) : null}
-      <div className="rounded-lg bg-black/20 p-2 space-y-1">
-        <p className="text-white/90 font-medium">Flights</p>
-        {ev.flight.error ? <p className="text-amber-100/90">{ev.flight.error}</p> : null}
+      <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 space-y-1">
+        <p className="text-gray-900 font-medium">Flights</p>
+        {ev.flight.error ? <p className="text-amber-800">{ev.flight.error}</p> : null}
         <p className="text-travel-muted">
           {bookableLabel(ev.flight.bookable)} — {ev.flight.reason}
         </p>
@@ -46,9 +46,9 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
           ))}
         </ul>
       </div>
-      <div className="rounded-lg bg-black/20 p-2 space-y-1">
-        <p className="text-white/90 font-medium">Hotels</p>
-        {ev.hotel.error ? <p className="text-amber-100/90">{ev.hotel.error}</p> : null}
+      <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 space-y-1">
+        <p className="text-gray-900 font-medium">Hotels</p>
+        {ev.hotel.error ? <p className="text-amber-800">{ev.hotel.error}</p> : null}
         <p className="text-travel-muted">
           {bookableLabel(ev.hotel.bookable)} — {ev.hotel.reason}
         </p>
@@ -66,7 +66,7 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
             href={ev.deepLinks.googleFlightsSearch}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] px-2 py-1 rounded-lg bg-blue-600/40 text-blue-100 hover:bg-blue-600/60"
+            className="text-[11px] px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 font-medium"
           >
             Google Flights
           </a>
@@ -76,21 +76,21 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
             href={ev.deepLinks.googleHotelsSearch}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[11px] px-2 py-1 rounded-lg bg-violet-600/40 text-violet-100 hover:bg-violet-600/60"
+            className="text-[11px] px-2 py-1 rounded-lg bg-violet-100 text-violet-900 hover:bg-violet-200 font-medium"
           >
             Google Hotels
           </a>
         ) : null}
       </div>
       {ev.scrapedOptions?.length ? (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2 space-y-2">
-          <p className="text-amber-100/90 font-medium">Web options (scraped / unverified)</p>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 space-y-2">
+          <p className="text-amber-900 font-medium">Web options (scraped / unverified)</p>
           <p className="text-[10px] text-travel-muted">Demo only; may violate site ToS — not for production.</p>
           <ul className="space-y-2">
             {ev.scrapedOptions.map((s, i) => (
               <li key={i}>
                 <span className="text-[10px] uppercase text-travel-muted">{s.kind}</span>{' '}
-                <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:underline block">
+                <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline block font-medium">
                   {s.title || s.pageTitle || s.url}
                 </a>
                 {s.snippet ? <p className="text-travel-muted mt-0.5 line-clamp-2">{s.snippet}</p> : null}
@@ -192,7 +192,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
 
   if (!approved.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6">
+      <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 shadow-sm">
         <p className="text-sm text-travel-muted">
           No approved trips yet. Submit a plan from Home and complete approval so items reach status &quot;approved&quot;,
           then open Explorer with the Approve stage to load live quotes here.
@@ -204,13 +204,13 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-base font-semibold text-white">Approved events and live pricing</h3>
+        <h3 className="text-base font-semibold text-gray-900">Approved events and live pricing</h3>
         <p className="text-xs text-travel-muted mt-1">
-          Flights: Amadeus test API if <code className="text-white/80">AMADEUS_CLIENT_ID</code> is set, otherwise
-          Duffel if <code className="text-white/80">DUFFEL_ACCESS_TOKEN</code> is set, otherwise links only. Hotels
-          still need Amadeus. Optional scrape: <code className="text-white/80">TRAVEL_SCRAPE_OPTIONS=1</code>. Override:{' '}
-          <code className="text-white/80">TRAVEL_FLIGHT_PROVIDER</code> (<code className="text-white/80">auto</code>,{' '}
-          <code className="text-white/80">amadeus</code>, <code className="text-white/80">duffel</code>).
+          Flights: Amadeus test API if <code className="text-gray-800 bg-gray-100 px-1 rounded">AMADEUS_CLIENT_ID</code> is set, otherwise
+          Duffel if <code className="text-gray-800 bg-gray-100 px-1 rounded">DUFFEL_ACCESS_TOKEN</code> is set, otherwise links only. Hotels
+          still need Amadeus. Optional scrape: <code className="text-gray-800 bg-gray-100 px-1 rounded">TRAVEL_SCRAPE_OPTIONS=1</code>. Override:{' '}
+          <code className="text-gray-800 bg-gray-100 px-1 rounded">TRAVEL_FLIGHT_PROVIDER</code> (<code className="text-gray-800 bg-gray-100 px-1 rounded">auto</code>,{' '}
+          <code className="text-gray-800 bg-gray-100 px-1 rounded">amadeus</code>, <code className="text-gray-800 bg-gray-100 px-1 rounded">duffel</code>).
         </p>
       </div>
 
@@ -222,7 +222,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
           onBlur={() => {
             if (/^[A-Z]{3}$/.test(originIata)) persistOrigin(originIata);
           }}
-          className="mt-1 w-full max-w-[120px] rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white font-mono uppercase"
+          className="mt-1 w-full max-w-[120px] rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 font-mono uppercase shadow-sm"
           maxLength={3}
         />
       </label>
@@ -235,7 +235,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
           const ev = result?.events[idx];
           const img = t?.imageUrl || item.imageUrls?.[0];
           return (
-            <div key={stableId} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+            <div key={stableId} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 shadow-sm">
               <OpportunityCard
                 title={item.title}
                 subtitle={t?.location ? t.location : 'Trip'}
@@ -246,7 +246,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
                       href={t.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-blue-300 hover:underline"
+                      className="text-xs text-blue-600 hover:underline font-medium"
                     >
                       Source link
                     </a>
@@ -265,7 +265,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
                         [stableId]: { ...dr, outbound: e.target.value },
                       }))
                     }
-                    className="mt-0.5 w-full rounded-lg bg-black/30 border border-white/10 px-2 py-1.5 text-xs text-white"
+                    className="mt-0.5 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900 shadow-sm"
                   />
                 </label>
                 <label className="text-[11px] text-travel-muted">
@@ -279,7 +279,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
                         [stableId]: { ...dr, inbound: e.target.value },
                       }))
                     }
-                    className="mt-0.5 w-full rounded-lg bg-black/30 border border-white/10 px-2 py-1.5 text-xs text-white"
+                    className="mt-0.5 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900 shadow-sm"
                   />
                 </label>
               </div>
@@ -295,7 +295,7 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
         })}
       </div>
 
-      {err ? <div className="text-sm text-amber-200 border border-amber-500/30 rounded-lg px-3 py-2">{err}</div> : null}
+      {err ? <div className="text-sm text-amber-900 border border-amber-200 bg-amber-50 rounded-lg px-3 py-2">{err}</div> : null}
 
       <button
         type="button"

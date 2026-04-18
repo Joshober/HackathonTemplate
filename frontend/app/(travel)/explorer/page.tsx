@@ -122,7 +122,7 @@ export default function ExplorerPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-white">Booking & cost optimization</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Booking & cost optimization</h2>
           <p className="text-sm text-travel-muted mt-1">
             Same tools as Home — compare flight bundles and run the calculator while approvals are in progress.
           </p>
@@ -140,7 +140,7 @@ export default function ExplorerPage() {
           applyLabel="Save estimate to first in-approval trip"
         />
         {approvePanel.approveMsg ? (
-          <p className="text-xs text-center text-travel-muted border border-white/10 rounded-lg py-2 px-3">
+          <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
             {approvePanel.approveMsg}
           </p>
         ) : null}
@@ -152,7 +152,7 @@ export default function ExplorerPage() {
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Today & trip record</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Today & trip record</h2>
           <p className="text-sm text-travel-muted mt-1">Same trip record as Home — checklist and links from your saved pricing.</p>
         </div>
         <TravelDayItinerary items={panelItems} compact />
@@ -163,11 +163,11 @@ export default function ExplorerPage() {
   if (stage === 'return') {
     return (
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">Memory + content builder</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Memory + content builder</h2>
         <p className="text-sm text-travel-muted">
           Upload trip photos in the full profile editor or paste context into the AI Assistant for captions and post ideas.
         </p>
-        <ul className="text-sm text-white/80 space-y-2 list-disc pl-4">
+        <ul className="text-sm text-gray-700 space-y-2 list-disc pl-4">
           <li>Instagram-ready captions</li>
           <li>LinkedIn post variants</li>
           <li>Export as plain text</li>
@@ -179,7 +179,7 @@ export default function ExplorerPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-white">Opportunity explorer</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Opportunity explorer</h2>
         <p className="text-sm text-travel-muted mt-1">
           Live DuckDuckGo results for business events and conferences. Up to {MAX_CITIES} cities per search.
         </p>
@@ -198,7 +198,7 @@ export default function ExplorerPage() {
             onKeyDown={(e) => {
               if (e.key === 'Enter') void runSearch();
             }}
-            className="mt-1 w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+            className="mt-1 w-full rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400"
             placeholder="e.g. Chicago, Austin, Seattle"
             disabled={searchLoading}
           />
@@ -211,7 +211,7 @@ export default function ExplorerPage() {
             step={50}
             value={maxBudget}
             onChange={(e) => setMaxBudget(Number(e.target.value) || 0)}
-            className="mt-1 w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+            className="mt-1 w-full rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 shadow-sm"
           />
         </label>
         <button
@@ -227,10 +227,10 @@ export default function ExplorerPage() {
         <p className="text-xs text-travel-muted">Last search: {searchedLabel}</p>
       ) : null}
       {searchError ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{searchError}</div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{searchError}</div>
       ) : null}
       {toast ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{toast}</div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
       ) : null}
       <div className="space-y-4 pb-4">
         {!searchLoading && !opportunities.length && !searchError ? (
@@ -245,7 +245,7 @@ export default function ExplorerPage() {
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-1.5">
                   {['web', 'duckduckgo'].map((t) => (
-                    <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-travel-muted">
+                    <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                       {t}
                     </span>
                   ))}
@@ -255,7 +255,7 @@ export default function ExplorerPage() {
                     href={o.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-blue-300 hover:underline inline-block"
+                    className="text-xs text-blue-600 hover:underline inline-block font-medium"
                   >
                     Open link
                   </a>

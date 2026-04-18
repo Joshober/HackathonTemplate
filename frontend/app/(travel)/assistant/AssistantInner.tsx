@@ -340,30 +340,35 @@ export default function AssistantInner() {
   }
 
   return (
-    <div className="flex flex-col min-h-[60vh] gap-3">
-      <div>
-        <h2 className="text-lg font-semibold text-white">AI assistant</h2>
-        <p className="text-xs text-travel-muted mt-1">Powered by your existing chat pipeline (estimates only).</p>
+    <div className="mx-auto flex min-h-[68vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <h2 className="text-lg font-semibold text-gray-900">AI assistant</h2>
+        <p className="mt-1 text-xs text-travel-muted">Powered by your existing chat pipeline (estimates only).</p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Quick actions</div>
+        <div className="flex flex-wrap gap-2">
         {QUICK.map((q) => (
           <button
             key={q.label}
             type="button"
             onClick={() => send(q.text)}
             disabled={pending}
-            className="text-xs px-3 py-1.5 rounded-full border border-white/15 bg-white/[0.04] text-white/90 hover:bg-white/10 disabled:opacity-50"
+            className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-800 shadow-sm transition-colors hover:bg-gray-100 disabled:opacity-50"
           >
             {q.label}
           </button>
         ))}
       </div>
-      <div className="flex-1 space-y-3 rounded-2xl border border-white/10 bg-black/20 p-3 max-h-[50vh] overflow-y-auto">
+      </div>
+      <div className="flex-1 space-y-3 overflow-y-auto bg-gray-50 px-4 py-4">
         {messages.map((m, i) => (
           <div
             key={i}
-            className={`text-sm leading-relaxed rounded-xl px-3 py-2 ${
-              m.role === 'user' ? 'bg-blue-600/25 text-white ml-4' : 'bg-white/[0.06] text-white/90 mr-4'
+            className={`w-fit max-w-[84%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+              m.role === 'user'
+                ? 'ml-auto rounded-tr-md bg-gray-900 text-white'
+                : 'mr-auto rounded-tl-md border border-gray-100 bg-white text-gray-800 shadow-sm'
             }`}
           >
             {m.role === 'assistant' ? (
@@ -374,7 +379,7 @@ export default function AssistantInner() {
                     type="button"
                     onClick={() => void speakAssistantText(m.content, i)}
                     disabled={speakingIndex === i || pending}
-                    className="shrink-0 p-1.5 rounded-lg text-white/50 hover:text-blue-300 hover:bg-white/10 disabled:opacity-40 transition-colors"
+                    className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-blue-600 disabled:opacity-40"
                     aria-label="Play message as speech"
                     title="Text to speech"
                   >
@@ -397,31 +402,31 @@ export default function AssistantInner() {
               m.content
             )}
             {m.role === 'assistant' && m.ttsError ? (
-              <p className="text-xs text-amber-300/90 mt-2">{m.ttsError}</p>
+              <p className="text-xs text-amber-800 mt-2">{m.ttsError}</p>
             ) : null}
           </div>
         ))}
         {isRecording ? (
-          <div className="text-xs text-blue-200/85 mr-4 rounded-xl px-3 py-2 bg-blue-500/10 border border-blue-400/25">
+          <div className="mr-auto rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
             Listening… pause when you’re done — it will transcribe and send. Tap the mic to stop early.
           </div>
         ) : null}
         {(pending || isTranscribing) && (
-          <div className="text-xs text-travel-muted mr-4 rounded-xl px-3 py-2 bg-white/[0.04] border border-white/10">
+          <div className="mr-auto rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-travel-muted">
             {isTranscribing && !pending ? 'Transcribing speech…' : 'Thinking…'}
           </div>
         )}
         <div ref={bottomRef} />
       </div>
-      {err ? <p className="text-xs text-red-300">{err}</p> : null}
+      {err ? <p className="px-5 pt-2 text-xs text-red-700">{err}</p> : null}
       <form
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-3 border-t border-gray-100 bg-white px-4 pb-4 pt-3"
         onSubmit={(e) => {
           e.preventDefault();
           send(input);
         }}
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 px-1">
           <button
             type="button"
             aria-pressed={ttsEnabled}
@@ -430,9 +435,9 @@ export default function AssistantInner() {
             title={ttsEnabled ? 'Turn off automatic read-aloud' : 'Read each new reply aloud automatically'}
             className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border transition-colors ${
               ttsEnabled
-                ? 'border-blue-400/40 bg-blue-600/25 text-white'
-                : 'border-white/15 bg-white/[0.04] text-white/80 hover:bg-white/10'
-            } disabled:opacity-50`}
+                ? 'border-blue-300 bg-blue-100 text-blue-900'
+                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+            } disabled:opacity-50 shadow-sm`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -445,14 +450,14 @@ export default function AssistantInner() {
             Auto-read replies
           </button>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-2">
           <button
             type="button"
             onClick={() => void toggleMic()}
             className={`shrink-0 p-2.5 rounded-xl border transition-colors ${
               isRecording
-                ? 'border-red-400/50 bg-red-500/20 text-red-200 ring-2 ring-red-400/40 animate-pulse'
-                : 'border-white/15 bg-white/[0.04] text-white/80 hover:bg-white/10'
+                ? 'border-red-300 bg-red-50 text-red-800 ring-2 ring-red-200 animate-pulse'
+                : 'border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50'
             } disabled:opacity-50`}
             aria-label={isRecording ? 'Stop recording now' : 'Voice: speak, pause to auto-send, or tap again to stop'}
             title={
@@ -476,12 +481,12 @@ export default function AssistantInner() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask about trips, policy, or costs…"
             disabled={pending || isTranscribing || isRecording}
-            className="flex-1 rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30 disabled:opacity-50"
+            className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={pending || isTranscribing || !input.trim()}
-            className="shrink-0 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium"
+            className="shrink-0 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50"
           >
             {pending ? '…' : 'Send'}
           </button>

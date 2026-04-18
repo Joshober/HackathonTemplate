@@ -79,7 +79,8 @@ function mergeBookedFromData(
     ? buildTripRecordFromSnapshot(pricingSnapshot, tripTitle, existing.location)
     : buildTripRecordWithoutSnapshot(tripTitle, existing.location);
 
-  const { ticket: _drop, ...rest } = existing;
+  const { ticket, ...rest } = existing;
+  void ticket;
   const merged: TravelMetadata = {
     ...(rest as unknown as TravelMetadata),
     opportunityStatus: 'booked',

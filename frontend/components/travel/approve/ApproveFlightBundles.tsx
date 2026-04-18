@@ -44,20 +44,20 @@ export default function ApproveFlightBundles({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-white">Flight & hotel bundles</h3>
+        <h3 className="text-base font-semibold text-gray-900">Flight & hotel bundles</h3>
         <p className="text-xs text-travel-muted mt-1">{footerNote}</p>
       </div>
       {bundles.map((b, i) => (
-        <div key={b.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+        <div key={b.id} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 shadow-sm">
           <div className="flex justify-between items-center gap-2">
-            <span className="text-sm font-medium text-white">{b.label}</span>
-            <span className="text-xs text-emerald-300/90 shrink-0">{b.badge}</span>
+            <span className="text-sm font-medium text-gray-900">{b.label}</span>
+            <span className="text-xs text-emerald-700 shrink-0 font-medium">{b.badge}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs text-travel-muted">
-            <div className="rounded-lg bg-black/20 p-2">Flight · {b.flightBand}</div>
-            <div className="rounded-lg bg-black/20 p-2">Hotel · {b.hotelBand}</div>
+            <div className="rounded-lg bg-gray-50 border border-gray-100 p-2">Flight · {b.flightBand}</div>
+            <div className="rounded-lg bg-gray-50 border border-gray-100 p-2">Hotel · {b.hotelBand}</div>
           </div>
-          <p className="text-sm text-white/80">
+          <p className="text-sm text-gray-700">
             Total est. ${b.total.toLocaleString()} · within typical policy band
           </p>
           {onFinalize ? (
