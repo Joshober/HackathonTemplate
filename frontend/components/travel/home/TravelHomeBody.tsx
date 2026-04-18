@@ -1,10 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ChevronDown } from 'lucide-react';
 import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } from '@/lib/api';
-import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
 import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
@@ -34,7 +31,6 @@ function statusBadge(status: TravelOpportunityStatus | undefined) {
 }
 
 export default function TravelHomeBody({ user }: { user: User }) {
-  const { stage } = useTravelStage();
   const [items, setItems] = useState<Item[]>([]);
   const [teamApprovedItems, setTeamApprovedItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,27 +244,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
     await refresh();
   };
 
-  const voteOption = async (itemId: string, key: string) => {
-    const item = items.find((i) => i._id === itemId);
-    if (!item?._id) return;
-    const t = getTravelPayload(item);
-    if (!t) return;
-    const email = voterEmail || 'self';
-    const teamOptionVotes = { ...(t.teamOptionVotes || {}), [email]: key };
-    await api.updateItem(item._id, {
-      travel: { ...t, teamOptionVotes } as unknown as TravelMetadata,
-    });
-    await refresh();
-  };
-
-  const voteCounts = (t: NonNullable<ReturnType<typeof getTravelPayload>>) => {
-    const votes = t.teamOptionVotes || {};
-    const counts: Record<string, number> = { a: 0, b: 0 };
-    for (const v of Object.values(votes)) {
-      if (v === 'a' || v === 'b') counts[v] = (counts[v] || 0) + 1;
-    }
-    return counts;
-  };
 
   if (loading && !items.length) {
     return (
