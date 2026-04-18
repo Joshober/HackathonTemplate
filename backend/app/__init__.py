@@ -59,8 +59,10 @@ def create_app():
         explorer,
         travel_pricing,
         travel_workflow,
+        documents,
     )
     app.register_blueprint(items.bp, url_prefix='/api')
+    app.register_blueprint(documents.bp, url_prefix='/api')
     app.register_blueprint(explorer.bp, url_prefix='/api')
     app.register_blueprint(travel_pricing.bp, url_prefix='/api')
     app.register_blueprint(admin.bp, url_prefix='/api')

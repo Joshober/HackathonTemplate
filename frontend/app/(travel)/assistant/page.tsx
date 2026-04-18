@@ -1,14 +1,11 @@
 'use client';
 
-import { Suspense } from 'react';
-import PlanRoomInner from '../plan/PlanRoomInner';
+import StageCopilotChat from '@/components/travel/copilot/StageCopilotChat';
 
 export default function AssistantPage() {
   return (
-    <div className="h-full">
-      <Suspense fallback={<div className="py-24 text-center text-sm text-travel-muted">Loading TripReady Copilot Hub…</div>}>
-        <PlanRoomInner />
-      </Suspense>
+    <div className="flex flex-col h-[calc(100vh-8rem)]">
+      <StageCopilotChat />
     </div>
   );
 }

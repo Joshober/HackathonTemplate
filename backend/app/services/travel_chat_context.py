@@ -8,6 +8,8 @@ from typing import Any
 
 from bson import ObjectId
 
+_MAX_DOC_CHARS = 3_000
+
 _MAX_JSON_CHARS = 14_000
 _MAX_STR = 500
 _MAX_LIST = 15
@@ -303,6 +305,72 @@ def _compute_context_quality(ctx: dict[str, Any]) -> dict[str, Any]:
         },
         "gaps": gaps[:8] if gaps else [],
     }
+
+
+def get_document_context(db, user_id: str) -> dict[str, Any] | None:
+    """
+    Fetch the most recently parsed travel documents for a user and return
+    a compact, prompt-safe summary. Returns None if no documents found.
+    """
+    try:
+        docs = list(
+            db.tripDocuments.find({"userId": user_id})
+            .sort("updatedAt", -1)
+            .limit(3)
+        )
+    except Exception:
+        return None
+
+    if not docs:
+        return None
+
+    result: dict[str, Any] = {"documents": []}
+    for doc in docs:
+        extracted = doc.get("extracted")
+        if not isinstance(extracted, dict):
+            continue
+        entry: dict[str, Any] = {
+            "documentType": doc.get("documentType", "other"),
+            "documentName": _clip(doc.get("documentName"), 100),
+            "tripSummary": _clip(extracted.get("tripSummary"), 200),
+            "destinations": [_clip(str(d), 80) for d in (extracted.get("destinations") or [])[:8]],
+            "travelDates": extracted.get("travelDates"),
+            "visaRequirements": [
+                {k: _clip(str(v), 200) for k, v in vr.items()}
+                for vr in (extracted.get("visaRequirements") or [])[:6]
+                if isinstance(vr, dict)
+            ],
+            "risks": [_clip(str(r), 200) for r in (extracted.get("risks") or [])[:6]],
+            "policyHighlights": [_clip(str(p), 200) for p in (extracted.get("policyHighlights") or [])[:6]],
+            "flights": [
+                {k: _clip(str(v), 100) for k, v in f.items()}
+                for f in (extracted.get("flights") or [])[:5]
+                if isinstance(f, dict)
+            ],
+            "hotels": [
+                {k: _clip(str(v), 100) for k, v in h.items()}
+                for h in (extracted.get("hotels") or [])[:4]
+                if isinstance(h, dict)
+            ],
+            "layovers": [
+                {k: _clip(str(v), 80) for k, v in lv.items()}
+                for lv in (extracted.get("layovers") or [])[:4]
+                if isinstance(lv, dict)
+            ],
+        }
+        result["documents"].append(entry)
+
+    if not result["documents"]:
+        return None
+
+    raw = json.dumps(result, ensure_ascii=False)
+    if len(raw) > _MAX_DOC_CHARS:
+        for entry in result["documents"]:
+            entry.pop("flights", None)
+            entry.pop("hotels", None)
+            entry.pop("layovers", None)
+
+    return result
 
 
 def context_used_flags(ctx: dict[str, Any]) -> dict[str, bool]:

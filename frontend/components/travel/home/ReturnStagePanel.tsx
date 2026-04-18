@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Receipt, CheckCircle, RefreshCw } from 'lucide-react';
+import { Receipt, CheckCircle, RefreshCw, Sparkles, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, type Item, type TravelMetadata, TRAVEL_ACTIVE_TEAM_STORAGE_KEY } from '@/lib/api';
 import type { User } from '@/lib/auth';
@@ -46,6 +46,31 @@ export default function ReturnStagePanel({ user }: { user: User }) {
 
   const [expensesDone, setExpensesDone] = useState(false);
   const [expensing, setExpensing] = useState(false);
+
+  // AI Trip Summary
+  const [tripSummary, setTripSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryErr, setSummaryErr] = useState<string | null>(null);
+
+  const generateTripSummary = async () => {
+    if (summaryLoading) return;
+    setSummaryLoading(true);
+    setSummaryErr(null);
+    try {
+      const result = await api.chatCopilot({
+        message:
+          'Give me a concise trip summary (3-4 bullet points) covering: destinations visited, key meetings or events, any issues encountered, and outcome. Use information from my uploaded documents and trip data. Keep it professional and brief.',
+        assistantMode: 'trip_companion',
+        travelStage: 'return',
+        messages: [],
+      });
+      setTripSummary(result.reply);
+    } catch (e) {
+      setSummaryErr(e instanceof Error ? e.message : 'Could not generate summary');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   const readTeamFromStorage = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -237,6 +262,69 @@ export default function ReturnStagePanel({ user }: { user: User }) {
         <p className="text-sm text-travel-muted mt-1">
           Automate your expenses and build trip memories with your team.
         </p>
+      </div>
+
+      {/* AI TRIP SUMMARY */}
+      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-blue-600" />
+            <h4 className="text-sm font-bold text-blue-900">AI Trip Summary</h4>
+          </div>
+          {!tripSummary && (
+            <button
+              type="button"
+              onClick={() => void generateTripSummary()}
+              disabled={summaryLoading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+            >
+              {summaryLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Generate
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {!tripSummary && !summaryLoading && (
+          <p className="text-xs text-blue-700">
+            Generate a professional summary of your completed trip — destinations, key outcomes, and next steps.
+          </p>
+        )}
+
+        {summaryLoading && (
+          <div className="flex items-center gap-2 text-xs text-blue-700">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Analyzing your trip documents and data…
+          </div>
+        )}
+
+        {summaryErr && (
+          <p className="text-xs text-red-700">{summaryErr}</p>
+        )}
+
+        {tripSummary && (
+          <div className="space-y-2">
+            <div className="bg-white rounded-xl border border-blue-100 px-4 py-3 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+              {tripSummary}
+            </div>
+            <button
+              type="button"
+              onClick={() => void generateTripSummary()}
+              disabled={summaryLoading}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Regenerate
+            </button>
+          </div>
+        )}
       </div>
 
       {/* EXPENSE RECONCILIATION COPILOT (MOCK) */}

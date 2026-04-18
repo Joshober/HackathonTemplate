@@ -23,6 +23,7 @@ from app.prompts.travel_copilot import system_preamble_for_mode, validate_assist
 from app.services.travel_chat_context import (
     build_travel_chat_context,
     context_used_flags,
+    get_document_context,
     suggested_actions,
 )
 from app.config.openrouter_models import DEFAULT_CHAT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_VIDEO_MODEL
@@ -990,6 +991,18 @@ def chat_copilot(user_id):
         )
         ctx_json = json.dumps(ctx, ensure_ascii=False)
 
+        # Inject parsed document context if available
+        doc_ctx = get_document_context(db, user_id)
+        doc_ctx_block = ""
+        if doc_ctx:
+            doc_ctx_block = (
+                "\n\n## Parsed Travel Documents (AUTHORITATIVE — user uploaded these)\n"
+                + json.dumps(doc_ctx, ensure_ascii=False)
+                + "\n\nIMPORTANT: Treat the above parsed documents as ground truth for destinations, dates, "
+                "flights, visa requirements, and policy. Reference them directly when answering questions "
+                "about trip requirements, what documents are needed, or what the itinerary contains."
+            )
+
         stage_focus = {
             'plan': (
                 "Journey stage is PLAN. Prioritize preparation: requirements, policy applicability, "
@@ -1012,6 +1025,7 @@ def chat_copilot(user_id):
             system_preamble_for_mode(assistant_mode)
             + "\n\n## Journey stage focus\n"
             + stage_focus
+            + doc_ctx_block
             + "\n\n---\n\n"
             + ASSISTANT_WEB_SYSTEM
         )

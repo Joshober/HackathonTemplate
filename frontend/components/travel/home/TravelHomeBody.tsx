@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } from '@/lib/api';
+import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata, type ParsedTripDocument } from '@/lib/api';
 import { ChevronDown } from 'lucide-react';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
@@ -17,6 +17,9 @@ import PreTripChecklistPanel from '@/components/travel/workflow/PreTripChecklist
 import ApprovalGuidancePanel from '@/components/travel/workflow/ApprovalGuidancePanel';
 import IssueEscalationPanel from '@/components/travel/workflow/IssueEscalationPanel';
 import PostTripFollowUpsPanel from '@/components/travel/workflow/PostTripFollowUpsPanel';
+import DocumentUploadPanel from '@/components/travel/DocumentUploadPanel';
+import TripContextCard from '@/components/travel/TripContextCard';
+import TravelProactiveBanner from '@/components/travel/home/TravelProactiveBanner';
 
 function statusBadge(status: TravelOpportunityStatus | undefined) {
   const s = status || 'draft';
@@ -50,6 +53,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
   const [budgetMax, setBudgetMax] = useState('');
   const [prefSaving, setPrefSaving] = useState(false);
   const [prefMsg, setPrefMsg] = useState<string | null>(null);
+  const [parsedDoc, setParsedDoc] = useState<ParsedTripDocument | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -303,6 +307,22 @@ export default function TravelHomeBody({ user }: { user: User }) {
   if (stage === 'plan') {
     return (
       <div className="space-y-4">
+        {/* Document Intelligence — always show at top of plan stage */}
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Your trip</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Upload your itinerary to unlock AI-powered trip summaries, visa guidance, and checklists.
+            </p>
+          </div>
+          <DocumentUploadPanel
+            onParsed={(doc) => setParsedDoc(doc)}
+          />
+          {parsedDoc && (
+            <TripContextCard parsed={parsedDoc} />
+          )}
+        </div>
+
         <PlanStagePanel travelItems={travelItems} onSubmitForApproval={(item) => submitApproval(item)} />
         <PreTripChecklistPanel items={travelItems} onSaved={refresh} />
       </div>
@@ -471,6 +491,9 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
     return (
       <div className="space-y-6">
+        {/* Proactive travel banner */}
+        <TravelProactiveBanner parsedDoc={parsedDoc} travelItems={travelItems} />
+
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Today & trip record</h2>
           <p className="text-sm text-travel-muted mt-1">Day-of checklist and booking links from your saved pricing snapshot.</p>

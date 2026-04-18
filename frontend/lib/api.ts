@@ -6,6 +6,36 @@ export const TRAVEL_ACTIVE_TEAM_STORAGE_KEY = 'travelActiveTeamId';
 /** Optional travel metadata persisted by `/api/items` (JSON body). */
 export type TravelMetadata = Record<string, unknown>;
 
+/** Structured data extracted from a parsed travel document. */
+export interface ParsedTripDocument {
+  destinations: string[];
+  travelDates: {
+    departureDate: string | null;
+    returnDate: string | null;
+    durationDays: number | null;
+  };
+  flights: Array<{
+    flightNumber: string | null;
+    from: string;
+    to: string;
+    departureTime: string | null;
+    arrivalTime: string | null;
+    date: string | null;
+    airline: string | null;
+  }>;
+  hotels: Array<{
+    name: string;
+    city: string;
+    checkIn: string | null;
+    checkOut: string | null;
+  }>;
+  layovers: Array<{ city: string; duration: string | null }>;
+  visaRequirements: Array<{ country: string; requirement: string; note: string | null }>;
+  policyHighlights: string[];
+  risks: string[];
+  tripSummary: string;
+}
+
 export interface Item {
   _id?: string;
   userId?: string;
@@ -1281,5 +1311,65 @@ export const api = {
         body: JSON.stringify({}),
       }
     ) as Promise<{ caption: string }>;
+  },
+
+  // Document Intelligence: parse travel documents and store as copilot context
+  async parseDocument(params: {
+    text: string;
+    documentName?: string;
+    documentType?: 'itinerary' | 'policy' | 'booking' | 'other';
+  }): Promise<{
+    success: boolean;
+    documentType: string;
+    extracted: ParsedTripDocument;
+    message: string;
+  }> {
+    return fetchWithAuth('/api/travel/documents/parse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+  },
+
+  async getTripDocuments(): Promise<{ documents: Array<{ documentType: string; documentName: string; extracted: ParsedTripDocument; updatedAt: string }> }> {
+    return fetchWithAuth('/api/travel/documents');
+  },
+
+  async deleteTripDocument(documentType: string): Promise<{ success: boolean }> {
+    return fetchWithAuth(`/api/travel/documents/${encodeURIComponent(documentType)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Stage-aware copilot chat
+  async chatCopilot(params: {
+    message: string;
+    assistantMode?: string;
+    travelStage?: string;
+    messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    sessionId?: string;
+    uiState?: Record<string, unknown>;
+  }): Promise<{
+    reply: string;
+    contextUsed?: Record<string, boolean>;
+    suggestedActions?: Array<{ label: string; prompt: string }>;
+    incidentDetected?: boolean;
+    privacy?: Record<string, unknown>;
+  }> {
+    const body = {
+      message: params.message,
+      assistantMode: params.assistantMode ?? 'trip_companion',
+      messages: params.messages ?? [],
+      sessionId: params.sessionId,
+      uiState: {
+        ...(params.uiState ?? {}),
+        journeyStage: params.travelStage ?? 'plan',
+      },
+    };
+    return fetchWithAuth('/api/chat/copilot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   },
 };
