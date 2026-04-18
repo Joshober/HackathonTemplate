@@ -10,8 +10,8 @@ import PolicyHint from '@/components/travel/PolicyHint';
 import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
 import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
-import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
+import TeamSelectorDropdown from '@/components/travel/TeamSelectorDropdown';
 
 const MAX_CITIES = 5;
 const MAX_PER_CITY = 8;
@@ -331,66 +331,11 @@ export default function ExplorerPage() {
     return <div className="py-24 text-center text-travel-muted text-sm">Signing you in…</div>;
   }
 
-  if (stage === 'approve') {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Booking & cost optimization</h2>
-          <p className="text-sm text-travel-muted mt-1">
-            Same tools as Home — compare flight bundles and run the calculator while approvals are in progress.
-          </p>
-        </div>
-        <ApprovedEventsLivePricing items={panelItems} />
-        <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
-        <TravelCostCalculator
-          key={approvePanel.eligibleFinalizeItem?._id ?? 'calc-ex'}
-          initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
-          initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
-          initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
-          initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
-          busy={approvePanel.calcBusy}
-          onApply={approvePanel.onApplyCalculator}
-          applyLabel="Save estimate to first in-approval trip"
-        />
-        {approvePanel.approveMsg ? (
-          <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
-            {approvePanel.approveMsg}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (stage === 'travel') {
-    return (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Today & trip record</h2>
-          <p className="text-sm text-travel-muted mt-1">Same trip record as Home — checklist and links from your saved pricing.</p>
-        </div>
-        <TravelDayItinerary items={panelItems} compact />
-      </div>
-    );
-  }
-
-  if (stage === 'return') {
-    return (
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-900">Memory + content builder</h2>
-        <p className="text-sm text-travel-muted">
-          Upload trip photos in the full profile editor or paste context into the AI Assistant for captions and post ideas.
-        </p>
-        <ul className="text-sm text-gray-700 space-y-2 list-disc pl-4">
-          <li>Instagram-ready captions</li>
-          <li>LinkedIn post variants</li>
-          <li>Export as plain text</li>
-        </ul>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between mb-4 mt-2">
+        <TeamSelectorDropdown />
+      </div>
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Opportunity explorer</h2>
         <p className="text-sm text-travel-muted mt-1">
@@ -730,6 +675,35 @@ export default function ExplorerPage() {
           </section>
         ))}
       </div>
+
+      {/* APPROVE STAGE UI APPENDED */}
+      {stage === 'approve' && (
+        <div className="space-y-6 pt-6 mt-8 border-t border-gray-200">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Approve Phase: Booking & Cost Optimization</h2>
+            <p className="text-sm text-travel-muted mt-1">
+              Compare flight bundles and run the calculator while your group approvals are ongoing.
+            </p>
+          </div>
+          <ApprovedEventsLivePricing items={panelItems} />
+          <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
+          <TravelCostCalculator
+            key={approvePanel.eligibleFinalizeItem?._id ?? 'calc-ex'}
+            initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
+            initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
+            initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
+            initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
+            busy={approvePanel.calcBusy}
+            onApply={approvePanel.onApplyCalculator}
+            applyLabel="Save estimate to first in-approval trip"
+          />
+          {approvePanel.approveMsg ? (
+            <p className="text-xs text-center text-travel-muted border border-emerald-200 bg-emerald-50 rounded-lg py-2 px-3">
+              {approvePanel.approveMsg}
+            </p>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

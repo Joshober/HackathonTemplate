@@ -1,5 +1,31 @@
 export type TravelStageId = 'plan' | 'approve' | 'travel' | 'return';
 
+/** Team role hierarchy */
+export type TeamRole = 'leader' | 'co-leader' | 'member';
+
+/** Planning sub-stages unlocked progressively */
+export type PlanningStage = 'chat' | 'plan' | 'approve' | 'travel' | 'return';
+
+/** AI-generated team plan produced by Sage */
+export interface TeamPlan {
+  generatedAt: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  highlights: string[];
+  budgetEstimateUSD: { low: number; high: number };
+  dayByDay: Array<{
+    day: number;
+    date: string;
+    morning: string;
+    afternoon: string;
+    evening: string;
+    hotel?: string;
+  }>;
+  notes: string;
+  rawSummary: string;
+}
+
 export type TravelOpportunityStatus =
   | 'draft'
   | 'ready_for_approval'
