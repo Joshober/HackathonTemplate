@@ -7,7 +7,7 @@ import { Compass, Home, LayoutGrid, MessageSquare, Users } from 'lucide-react';
 const tabs: { href: string; label: string; Icon: typeof Home }[] = [
   { href: '/home', label: 'Home', Icon: Home },
   { href: '/explorer', label: 'Explorer', Icon: Compass },
-  { href: '/assistant', label: 'Copilot', Icon: MessageSquare },
+  { href: '/assistant', label: 'AI', Icon: MessageSquare },
   { href: '/team', label: 'Team', Icon: Users },
   { href: '/profile', label: 'More', Icon: LayoutGrid },
 ];
@@ -16,8 +16,8 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="shine-overlay max-w-md mx-auto" aria-label="Main">
-      <div className="glass-panel rounded-[28px] p-1.5 flex items-center justify-around shadow-2xl border border-black/[0.06]">
+    <nav className="mx-auto w-full max-w-md" aria-label="Main">
+      <div className="flex items-center justify-between gap-2 rounded-full bg-white px-2 py-2 shadow-[0_10px_30px_rgba(15,23,42,0.10)] ring-1 ring-slate-900/5">
         {tabs.map((t) => {
           const active = pathname === t.href || (t.href !== '/home' && pathname?.startsWith(t.href));
           const Icon = t.Icon;
@@ -25,20 +25,32 @@ export default function BottomNav() {
             <Link
               key={t.href}
               href={t.href}
-              className="relative flex flex-col items-center justify-center gap-1 flex-1 py-2 transition-all duration-300 min-w-0"
+              className={[
+                'relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-3 py-2.5 transition-colors',
+                active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700',
+              ].join(' ')}
             >
-              {active ? <div className="absolute inset-0 glass-button rounded-[20px] mx-1" /> : null}
-              <div className="relative z-10">
+              {active ? (
+                <>
+                  {/* soft glow */}
+                  <div className="absolute inset-0 -z-10 rounded-2xl bg-sky-200/35 blur-[10px]" />
+                  {/* active bubble */}
+                  <div className="absolute inset-0 -z-10 rounded-2xl bg-gradient-to-b from-sky-50 to-white ring-1 ring-sky-100 shadow-[0_8px_18px_rgba(14,165,233,0.18)]" />
+                </>
+              ) : null}
+
+              <div className="relative">
                 <Icon
-                  className={`w-6 h-6 transition-colors mx-auto ${active ? 'text-gray-900' : 'text-gray-500'}`}
-                  strokeWidth={2}
+                  className="mx-auto h-6 w-6"
+                  strokeWidth={active ? 2.25 : 2}
                   aria-hidden
                 />
               </div>
               <span
-                className={`relative z-10 text-[10px] font-medium transition-colors truncate w-full text-center ${
-                  active ? 'text-gray-900' : 'text-gray-500'
-                }`}
+                className={[
+                  'w-full truncate text-center text-[11px] font-medium tracking-tight',
+                  active ? 'text-slate-900' : 'text-slate-500',
+                ].join(' ')}
               >
                 {t.label}
               </span>
