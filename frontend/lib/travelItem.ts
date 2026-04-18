@@ -1,9 +1,14 @@
 import type { Item } from '@/lib/api';
 import type {
+  TravelApprovalDecision,
   TravelApprovalSetup,
   TravelBookingEstimate,
+  TravelChecklistItem,
+  TravelFollowUpTask,
+  TravelIncident,
   TravelItemPayload,
   TravelOpportunityStatus,
+  TravelPrivacyMeta,
   TravelPricingQuoteCache,
   TravelPricingSnapshot,
   TravelPricingSnapshotEvent,
@@ -161,6 +166,179 @@ function pickTeamOptionVotes(raw: Record<string, unknown>): Record<string, strin
   return Object.keys(out).length ? out : undefined;
 }
 
+function pickChecklist(raw: Record<string, unknown>): TravelChecklistItem[] | undefined {
+  const v = raw.checklist;
+  if (!Array.isArray(v)) return undefined;
+  const out: TravelChecklistItem[] = [];
+  for (const row of v) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    const id = typeof r.id === 'string' ? r.id : '';
+    const label = typeof r.label === 'string' ? r.label : '';
+    const status = r.status;
+    const source = r.source;
+    if (!id || !label) continue;
+    if (status !== 'pending' && status !== 'done' && status !== 'blocked') continue;
+    if (source !== 'trip' && source !== 'policy' && source !== 'approval' && source !== 'risk' && source !== 'post_trip') continue;
+    out.push({
+      id,
+      label,
+      status,
+      source,
+      note: typeof r.note === 'string' ? r.note : undefined,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function pickApproval(raw: Record<string, unknown>): TravelApprovalDecision | undefined {
+  const v = raw.approval;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const r = v as Record<string, unknown>;
+  const status = r.status;
+  if (
+    status !== 'not_required' &&
+    status !== 'required' &&
+    status !== 'submitted' &&
+    status !== 'pending' &&
+    status !== 'approved' &&
+    status !== 'needs_changes'
+  ) {
+    return undefined;
+  }
+  const requiredBy = Array.isArray(r.requiredBy) ? r.requiredBy.filter((x): x is string => typeof x === 'string') : [];
+  const reasons = Array.isArray(r.reasons) ? r.reasons.filter((x): x is string => typeof x === 'string') : [];
+  const fixes = Array.isArray(r.fixes) ? r.fixes.filter((x): x is string => typeof x === 'string') : [];
+  const timelineRaw = Array.isArray(r.timeline) ? r.timeline : [];
+  const timeline = timelineRaw
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x))
+    .map((x) => {
+      const ts = x.status;
+      if (ts !== 'done' && ts !== 'pending' && ts !== 'n/a' && ts !== 'blocked') return null;
+      return {
+        step: typeof x.step === 'string' ? x.step : '',
+        status: ts as 'done' | 'pending' | 'n/a' | 'blocked',
+        detail: typeof x.detail === 'string' ? x.detail : '',
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
+  return {
+    status,
+    requiredBy,
+    reasons,
+    fixes,
+    timeline,
+    submittedAt: typeof r.submittedAt === 'string' ? r.submittedAt : undefined,
+    decisionAt: typeof r.decisionAt === 'string' ? r.decisionAt : undefined,
+  };
+}
+
+function pickIncidents(raw: Record<string, unknown>): TravelIncident[] | undefined {
+  const v = raw.incidents;
+  if (!Array.isArray(v)) return undefined;
+  const out: TravelIncident[] = [];
+  for (const row of v) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    const type = r.type;
+    const severity = r.severity;
+    const escalation = r.escalation;
+    if (
+      type !== 'delay' &&
+      type !== 'cancellation' &&
+      type !== 'missed_connection' &&
+      type !== 'hotel_issue' &&
+      type !== 'policy_exception' &&
+      type !== 'medical' &&
+      type !== 'security' &&
+      type !== 'other'
+    ) {
+      continue;
+    }
+    if (severity !== 'low' && severity !== 'medium' && severity !== 'high') continue;
+    if (!escalation || typeof escalation !== 'object' || Array.isArray(escalation)) continue;
+    const e = escalation as Record<string, unknown>;
+    const level = e.level;
+    if (level !== 'none' && level !== 'monitor' && level !== 'travel_desk' && level !== 'manager' && level !== 'emergency') continue;
+    const optionsRaw = Array.isArray(r.options) ? r.options : [];
+    const options = optionsRaw
+      .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object' && !Array.isArray(o))
+      .map((o) => {
+        const actionType = o.actionType;
+        if (actionType !== 'self_service' && actionType !== 'rebook' && actionType !== 'policy' && actionType !== 'contact') {
+          return null;
+        }
+        return {
+          id: typeof o.id === 'string' ? o.id : '',
+          title: typeof o.title === 'string' ? o.title : '',
+          details: typeof o.details === 'string' ? o.details : '',
+          actionType: actionType as 'self_service' | 'rebook' | 'policy' | 'contact',
+        };
+      })
+      .filter((o): o is NonNullable<typeof o> => Boolean(o));
+    out.push({
+      id: typeof r.id === 'string' ? r.id : '',
+      type,
+      severity,
+      summary: typeof r.summary === 'string' ? r.summary : '',
+      createdAt: typeof r.createdAt === 'string' ? r.createdAt : '',
+      details: typeof r.details === 'string' ? r.details : undefined,
+      options,
+      escalation: {
+        level,
+        reason: typeof e.reason === 'string' ? e.reason : '',
+        contact: typeof e.contact === 'string' ? e.contact : '',
+        actionNow: typeof e.actionNow === 'string' ? e.actionNow : '',
+      },
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function pickFollowUps(raw: Record<string, unknown>): TravelFollowUpTask[] | undefined {
+  const v = raw.followUps;
+  if (!Array.isArray(v)) return undefined;
+  const out: TravelFollowUpTask[] = [];
+  for (const row of v) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    const status = r.status;
+    const type = r.type;
+    const owner = r.owner;
+    if (status !== 'open' && status !== 'done' && status !== 'skipped') continue;
+    if (type !== 'expense' && type !== 'feedback' && type !== 'compliance' && type !== 'communication') continue;
+    if (owner !== 'traveler' && owner !== 'copilot' && owner !== 'manager') continue;
+    out.push({
+      id: typeof r.id === 'string' ? r.id : '',
+      type,
+      label: typeof r.label === 'string' ? r.label : '',
+      dueDate: typeof r.dueDate === 'string' ? r.dueDate : '',
+      status,
+      owner,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+function pickPrivacy(raw: Record<string, unknown>): TravelPrivacyMeta | undefined {
+  const v = raw.privacy;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const r = v as Record<string, unknown>;
+  if (typeof r.redactionApplied !== 'boolean') return undefined;
+  const retainedFields = Array.isArray(r.retainedFields)
+    ? r.retainedFields.filter((x): x is string => typeof x === 'string')
+    : [];
+  const excludedFields = Array.isArray(r.excludedFields)
+    ? r.excludedFields.filter((x): x is string => typeof x === 'string')
+    : [];
+  return {
+    redactionApplied: r.redactionApplied,
+    retainedFields,
+    excludedFields,
+    note: typeof r.note === 'string' ? r.note : undefined,
+  };
+}
+
 function pickTicket(raw: Record<string, unknown>): TravelTicket | undefined {
   const t = raw.ticket;
   if (!t || typeof t !== 'object' || Array.isArray(t)) return undefined;
@@ -213,6 +391,11 @@ function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null
     sourceUrl,
     startDate: typeof raw.startDate === 'string' ? raw.startDate : undefined,
     endDate: typeof raw.endDate === 'string' ? raw.endDate : undefined,
+    checklist: pickChecklist(raw),
+    approval: pickApproval(raw),
+    incidents: pickIncidents(raw),
+    followUps: pickFollowUps(raw),
+    privacy: pickPrivacy(raw),
   };
 }
 

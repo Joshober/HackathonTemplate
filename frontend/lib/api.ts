@@ -363,6 +363,87 @@ export interface TravelCopilotSuggestedAction {
   prompt: string;
 }
 
+export type TravelChecklistStatus = 'pending' | 'done' | 'blocked';
+
+export interface TravelChecklistItem {
+  id: string;
+  label: string;
+  status: TravelChecklistStatus;
+  source: 'trip' | 'policy' | 'approval' | 'risk' | 'post_trip';
+  note?: string;
+}
+
+export type TravelApprovalState = 'not_required' | 'required' | 'submitted' | 'pending' | 'approved' | 'needs_changes';
+
+export interface TravelApprovalTimelineStep {
+  step: string;
+  status: 'done' | 'pending' | 'n/a' | 'blocked';
+  detail: string;
+}
+
+export interface TravelApprovalDecision {
+  status: TravelApprovalState;
+  requiredBy: string[];
+  reasons: string[];
+  fixes: string[];
+  timeline: TravelApprovalTimelineStep[];
+  submittedAt?: string | null;
+  decisionAt?: string | null;
+}
+
+export type TravelIssueType =
+  | 'delay'
+  | 'cancellation'
+  | 'missed_connection'
+  | 'hotel_issue'
+  | 'policy_exception'
+  | 'medical'
+  | 'security'
+  | 'other';
+
+export type TravelEscalationLevel = 'none' | 'monitor' | 'travel_desk' | 'manager' | 'emergency';
+
+export interface TravelIncidentOption {
+  id: string;
+  title: string;
+  details: string;
+  actionType: 'self_service' | 'rebook' | 'policy' | 'contact';
+}
+
+export interface TravelIncident {
+  id: string;
+  type: TravelIssueType;
+  severity: 'low' | 'medium' | 'high';
+  summary: string;
+  createdAt: string;
+  details?: string;
+  options: TravelIncidentOption[];
+  escalation: {
+    level: TravelEscalationLevel;
+    reason: string;
+    contact: string;
+    actionNow: string;
+  };
+}
+
+export type TravelFollowUpStatus = 'open' | 'done' | 'skipped';
+
+export interface TravelFollowUpTask {
+  id: string;
+  type: 'expense' | 'feedback' | 'compliance' | 'communication';
+  label: string;
+  dueDate: string;
+  status: TravelFollowUpStatus;
+  owner: 'traveler' | 'copilot' | 'manager';
+}
+
+export interface TravelPrivacyMeta {
+  redactionApplied: boolean;
+  retainedFields: string[];
+  excludedFields: string[];
+  note?: string;
+}
+
 /** Only these three AI Service modes are supported for the travel copilot. */
 export type TravelAssistantMode = 'travel_coach' | 'personal_assistant' | 'analytics';
 
@@ -377,6 +458,10 @@ export interface TravelCopilotContextQuality {
 export interface TravelCopilotResponse {
   reply: string;
   mode: string;
+  stage?: 'plan' | 'approve' | 'travel' | 'return';
+  incidentDetected?: boolean;
+  escalationRecommended?: boolean;
+  privacyApplied?: boolean;
   contextUsed: Record<string, boolean>;
   contextQuality?: TravelCopilotContextQuality;
   suggestedActions: TravelCopilotSuggestedAction[];
@@ -949,6 +1034,92 @@ export const api = {
         model: params.model,
       }),
     }) as Promise<TravelCopilotResponse>;
+  },
+
+  async generateTravelChecklist(body: {
+    itemId?: string;
+    destination?: string;
+    startDate?: string;
+    endDate?: string;
+    tripType?: string;
+    costEstimate?: number;
+  }): Promise<{
+    checklist: TravelChecklistItem[];
+    summary: string;
+    riskFlags: string[];
+    tradeoffs: string[];
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/travel/checklist/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async prepareTravelApproval(body: {
+    itemId?: string;
+    destination?: string;
+    startDate?: string;
+    endDate?: string;
+    costEstimate?: number;
+    status?: string;
+  }): Promise<{
+    approval: TravelApprovalDecision;
+    plainLanguageStatus: string;
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/travel/approvals/prepare', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async triageTravelIncident(body: {
+    itemId?: string;
+    type: TravelIssueType;
+    details?: string;
+  }): Promise<{
+    incident: TravelIncident;
+    escalationRecommended: boolean;
+    nextStep: string;
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/travel/incidents/triage', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async generateTravelFollowUps(body: {
+    itemId?: string;
+  }): Promise<{
+    followUps: TravelFollowUpTask[];
+    summary: string;
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/travel/followups/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async escalateTravelIssue(body: {
+    itemId?: string;
+    incidentId?: string;
+    reason?: string;
+    contactPreference?: 'travel_desk' | 'manager' | 'emergency';
+  }): Promise<{
+    escalationId: string;
+    incidentId: string;
+    status: string;
+    contact: string;
+    message: string;
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/travel/escalate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
 
   async getAdminMe(): Promise<AdminMeResponse> {

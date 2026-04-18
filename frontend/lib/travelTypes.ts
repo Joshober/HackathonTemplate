@@ -2,6 +2,87 @@ import type { TravelPricingEventResult } from '@/lib/api';
 
 export type TravelStageId = 'plan' | 'approve' | 'travel' | 'return';
 
+export type TravelChecklistStatus = 'pending' | 'done' | 'blocked';
+
+export interface TravelChecklistItem {
+  id: string;
+  label: string;
+  status: TravelChecklistStatus;
+  source: 'trip' | 'policy' | 'approval' | 'risk' | 'post_trip';
+  note?: string;
+}
+
+export type TravelApprovalState = 'not_required' | 'required' | 'submitted' | 'pending' | 'approved' | 'needs_changes';
+
+export interface TravelApprovalTimelineStep {
+  step: string;
+  status: 'done' | 'pending' | 'n/a' | 'blocked';
+  detail: string;
+}
+
+export interface TravelApprovalDecision {
+  status: TravelApprovalState;
+  requiredBy: string[];
+  reasons: string[];
+  fixes: string[];
+  timeline: TravelApprovalTimelineStep[];
+  submittedAt?: string | null;
+  decisionAt?: string | null;
+}
+
+export type TravelIssueType =
+  | 'delay'
+  | 'cancellation'
+  | 'missed_connection'
+  | 'hotel_issue'
+  | 'policy_exception'
+  | 'medical'
+  | 'security'
+  | 'other';
+
+export type TravelEscalationLevel = 'none' | 'monitor' | 'travel_desk' | 'manager' | 'emergency';
+
+export interface TravelIncidentOption {
+  id: string;
+  title: string;
+  details: string;
+  actionType: 'self_service' | 'rebook' | 'policy' | 'contact';
+}
+
+export interface TravelIncident {
+  id: string;
+  type: TravelIssueType;
+  severity: 'low' | 'medium' | 'high';
+  summary: string;
+  createdAt: string;
+  details?: string;
+  options: TravelIncidentOption[];
+  escalation: {
+    level: TravelEscalationLevel;
+    reason: string;
+    contact: string;
+    actionNow: string;
+  };
+}
+
+export type TravelFollowUpStatus = 'open' | 'done' | 'skipped';
+
+export interface TravelFollowUpTask {
+  id: string;
+  type: 'expense' | 'feedback' | 'compliance' | 'communication';
+  label: string;
+  dueDate: string;
+  status: TravelFollowUpStatus;
+  owner: 'traveler' | 'copilot' | 'manager';
+}
+
+export interface TravelPrivacyMeta {
+  redactionApplied: boolean;
+  retainedFields: string[];
+  excludedFields: string[];
+  note?: string;
+}
+
 /** Last live pricing row for this trip (MongoDB via `items.travel`). */
 export interface TravelPricingQuoteCache {
   savedAt: string;
@@ -119,6 +200,11 @@ export interface TravelItemPayload {
   /** ISO date YYYY-MM-DD for pricing / trips (optional) */
   startDate?: string;
   endDate?: string;
+  checklist?: TravelChecklistItem[];
+  approval?: TravelApprovalDecision;
+  incidents?: TravelIncident[];
+  followUps?: TravelFollowUpTask[];
+  privacy?: TravelPrivacyMeta;
 }
 
 export const TRAVEL_STAGES: { id: TravelStageId; label: string }[] = [

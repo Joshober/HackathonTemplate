@@ -13,6 +13,10 @@ import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTyp
 import type { User } from '@/lib/auth';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
+import PreTripChecklistPanel from '@/components/travel/workflow/PreTripChecklistPanel';
+import ApprovalGuidancePanel from '@/components/travel/workflow/ApprovalGuidancePanel';
+import IssueEscalationPanel from '@/components/travel/workflow/IssueEscalationPanel';
+import PostTripFollowUpsPanel from '@/components/travel/workflow/PostTripFollowUpsPanel';
 
 function statusBadge(status: TravelOpportunityStatus | undefined) {
   const s = status || 'draft';
@@ -287,7 +291,12 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }
 
   if (stage === 'plan') {
-    return <PlanStagePanel travelItems={travelItems} onSubmitForApproval={(item) => submitApproval(item)} />;
+    return (
+      <div className="space-y-4">
+        <PlanStagePanel travelItems={travelItems} onSubmitForApproval={(item) => submitApproval(item)} />
+        <PreTripChecklistPanel items={travelItems} onSaved={refresh} />
+      </div>
+    );
   }
 
   if (stage === 'approve') {
@@ -438,6 +447,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
         <Link href="/explorer" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
           Browse more opportunities on Explorer
         </Link>
+        <ApprovalGuidancePanel items={travelItems} onSaved={refresh} />
       </div>
     );
   }
@@ -517,9 +527,15 @@ export default function TravelHomeBody({ user }: { user: User }) {
         <Link href="/team" className="block text-center text-xs text-blue-600 hover:underline font-medium">
           Team tab
         </Link>
+        <IssueEscalationPanel items={travelItems} onSaved={refresh} />
       </div>
     );
   }
 
-  return <ReturnStagePanel user={user} />;
+  return (
+    <div className="space-y-4">
+      <PostTripFollowUpsPanel items={travelItems} onSaved={refresh} />
+      <ReturnStagePanel user={user} />
+    </div>
+  );
 }

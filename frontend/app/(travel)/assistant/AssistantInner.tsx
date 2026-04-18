@@ -58,18 +58,21 @@ const QUICK_TRAVEL_COACH = [
   { label: 'Suggest destinations', text: 'Suggest 3 US cities good for a 2-day client meeting this quarter, with a sentence each on why.' },
   { label: 'Estimate costs', text: 'Give a rough per-day cost band (flight + hotel + meals) for a domestic client trip, as estimates only.' },
   { label: 'Check policy', text: 'What kinds of things should I double-check in a typical corporate travel policy before booking?' },
+  { label: 'Auto checklist', text: 'Based on my app context, give me a concise pre-trip checklist and the top two travel risks.' },
 ];
 
 const QUICK_PERSONAL_ASSISTANT = [
   { label: 'Summarize my trips', text: 'Summarize what you see in my app context about my trips and what I should do next.' },
   { label: 'Trip checklist', text: 'Give me a short checklist before I travel based on my saved trip details.' },
   { label: 'Draft a reply', text: 'Help me draft a short email to my manager about my upcoming trip timing and destination.' },
+  { label: 'Approval fix path', text: 'If my trip is blocked in approvals, tell me exactly what to change first.' },
 ];
 
 const QUICK_ANALYTICS = [
   { label: 'Compare options', text: 'Using my booking estimates or snapshots in context, compare economy vs flexible-style tradeoffs (estimates only).' },
   { label: 'Cost breakdown', text: 'Walk through a rough cost breakdown for my trip using any numbers in app context; label gaps clearly.' },
   { label: 'Sensitivity check', text: 'What inputs would most change the total cost for this trip (e.g. dates, hotel tier)?' },
+  { label: 'Disruption impact', text: 'If my outbound flight gets canceled, compare likely cost/time impact of 2-3 fallback strategies.' },
 ];
 
 export default function AssistantInner() {
@@ -101,6 +104,10 @@ export default function AssistantInner() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const [lastContextUsed, setLastContextUsed] = useState<Record<string, boolean> | null>(null);
+  const [lastStage, setLastStage] = useState<'plan' | 'approve' | 'travel' | 'return' | null>(null);
+  const [lastIncidentDetected, setLastIncidentDetected] = useState(false);
+  const [lastEscalationRecommended, setLastEscalationRecommended] = useState(false);
+  const [lastPrivacyApplied, setLastPrivacyApplied] = useState(false);
   const [lastContextQuality, setLastContextQuality] = useState<{
     summaryLine?: string;
     gaps?: string[];
@@ -371,6 +378,10 @@ export default function AssistantInner() {
         const reply = result.reply || 'No response.';
         setLastContextUsed(result.contextUsed ?? null);
         setLastContextQuality(result.contextQuality ?? null);
+        setLastStage(result.stage ?? null);
+        setLastIncidentDetected(Boolean(result.incidentDetected));
+        setLastEscalationRecommended(Boolean(result.escalationRecommended));
+        setLastPrivacyApplied(Boolean(result.privacyApplied));
         setMessages((prev) => [
           ...prev,
           {
@@ -417,7 +428,7 @@ export default function AssistantInner() {
   }, [send]);
 
   if (loading || !user) {
-    return <div className="py-24 text-center text-travel-muted text-sm">Signing you in…</div>;
+    return <div className="py-24 text-center text-travel-muted text-sm">Signing you in...</div>;
   }
 
   return (
@@ -430,6 +441,11 @@ export default function AssistantInner() {
           needed. Estimates unless your saved trip has API-backed quotes.
         </p>
         <p className="mt-1 text-xs text-teal-800/90">{modeHint}</p>
+        {lastStage ? (
+          <p className="mt-1 text-[11px] text-gray-600">
+            Journey stage linked: <span className="font-medium text-gray-800">{lastStage}</span>
+          </p>
+        ) : null}
         {lastContextUsed ? (
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-600">
             <span className="font-semibold text-gray-500">Linked:</span>
@@ -459,6 +475,17 @@ export default function AssistantInner() {
         ) : (
           <p className="mt-2 text-[10px] text-gray-400">Send a message to show what context is linked to this chat.</p>
         )}
+        {lastPrivacyApplied ? (
+          <p className="mt-1 text-[10px] text-gray-500">
+            Privacy filter active: sensitive fields were excluded from model context.
+          </p>
+        ) : null}
+        {lastIncidentDetected ? (
+          <p className="mt-1 text-[11px] text-amber-800">
+            Incident detected in last request
+            {lastEscalationRecommended ? ' - escalation recommended' : ' - monitoring guidance returned'}.
+          </p>
+        ) : null}
         {lastContextQuality?.summaryLine ? (
           <p className="mt-1.5 text-[11px] leading-snug text-gray-600 line-clamp-2" title={lastContextQuality.summaryLine}>
             <span className="font-medium text-gray-700">Primary trip:</span> {lastContextQuality.summaryLine}
@@ -565,12 +592,12 @@ export default function AssistantInner() {
         ))}
         {isRecording ? (
           <div className="mr-auto rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-            Listening… pause when you’re done — it will transcribe and send. Tap the mic to stop early.
+            Listening... pause when you’re done — it will transcribe and send. Tap the mic to stop early.
           </div>
         ) : null}
         {(pending || isTranscribing) && (
           <div className="mr-auto rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-travel-muted">
-            {isTranscribing && !pending ? 'Transcribing speech…' : 'Thinking…'}
+            {isTranscribing && !pending ? 'Transcribing speech...' : 'Thinking...'}
           </div>
         )}
         <div ref={bottomRef} />
@@ -636,7 +663,7 @@ export default function AssistantInner() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about trips, policy, or costs…"
+            placeholder="Ask about trips, policy, or costs..."
             disabled={pending || isTranscribing || isRecording}
             className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm disabled:opacity-50"
           />
@@ -645,10 +672,11 @@ export default function AssistantInner() {
             disabled={pending || isTranscribing || !input.trim()}
             className="shrink-0 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:opacity-50"
           >
-            {pending ? '…' : 'Send'}
+            {pending ? '...' : 'Send'}
           </button>
         </div>
       </form>
     </div>
   );
 }
+

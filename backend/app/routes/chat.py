@@ -959,6 +959,10 @@ def chat_copilot(user_id):
         current_page = (data.get('currentPage') or '').strip() or None
         ui_state = data.get('uiState') if isinstance(data.get('uiState'), dict) else None
         personality = (data.get('personality') or '').strip() or None
+        journey_stage_raw = (ui_state or {}).get('journeyStage') if isinstance(ui_state, dict) else None
+        journey_stage = str(journey_stage_raw or '').strip().lower()
+        if journey_stage not in {'plan', 'approve', 'travel', 'return'}:
+            journey_stage = 'plan'
 
         history = data.get('messages')
         if not isinstance(history, list):
@@ -986,7 +990,31 @@ def chat_copilot(user_id):
         )
         ctx_json = json.dumps(ctx, ensure_ascii=False)
 
-        system_prompt_base = system_preamble_for_mode(assistant_mode) + "\n\n---\n\n" + ASSISTANT_WEB_SYSTEM
+        stage_focus = {
+            'plan': (
+                "Journey stage is PLAN. Prioritize preparation: requirements, policy applicability, "
+                "tradeoffs, and a practical checklist."
+            ),
+            'approve': (
+                "Journey stage is APPROVE. Prioritize guided approvals: what is required, status clarity, "
+                "rejection fixes, and next approver action."
+            ),
+            'travel': (
+                "Journey stage is TRAVEL. Prioritize real-time help: concise next actions, issue handling, "
+                "coverage guidance, and escalation when needed."
+            ),
+            'return': (
+                "Journey stage is RETURN. Prioritize closure: expense/follow-up reminders, trip summary, "
+                "and closing open approvals/tracking."
+            ),
+        }.get(journey_stage, '')
+        system_prompt_base = (
+            system_preamble_for_mode(assistant_mode)
+            + "\n\n## Journey stage focus\n"
+            + stage_focus
+            + "\n\n---\n\n"
+            + ASSISTANT_WEB_SYSTEM
+        )
         messages = clean_hist + [{'role': 'user', 'content': message}]
 
         api_key = os.getenv('OPENROUTER_API_KEY')
@@ -1012,10 +1040,36 @@ def chat_copilot(user_id):
         )
 
         cq = ctx.get('contextQuality') if isinstance(ctx.get('contextQuality'), dict) else {}
+        privacy = ctx.get('privacy') if isinstance(ctx.get('privacy'), dict) else {}
+        lower_msg = message.lower()
+        incident_detected = any(
+            k in lower_msg
+            for k in (
+                'flight delayed',
+                'delay',
+                'flight cancelled',
+                'flight canceled',
+                'cancelled',
+                'canceled',
+                'missed connection',
+                'stranded',
+                'rebook',
+                'hotel issue',
+                'policy exception',
+                'emergency',
+            )
+        )
+        escalation_recommended = incident_detected and any(
+            k in lower_msg for k in ('cancelled', 'canceled', 'missed connection', 'stranded', 'emergency')
+        )
         return jsonify(
             {
                 'reply': assistant_message,
                 'mode': assistant_mode,
+                'stage': journey_stage,
+                'incidentDetected': incident_detected,
+                'escalationRecommended': escalation_recommended,
+                'privacyApplied': bool(privacy.get('redactionApplied') is True),
                 'contextUsed': context_used_flags(ctx),
                 'contextQuality': cq,
                 'suggestedActions': suggested_actions(ctx, assistant_mode),
