@@ -57,6 +57,13 @@ export interface TravelItemPayload {
   notes?: string;
   bookingEstimate?: TravelBookingEstimate;
   ticket?: TravelTicket;
+  /** Post-trip / Return stage — AI-generated social copy */
+  instagramCaption?: string;
+  instagramCaptionGeneratedAt?: string;
+  sourceUrl?: string;
+  /** ISO date YYYY-MM-DD for pricing / trips (optional) */
+  startDate?: string;
+  endDate?: string;
 }
 
 export const TRAVEL_STAGES: { id: TravelStageId; label: string }[] = [

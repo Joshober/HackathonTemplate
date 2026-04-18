@@ -1,25 +1,44 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { TRAVEL_OPPORTUNITY_SEED } from '@/lib/travelSeed';
+import { useCallback, useEffect, useState } from 'react';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import OpportunityCard from '@/components/travel/OpportunityCard';
-import { api, type Item } from '@/lib/api';
+import { api, type ExplorerOpportunity, type Item } from '@/lib/api';
 import PolicyHint from '@/components/travel/PolicyHint';
 import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
 import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 
+const MAX_CITIES = 5;
+
+function parseCitiesInput(raw: string): string[] {
+  const parts = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts.slice(0, MAX_CITIES);
+}
+
+function truncateSnippet(text: string, max = 140): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
 export default function ExplorerPage() {
   const { stage } = useTravelStage();
   const { user, loading } = useTravelAuth();
-  const [locationQ, setLocationQ] = useState('');
+  const [citiesInput, setCitiesInput] = useState('');
   const [maxBudget, setMaxBudget] = useState(5000);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [panelItems, setPanelItems] = useState<Item[]>([]);
+  const [opportunities, setOpportunities] = useState<ExplorerOpportunity[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchedLabel, setSearchedLabel] = useState<string | null>(null);
 
   const refreshPanelItems = useCallback(async () => {
     try {
@@ -37,30 +56,51 @@ export default function ExplorerPage() {
 
   const approvePanel = useApproveBookingPanel(panelItems, refreshPanelItems);
 
-  const filtered = useMemo(() => {
-    return TRAVEL_OPPORTUNITY_SEED.filter((o) => {
-      if (locationQ.trim() && !o.location.toLowerCase().includes(locationQ.trim().toLowerCase())) return false;
-      if (o.costEstimate > maxBudget) return false;
-      return true;
-    });
-  }, [locationQ, maxBudget]);
-
-  const addToPlan = async (id: string) => {
-    if (!user?.email) return;
-    const o = TRAVEL_OPPORTUNITY_SEED.find((x) => x.id === id);
-    if (!o) return;
-    setBusyId(id);
+  const runSearch = async () => {
+    const cities = parseCitiesInput(citiesInput);
+    setSearchError(null);
     setToast(null);
+    if (!cities.length) {
+      setSearchError('Enter at least one city (comma-separated for multiple).');
+      setOpportunities([]);
+      setSearchedLabel(null);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchedLabel(cities.join(', '));
+    try {
+      const { opportunities: rows } = await api.searchExplorerOpportunities({ cities, maxPerCity: 8 });
+      setOpportunities(rows);
+      if (!rows.length) {
+        setSearchError('No web results for those cities. Try different names or fewer cities.');
+      }
+    } catch (e) {
+      setOpportunities([]);
+      setSearchError(e instanceof Error ? e.message : 'Search failed');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const addToPlan = async (o: ExplorerOpportunity) => {
+    if (!user?.email) return;
+    setBusyId(o.id);
+    setToast(null);
+    const descLines = [
+      `${o.title} — web result for ${o.city}.`,
+      o.snippet ? o.snippet : null,
+      o.url ? `Source: ${o.url}` : null,
+    ].filter(Boolean) as string[];
     try {
       await api.createItem({
-        title: o.title,
-        description: `${o.title} — ${o.tripType} trip to ${o.location}.`,
+        title: o.title.slice(0, 200),
+        description: descLines.join('\n\n'),
         travel: {
-          location: o.location,
-          costEstimate: o.costEstimate,
-          tags: o.tags,
-          tripType: o.tripType,
-          imageUrl: o.imageUrl,
+          location: o.city,
+          costEstimate: maxBudget,
+          tags: ['web', 'duckduckgo', o.city],
+          tripType: 'research',
+          sourceUrl: o.url,
           addedBy: user.email || 'You',
           opportunityStatus: 'draft',
         },
@@ -138,25 +178,31 @@ export default function ExplorerPage() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-white">Opportunity explorer</h2>
-        <p className="text-sm text-travel-muted mt-1">Curated ideas. Filters apply on-device.</p>
+        <p className="text-sm text-travel-muted mt-1">
+          Live DuckDuckGo results for business events and conferences. Up to {MAX_CITIES} cities per search.
+        </p>
       </div>
       <div className="flex flex-col gap-3">
         <p className="text-xs text-travel-muted flex flex-wrap items-center gap-1">
           <PolicyHint title="Policy filters would connect to your official travel policy in production.">
-            Estimates only — confirm with policy before booking.
+            Web results are unvetted — confirm with policy before booking.
           </PolicyHint>
         </p>
         <label className="text-xs text-travel-muted">
-          Location contains
+          Cities (comma-separated)
           <input
-            value={locationQ}
-            onChange={(e) => setLocationQ(e.target.value)}
+            value={citiesInput}
+            onChange={(e) => setCitiesInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void runSearch();
+            }}
             className="mt-1 w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
-            placeholder="e.g. Chicago"
+            placeholder="e.g. Chicago, Austin, Seattle"
+            disabled={searchLoading}
           />
         </label>
         <label className="text-xs text-travel-muted">
-          Max budget (USD)
+          Planning budget when adding (USD)
           <input
             type="number"
             min={200}
@@ -166,31 +212,59 @@ export default function ExplorerPage() {
             className="mt-1 w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
           />
         </label>
+        <button
+          type="button"
+          onClick={() => void runSearch()}
+          disabled={searchLoading}
+          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
+        >
+          {searchLoading ? 'Searching…' : 'Search'}
+        </button>
       </div>
+      {searchedLabel && !searchLoading ? (
+        <p className="text-xs text-travel-muted">Last search: {searchedLabel}</p>
+      ) : null}
+      {searchError ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{searchError}</div>
+      ) : null}
       {toast ? (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">{toast}</div>
       ) : null}
       <div className="space-y-4 pb-4">
-        {filtered.map((o) => (
+        {!searchLoading && !opportunities.length && !searchError ? (
+          <p className="text-sm text-travel-muted">Enter one or more cities and press Search.</p>
+        ) : null}
+        {opportunities.map((o) => (
           <OpportunityCard
             key={o.id}
             title={o.title}
-            subtitle={`${o.location} · ~$${o.costEstimate.toLocaleString()}`}
-            imageUrl={o.imageUrl}
+            subtitle={`${o.city} · ${truncateSnippet(o.snippet)}`}
             footer={
-              <div className="flex flex-wrap gap-1.5">
-                {o.tags.map((t) => (
-                  <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-travel-muted">
-                    {t}
-                  </span>
-                ))}
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {['web', 'duckduckgo'].map((t) => (
+                    <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-travel-muted">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+                {o.url ? (
+                  <a
+                    href={o.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-300 hover:underline inline-block"
+                  >
+                    Open link
+                  </a>
+                ) : null}
               </div>
             }
             action={
               <button
                 type="button"
                 disabled={busyId === o.id}
-                onClick={() => addToPlan(o.id)}
+                onClick={() => void addToPlan(o)}
                 className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
               >
                 {busyId === o.id ? 'Adding…' : 'Add to plan'}

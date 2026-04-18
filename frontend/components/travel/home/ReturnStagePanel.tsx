@@ -1,0 +1,375 @@
+'use client';
+
+import Image from 'next/image';
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
+import { api, type Item, type TravelMetadata, TRAVEL_ACTIVE_TEAM_STORAGE_KEY } from '@/lib/api';
+import type { User } from '@/lib/auth';
+import OpportunityCard from '@/components/travel/OpportunityCard';
+import { getTravelPayload, humanDescriptionLine, isTravelItem } from '@/lib/travelItem';
+import type { TravelOpportunityStatus } from '@/lib/travelTypes';
+
+function approvedStatuses(st: TravelOpportunityStatus | undefined) {
+  const s = st || 'draft';
+  return s === 'approved' || s === 'booked' || s === 'completed';
+}
+
+function initialSavedTeamId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY);
+}
+
+export default function ReturnStagePanel({ user }: { user: User }) {
+  const [teamId, setTeamId] = useState<string | null>(initialSavedTeamId);
+  const [feed, setFeed] = useState<Item[]>([]);
+  const [personal, setPersonal] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const [title, setTitle] = useState('');
+  const [location, setLocation] = useState('');
+  const [notes, setNotes] = useState('');
+  const [addBusy, setAddBusy] = useState(false);
+  const [shareBusy, setShareBusy] = useState<string | null>(null);
+  const [capBusy, setCapBusy] = useState<string | null>(null);
+  const [uploadBusy, setUploadBusy] = useState<string | null>(null);
+
+  const readTeamFromStorage = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const tid = readTeamFromStorage();
+    setTeamId(tid);
+    setErr(null);
+    setLoading(true);
+    try {
+      const mine = await api.getItems();
+      setPersonal(mine.filter(isTravelItem));
+      if (tid) {
+        setFeed(await api.getTeamReturnFeed(tid));
+      } else {
+        setFeed([]);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not load Return feed');
+      setFeed([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [readTeamFromStorage]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === TRAVEL_ACTIVE_TEAM_STORAGE_KEY) void refresh();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [refresh]);
+
+  useEffect(() => {
+    const onFocus = () => void refresh();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refresh]);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const shareable = personal.filter((i) => {
+    const t = getTravelPayload(i);
+    if (!t || !i._id) return false;
+    if (i.teamId) return false;
+    return approvedStatuses(t.opportunityStatus);
+  });
+
+  const onShareToTeam = async (item: Item) => {
+    const tid = readTeamFromStorage();
+    if (!tid || !item._id) return;
+    setShareBusy(item._id);
+    try {
+      await api.updateItem(item._id, { teamId: tid });
+      showToast(`Shared “${item.title}” with your team.`);
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not share');
+    } finally {
+      setShareBusy(null);
+    }
+  };
+
+  const onAddEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const tid = readTeamFromStorage();
+    if (!tid || addBusy) return;
+    const loc = location.trim() || 'Post-trip';
+    const tit = title.trim();
+    const body = notes.trim();
+    if (!tit) {
+      showToast('Enter an event title.');
+      return;
+    }
+    setAddBusy(true);
+    try {
+      await api.createItem({
+        title: tit.slice(0, 200),
+        description: body || `Post-trip memory: ${tit}`,
+        teamId: tid,
+        travel: {
+          location: loc,
+          costEstimate: 0,
+          tags: ['return', 'post_trip'],
+          tripType: 'post_trip',
+          addedBy: user.email || 'You',
+          opportunityStatus: 'completed',
+          notes: body || undefined,
+        },
+      });
+      setTitle('');
+      setLocation('');
+      setNotes('');
+      showToast('Event added for your team.');
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add event');
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
+  const onPickPhotos = async (item: Item, files: FileList | null) => {
+    if (!item._id || !files?.length) return;
+    setUploadBusy(item._id);
+    try {
+      await api.updateItem(item._id, { images: Array.from(files) });
+      showToast('Photos uploaded.');
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploadBusy(null);
+    }
+  };
+
+  const onGenerateCaption = async (item: Item) => {
+    const tid = readTeamFromStorage();
+    if (!tid || !item._id) return;
+    setCapBusy(item._id);
+    try {
+      const { caption } = await api.generateInstagramCaption(tid, item._id);
+      const t = getTravelPayload(item);
+      const merged: TravelMetadata = {
+        ...(t as unknown as TravelMetadata),
+        instagramCaption: caption,
+        instagramCaptionGeneratedAt: new Date().toISOString(),
+      };
+      await api.updateItem(item._id, { travel: merged });
+      showToast('Caption saved to this event.');
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Caption failed');
+    } finally {
+      setCapBusy(null);
+    }
+  };
+
+  if (!teamId) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Post-trip team feed</h2>
+          <p className="text-sm text-travel-muted mt-1">
+            Choose an active team on the Team tab so everyone can see approved trips, add moments, and build
+            Instagram captions together.
+          </p>
+        </div>
+        <Link
+          href="/team"
+          className="block w-full text-center py-3 rounded-xl bg-orange-600/90 hover:bg-orange-500 text-white text-sm font-semibold"
+        >
+          Open Team tab
+        </Link>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-travel-muted text-sm">Loading Return feed…</div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {toast ? (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+          {toast}
+        </div>
+      ) : null}
+      {err ? (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">{err}</div>
+      ) : null}
+
+      <div>
+        <h2 className="text-lg font-semibold text-white">Team Return feed</h2>
+        <p className="text-sm text-travel-muted mt-1">
+          Approved and booked trips shared with this team, plus post-trip moments teammates add.
+        </p>
+      </div>
+
+      {shareable.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-travel-muted">Share with team</p>
+          <p className="text-xs text-travel-muted">
+            These approved trips are only yours until you attach them to the active team.
+          </p>
+          <div className="space-y-2">
+            {shareable.map((item) => {
+              const t = getTravelPayload(item);
+              const img = t?.imageUrl || item.imageUrls?.[0];
+              return (
+                <div
+                  key={item._id}
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] p-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{item.title}</p>
+                    {t?.location ? <p className="text-xs text-travel-muted truncate">{t.location}</p> : null}
+                  </div>
+                  {img ? (
+                    <div className="relative h-14 w-20 shrink-0 rounded-lg overflow-hidden border border-white/10">
+                      <Image src={img} alt="" fill className="object-cover" sizes="80px" unoptimized />
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={shareBusy === item._id}
+                    onClick={() => void onShareToTeam(item)}
+                    className="shrink-0 rounded-lg bg-white/10 hover:bg-white/15 px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    {shareBusy === item._id ? '…' : 'Share with team'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <form onSubmit={(e) => void onAddEvent(e)} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+        <p className="text-sm font-medium text-white">Add a post-trip event</p>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Event title"
+          className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30"
+        />
+        <input
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="City / venue (optional)"
+          className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30"
+        />
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="What happened? (optional)"
+          rows={3}
+          className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30 resize-none"
+        />
+        <button
+          type="submit"
+          disabled={addBusy}
+          className="w-full py-2.5 rounded-xl bg-orange-600/90 hover:bg-orange-500 text-white text-sm font-semibold disabled:opacity-40"
+        >
+          {addBusy ? 'Adding…' : 'Add event for team'}
+        </button>
+      </form>
+
+      <div className="space-y-3">
+        <p className="text-xs font-medium uppercase tracking-wide text-travel-muted">Feed</p>
+        {feed.length === 0 ? (
+          <p className="text-sm text-travel-muted">
+            No shared trips yet. Share an approved plan above or add a post-trip event.
+          </p>
+        ) : (
+          feed.map((item) => {
+            const t = getTravelPayload(item);
+            const img = t?.imageUrl || item.imageUrls?.[0];
+            const cap = t?.instagramCaption;
+            const isOwner = Boolean(item.userId && user.sub && item.userId === user.sub);
+            const byTeammate = Boolean(item.userId && user.sub && item.userId !== user.sub);
+            return (
+              <OpportunityCard
+                key={item._id}
+                title={item.title}
+                subtitle={
+                  (byTeammate ? 'From a teammate · ' : '') +
+                  (t ? humanDescriptionLine(item, t) : item.description.slice(0, 120))
+                }
+                imageUrl={img}
+                footer={
+                  <div className="space-y-3 text-left">
+                    {cap ? (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-travel-muted mb-1">
+                          Instagram draft
+                        </p>
+                        <p className="text-sm text-white/90 whitespace-pre-wrap">{cap}</p>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <label className="cursor-pointer rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white hover:bg-white/10">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          disabled={uploadBusy === item._id}
+                          onChange={(e) => {
+                            void onPickPhotos(item, e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
+                        {uploadBusy === item._id ? 'Uploading…' : 'Add photos'}
+                      </label>
+                      <button
+                        type="button"
+                        disabled={capBusy === item._id || !(item.imageUrls?.length || t?.imageUrl)}
+                        onClick={() => void onGenerateCaption(item)}
+                        className="rounded-lg border border-violet-400/40 bg-violet-600/20 px-3 py-1.5 text-xs font-medium text-violet-100 hover:bg-violet-600/30 disabled:opacity-40"
+                      >
+                        {capBusy === item._id ? 'Generating…' : 'AI Instagram caption'}
+                      </button>
+                    </div>
+                    {isOwner ? (
+                      <p className="text-[10px] text-travel-muted">You created this card.</p>
+                    ) : byTeammate ? (
+                      <p className="text-[10px] text-travel-muted">Anyone on the team can add photos or captions.</p>
+                    ) : null}
+                  </div>
+                }
+              />
+            );
+          })
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => void refresh()}
+        className="w-full py-2 rounded-xl border border-white/10 text-xs text-travel-muted hover:text-white hover:bg-white/5"
+      >
+        Refresh feed
+      </button>
+    </div>
+  );
+}

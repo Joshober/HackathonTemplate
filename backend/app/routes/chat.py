@@ -110,6 +110,33 @@ ASSISTANT_TOOLS = [
     {
         'type': 'function',
         'function': {
+            'name': 'search_travel_opportunities',
+            'description': (
+                'Search the web (DuckDuckGo) for conferences, industry events, and networking opportunities '
+                'in one or more cities—same backend as the Explorer travel page. Use for city-based event '
+                'discovery, team offsite ideas by destination, or "what is happening in X". Prefer this over '
+                'search_web when the user names specific cities for events or conferences.'
+            ),
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'cities': {
+                        'type': 'array',
+                        'items': {'type': 'string'},
+                        'description': 'City names, e.g. ["Chicago", "Austin"] (at most 5)',
+                    },
+                    'max_per_city': {
+                        'type': 'integer',
+                        'description': 'Max results per city (default 8, cap 10)',
+                    },
+                },
+                'required': ['cities'],
+            },
+        },
+    },
+    {
+        'type': 'function',
+        'function': {
             'name': 'get_library_count',
             'description': 'Get the current number of people in the library. This calls a sensor API that returns the count—you do not compute anything. ALWAYS use this when the user asks how many people are in the library, how busy the library is, or library occupancy. Never refuse or say you cannot do it.',
             'parameters': {'type': 'object', 'properties': {}},
@@ -319,6 +346,20 @@ def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_
                 tool_result = fetch_weather(args.get('location', ''))
             elif name == 'search_web':
                 tool_result = search_web(args.get('query', ''))
+            elif name == 'search_travel_opportunities':
+                from app.services.explorer_opportunities import travel_opportunities_for_cities
+
+                raw_cities = args.get('cities') or []
+                if isinstance(raw_cities, str):
+                    raw_cities = [raw_cities]
+                city_list = [str(c).strip() for c in raw_cities if str(c).strip()]
+                mpc = args.get('max_per_city', 8)
+                try:
+                    mpc = int(mpc)
+                except (TypeError, ValueError):
+                    mpc = 8
+                opps = travel_opportunities_for_cities(city_list, max_per_city=mpc)
+                tool_result = json.dumps({'opportunities': opps}, ensure_ascii=False)
             elif name == 'get_library_count':
                 tool_result = _get_library_count()
             elif name == 'get_crypto_price':

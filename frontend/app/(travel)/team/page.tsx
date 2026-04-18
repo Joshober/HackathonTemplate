@@ -1,21 +1,23 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
-import { api, type Profile } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { api, type Profile, type TeamDetail, type TeamSummary, TRAVEL_ACTIVE_TEAM_STORAGE_KEY } from '@/lib/api';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import TeamChatPanel from '@/components/travel/TeamChatPanel';
-
-const MOCK_TEAM = [
-  { name: 'Alex Rivera', role: 'Manager', participating: true, avatar: null as string | null },
-  { name: 'Jordan Lee', role: 'Finance partner', participating: true, avatar: null },
-  { name: 'Sam Okonkwo', role: 'Travel desk', participating: false, avatar: null },
-  { name: 'Riley Chen', role: 'Peer', participating: true, avatar: null },
-];
 
 export default function TeamPage() {
   const { user, loading } = useTravelAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+  const [teamDetail, setTeamDetail] = useState<TeamDetail | null>(null);
+  const [bootLoading, setBootLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [addEmail, setAddEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -25,8 +27,143 @@ export default function TeamPage() {
       .catch(() => setProfile(null));
   }, [user]);
 
+  const pickActiveTeamId = useCallback((t: TeamSummary[], cur: string | null) => {
+    if (!t.length) return null;
+    const saved =
+      typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY) : null;
+    if (saved && t.some((x) => x.id === saved)) return saved;
+    if (cur && t.some((x) => x.id === cur)) return cur;
+    return t[0].id;
+  }, []);
+
+  const loadTeams = useCallback(async () => {
+    const { teams: t } = await api.listTeams();
+    setTeams(t);
+    setActiveTeamId((cur) => pickActiveTeamId(t, cur));
+  }, [pickActiveTeamId]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      setBootLoading(true);
+      setErr(null);
+      try {
+        await api.syncUser();
+        const { teams: t } = await api.listTeams();
+        if (cancelled) return;
+        setTeams(t);
+        setActiveTeamId((cur) => pickActiveTeamId(t, cur));
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load teams');
+      } finally {
+        if (!cancelled) setBootLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, pickActiveTeamId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (activeTeamId) {
+      localStorage.setItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY, activeTeamId);
+    } else {
+      localStorage.removeItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY);
+    }
+  }, [activeTeamId]);
+
+  useEffect(() => {
+    if (!activeTeamId) {
+      setTeamDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    api
+      .getTeam(activeTeamId)
+      .then((d) => {
+        if (!cancelled) setTeamDetail(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load team');
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTeamId]);
+
+  const refreshTeamDetail = useCallback(async () => {
+    if (!activeTeamId) return;
+    try {
+      const d = await api.getTeam(activeTeamId);
+      setTeamDetail(d);
+    } catch {
+      /* ignore */
+    }
+  }, [activeTeamId]);
+
+  const onCreateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = createName.trim();
+    if (!name || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const created = await api.createTeam({ name });
+      setCreateName('');
+      await loadTeams();
+      setActiveTeamId(created.id);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not create team');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeTeamId || busy) return;
+    const email = addEmail.trim().toLowerCase();
+    if (!email) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.addTeamMember(activeTeamId, email);
+      setAddEmail('');
+      await refreshTeamDetail();
+      await loadTeams();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not add member');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onLeaveTeam = async () => {
+    if (!activeTeamId || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.leaveTeam(activeTeamId);
+      await loadTeams();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not leave team');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading || !user) {
     return <div className="py-24 text-center text-travel-muted text-sm">Signing you in…</div>;
+  }
+
+  if (bootLoading) {
+    return <div className="py-24 text-center text-travel-muted text-sm">Loading teams…</div>;
   }
 
   return (
@@ -34,9 +171,76 @@ export default function TeamPage() {
       <div>
         <h2 className="text-lg font-semibold text-white">Team</h2>
         <p className="text-sm text-travel-muted mt-1">
-          Team chat is the main column; people and your card sit in the side rail (demo roster). Your profile syncs from the server.
+          Create a team, invite colleagues by email (they must sign in once), and chat with a shared travel assistant. Your profile
+          still syncs from the server.
         </p>
       </div>
+
+      {err ? (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{err}</div>
+      ) : null}
+
+      {teams.length === 0 ? (
+        <form onSubmit={onCreateTeam} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3 max-w-md">
+          <p className="text-sm font-medium text-white">Create your first team</p>
+          <input
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+            placeholder="Team name"
+            className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2.5 text-sm text-white placeholder:text-white/30"
+          />
+          <button
+            type="submit"
+            disabled={busy || !createName.trim()}
+            className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium py-2.5"
+          >
+            {busy ? '…' : 'Create team'}
+          </button>
+        </form>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 max-w-xl">
+          <label className="text-xs text-travel-muted shrink-0" htmlFor="team-select">
+            Active team
+          </label>
+          <select
+            id="team-select"
+            value={activeTeamId ?? ''}
+            onChange={(e) => setActiveTeamId(e.target.value || null)}
+            className="flex-1 rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+          >
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.memberCount} {t.memberCount === 1 ? 'member' : 'members'})
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => {
+              const name = window.prompt('New team name');
+              if (name?.trim()) {
+                void (async () => {
+                  setBusy(true);
+                  setErr(null);
+                  try {
+                    const created = await api.createTeam({ name: name.trim() });
+                    await loadTeams();
+                    setActiveTeamId(created.id);
+                  } catch (e) {
+                    setErr(e instanceof Error ? e.message : 'Could not create team');
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }
+            }}
+            disabled={busy}
+            className="text-xs px-3 py-2 rounded-xl border border-white/15 text-white/90 hover:bg-white/10 disabled:opacity-50"
+          >
+            + New team
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-5 lg:gap-6 lg:items-stretch min-h-[72vh]">
         <aside className="w-full lg:w-[min(100%,280px)] shrink-0 flex flex-col gap-4 lg:sticky lg:top-4 lg:self-start">
@@ -56,44 +260,81 @@ export default function TeamPage() {
                 <p className="font-medium text-white truncate">{profile?.displayName || user.name || 'Traveler'}</p>
                 <p className="text-xs text-travel-muted truncate">{user.email}</p>
               </div>
-              <span className="ml-auto shrink-0 text-[10px] font-semibold uppercase text-emerald-300/90">In loop</span>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 flex-1 min-h-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted mb-3">People</p>
-            <ul className="space-y-2 max-h-[min(52vh,480px)] lg:max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
-              {MOCK_TEAM.map((m) => (
-                <li
-                  key={m.name}
-                  className="flex items-center gap-3 rounded-xl border border-white/10 px-3 py-3 bg-black/20"
-                >
-                  <div className="w-10 h-10 shrink-0 rounded-full bg-violet-500/25 flex items-center justify-center text-sm font-semibold text-violet-100">
-                    {m.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{m.name}</p>
-                    <p className="text-xs text-travel-muted truncate">{m.role}</p>
-                  </div>
-                  <span
-                    className={`shrink-0 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md ${
-                      m.participating ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/10 text-travel-muted'
-                    }`}
-                  >
-                    {m.participating ? 'In loop' : 'Optional'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {activeTeamId && teamDetail ? (
+            <>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 flex-1 min-h-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted mb-3">Members</p>
+                {detailLoading ? (
+                  <p className="text-xs text-travel-muted">Loading…</p>
+                ) : (
+                  <ul className="space-y-2 max-h-[min(52vh,480px)] lg:max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+                    {teamDetail.members.map((m) => (
+                      <li
+                        key={m.userId}
+                        className="flex items-center gap-3 rounded-xl border border-white/10 px-3 py-3 bg-black/20"
+                      >
+                        {m.profileImageUrl ? (
+                          <div className="relative w-10 h-10 shrink-0 rounded-full overflow-hidden border border-white/10">
+                            <Image src={m.profileImageUrl} alt="" fill className="object-cover" unoptimized />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 shrink-0 rounded-full bg-violet-500/25 flex items-center justify-center text-sm font-semibold text-violet-100">
+                            {(m.displayName || m.email || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">
+                            {m.displayName || m.email || m.userId}
+                            {m.userId === user.sub ? <span className="text-travel-muted font-normal"> · you</span> : null}
+                          </p>
+                          {m.email ? <p className="text-xs text-travel-muted truncate">{m.email}</p> : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
-          <p className="text-xs text-travel-muted text-center px-1">
-            Add/remove flows would connect to HR or directory APIs in production.
-          </p>
+              <form onSubmit={onAddMember} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted">Invite by email</p>
+                <p className="text-[10px] text-travel-muted">They must log in once so their email is synced.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={addEmail}
+                    onChange={(e) => setAddEmail(e.target.value)}
+                    placeholder="colleague@company.com"
+                    className="flex-1 rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/30"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy || !addEmail.trim()}
+                    className="shrink-0 px-3 rounded-xl bg-white/10 hover:bg-white/15 disabled:opacity-50 text-sm text-white"
+                  >
+                    Add
+                  </button>
+                </div>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => void onLeaveTeam()}
+                disabled={busy}
+                className="text-xs text-travel-muted hover:text-red-300/90 underline disabled:opacity-50"
+              >
+                Leave this team
+              </button>
+            </>
+          ) : null}
+
+          <p className="text-xs text-travel-muted text-center px-1">Team data is stored in MongoDB for this app.</p>
         </aside>
 
         <section className="flex-1 min-w-0 flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 lg:p-5">
-          <TeamChatPanel user={user} />
+          <TeamChatPanel teamId={activeTeamId} user={user} />
         </section>
       </div>
     </div>

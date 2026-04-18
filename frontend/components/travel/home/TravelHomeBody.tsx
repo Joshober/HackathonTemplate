@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api, type Item, type TravelMetadata } from '@/lib/api';
 import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
+import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
 import { getTravelPayload, humanDescriptionLine, isTravelItem } from '@/lib/travelItem';
 import { loadVotes, setVote } from '@/lib/travelVotes';
 import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTypes';
@@ -14,11 +15,7 @@ import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculat
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import { mergeBookedTravel } from '@/lib/travelTicketMock';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
-
-const MOCK_SHARE = [
-  { who: 'Alex R.', snippet: 'Highlights from the Chicago forum — great client energy.' },
-  { who: 'Jordan L.', snippet: 'Cost summary + 3 photos from the team dinner.' },
-];
+import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
 
 function statusBadge(status: TravelOpportunityStatus | undefined) {
   const s = status || 'draft';
@@ -115,65 +112,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }
 
   if (stage === 'plan') {
-    const waiting = travelItems.filter((i) => {
-      const st = (getTravelPayload(i)?.opportunityStatus || 'draft') as TravelOpportunityStatus;
-      return st === 'draft' || st === 'ready_for_approval';
-    });
-
-    return (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Planning dashboard</h2>
-          <p className="text-sm text-travel-muted mt-1">Opportunities ready for the next step.</p>
-        </div>
-        {waiting.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-travel-muted text-sm">
-            Nothing waiting yet.{' '}
-            <Link href="/explorer" className="text-blue-300 hover:underline">
-              Browse Explorer
-            </Link>{' '}
-            and add a trip.
-          </div>
-        ) : (
-          waiting.map((item) => {
-            const t = getTravelPayload(item);
-            const st = (t?.opportunityStatus || 'draft') as TravelOpportunityStatus;
-            const img = t?.imageUrl || item.imageUrls?.[0];
-            return (
-              <OpportunityCard
-                key={item._id}
-                title={item.title}
-                subtitle={`${t?.location ?? ''} · Est. $${t?.costEstimate?.toLocaleString() ?? '—'} · ${t?.addedBy || 'You'}`}
-                imageUrl={img}
-                footer={
-                  <div className="flex flex-wrap items-center gap-2">
-                    {statusBadge(st)}
-                    {t?.tags?.map((tag) => (
-                      <span key={tag} className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-travel-muted">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                }
-                action={
-                  st === 'draft' || st === 'ready_for_approval' ? (
-                    <button
-                      type="button"
-                      onClick={() => submitApproval(item)}
-                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors"
-                    >
-                      Submit for approval
-                    </button>
-                  ) : st === 'submitted' ? (
-                    <p className="text-xs text-travel-muted">In approval queue — check the Approve stage.</p>
-                  ) : null
-                }
-              />
-            );
-          })
-        )}
-      </div>
-    );
+    return <PlanStagePanel travelItems={travelItems} onSubmitForApproval={(item) => submitApproval(item)} />;
   }
 
   if (stage === 'approve') {
@@ -327,31 +266,5 @@ export default function TravelHomeBody({ user }: { user: User }) {
     );
   }
 
-  /* return */
-  return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-white">Post-trip sharing</h2>
-        <p className="text-sm text-travel-muted mt-1">See what teammates are preparing to share.</p>
-      </div>
-      {MOCK_SHARE.map((m, i) => (
-        <div key={i} className="rounded-2xl border border-white/10 p-4 bg-white/[0.02]">
-          <p className="text-xs text-travel-muted mb-1">{m.who}</p>
-          <p className="text-sm text-white/90">{m.snippet}</p>
-        </div>
-      ))}
-      <Link
-        href="/assistant?topic=memory"
-        className="block w-full text-center py-3 rounded-xl bg-orange-600/90 hover:bg-orange-500 text-white text-sm font-semibold"
-      >
-        Customize your post
-      </Link>
-      <Link
-        href="/explorer"
-        className="block w-full text-center py-3 rounded-xl border border-white/10 text-sm text-white/80 hover:bg-white/5"
-      >
-        Memory + content builder
-      </Link>
-    </div>
-  );
+  return <ReturnStagePanel user={user} />;
 }

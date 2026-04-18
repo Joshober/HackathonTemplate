@@ -98,6 +98,10 @@ function pickTicket(raw: Record<string, unknown>): TravelTicket | undefined {
 function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null {
   const location = typeof raw.location === 'string' ? raw.location : '';
   if (!location) return null;
+  const ig = typeof raw.instagramCaption === 'string' ? raw.instagramCaption : undefined;
+  const igAt =
+    typeof raw.instagramCaptionGeneratedAt === 'string' ? raw.instagramCaptionGeneratedAt : undefined;
+  const sourceUrl = typeof raw.sourceUrl === 'string' ? raw.sourceUrl : undefined;
   return {
     location,
     costEstimate: typeof raw.costEstimate === 'number' ? raw.costEstimate : Number(raw.costEstimate) || 0,
@@ -110,6 +114,11 @@ function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null
     notes: typeof raw.notes === 'string' ? raw.notes : undefined,
     bookingEstimate: pickBookingEstimate(raw),
     ticket: pickTicket(raw),
+    instagramCaption: ig,
+    instagramCaptionGeneratedAt: igAt,
+    sourceUrl,
+    startDate: typeof raw.startDate === 'string' ? raw.startDate : undefined,
+    endDate: typeof raw.endDate === 'string' ? raw.endDate : undefined,
   };
 }
 

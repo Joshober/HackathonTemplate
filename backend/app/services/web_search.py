@@ -4,26 +4,53 @@ import os
 import requests
 
 
-def _search_duckduckgo(query: str, max_results: int = 8) -> str:
-    """Search via DuckDuckGo; returns formatted string of results or error message."""
+def _ddgs_text_query(query: str, max_results: int) -> tuple[list[dict[str, str]], str | None]:
+    """
+    Run a DuckDuckGo text search.
+    Returns (rows, error). error is None on success; 'empty' for blank query; else exception message.
+    Empty rows with error None means no hits.
+    """
     if not query or not str(query).strip():
-        return "Error: empty search query."
+        return [], "empty"
     try:
         from ddgs import DDGS
 
         ddgs = DDGS()
-        results = list(ddgs.text(str(query).strip(), max_results=max_results))
+        raw = list(ddgs.text(str(query).strip(), max_results=max_results))
     except Exception as e:
-        return f"DuckDuckGo search failed: {e!s}"
+        return [], str(e)
 
-    if not results:
-        return "No results found for that query. Try a more specific query (e.g. 'weather Lamoni Iowa' or 'today news headlines')."
-
-    lines = []
-    for i, r in enumerate(results, 1):
+    rows: list[dict[str, str]] = []
+    for r in raw:
         title = (r.get("title") or "").strip()
         body = (r.get("body") or "").strip()
         href = (r.get("href") or "").strip()
+        if title or href:
+            rows.append({"title": title, "body": body, "href": href})
+    return rows, None
+
+
+def duckduckgo_text_results(query: str, max_results: int = 8) -> list[dict[str, str]]:
+    """Structured DuckDuckGo text results for APIs (Explorer, etc.). Empty list on error or no hits."""
+    rows, _err = _ddgs_text_query(query, max_results)
+    return rows
+
+
+def _search_duckduckgo(query: str, max_results: int = 8) -> str:
+    """Search via DuckDuckGo; returns formatted string of results or error message."""
+    rows, err = _ddgs_text_query(query, max_results)
+    if err == "empty":
+        return "Error: empty search query."
+    if err:
+        return f"DuckDuckGo search failed: {err}"
+    if not rows:
+        return "No results found for that query. Try a more specific query (e.g. 'weather Lamoni Iowa' or 'today news headlines')."
+
+    lines = []
+    for i, r in enumerate(rows, 1):
+        title = r["title"]
+        body = r["body"]
+        href = r["href"]
         lines.append(f"{i}. {title}\n   {body}\n   URL: {href}")
     return "\n\n".join(lines)
 

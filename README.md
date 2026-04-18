@@ -24,6 +24,7 @@ A full-stack hackathon template featuring Next.js frontend, Flask backend, Auth0
 - **Backend**: Flask RESTful API with JWT authentication
 - **Authentication**: Auth0 with Google social login
 - **Database**: MongoDB Atlas integration
+- **Travel teams**: collections `users` (Auth0 `sub` + email for invites), `teams`, and `team_messages` — used by `/api/teams` (indexes ensured on first team API use)
 - **Image Storage**: Cloudinary integration for profile images
 - **User Profiles**: Create and manage user profiles with images
 - **AI Chatbot**: OpenRouter-powered chatbot accessible from all pages

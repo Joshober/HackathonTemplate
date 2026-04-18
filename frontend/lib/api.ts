@@ -1,11 +1,15 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
+/** Persisted when user picks a team on the Team tab; read by Return stage. */
+export const TRAVEL_ACTIVE_TEAM_STORAGE_KEY = 'travelActiveTeamId';
+
 /** Optional travel metadata persisted by `/api/items` (JSON body). */
 export type TravelMetadata = Record<string, unknown>;
 
 export interface Item {
   _id?: string;
   userId?: string;
+  teamId?: string;
   title: string;
   description: string;
   imageUrls?: string[];
@@ -23,6 +27,44 @@ export interface Profile {
   profileImageUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface TeamSummary {
+  id: string;
+  name: string;
+  memberCount: number;
+}
+
+export interface TeamMember {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+  profileImageUrl?: string | null;
+}
+
+export interface TeamDetail {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdBy?: string;
+  members: TeamMember[];
+}
+
+export interface TeamMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  userId?: string | null;
+  content: string;
+  authorDisplayName?: string | null;
+  createdAt?: string | null;
+}
+
+export interface ExplorerOpportunity {
+  id: string;
+  title: string;
+  snippet: string;
+  url: string;
+  city: string;
 }
 
 async function getAccessToken(): Promise<string | null> {
@@ -181,12 +223,27 @@ export const api = {
     return fetchWithAuth(`/api/items/${id}`);
   },
 
+  async searchExplorerOpportunities(params: {
+    cities: string[];
+    maxPerCity?: number;
+  }): Promise<{ opportunities: ExplorerOpportunity[] }> {
+    return fetchWithAuth('/api/explorer/opportunities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cities: params.cities,
+        ...(params.maxPerCity != null ? { maxPerCity: params.maxPerCity } : {}),
+      }),
+    });
+  },
+
   async createItem(item: {
     title: string;
     description: string;
     images?: File[];
     videos?: File[];
     travel?: TravelMetadata;
+    teamId?: string;
   }): Promise<Item> {
     const hasFiles = (item.images?.length ?? 0) > 0 || (item.videos?.length ?? 0) > 0;
     if (!hasFiles) {
@@ -197,6 +254,7 @@ export const api = {
           title: item.title,
           description: item.description,
           travel: item.travel,
+          ...(item.teamId ? { teamId: item.teamId } : {}),
         }),
       });
     }
@@ -206,6 +264,9 @@ export const api = {
     formData.append('description', item.description);
     if (item.travel) {
       formData.append('travel', JSON.stringify(item.travel));
+    }
+    if (item.teamId) {
+      formData.append('teamId', item.teamId);
     }
 
     if (item.images) {
@@ -236,10 +297,11 @@ export const api = {
       imageUrls?: string[];
       videoUrls?: string[];
       travel?: TravelMetadata;
+      teamId?: string;
     }
   ): Promise<Item> {
     const hasFiles = (item.images?.length ?? 0) > 0 || (item.videos?.length ?? 0) > 0;
-    if (!hasFiles && (item.imageUrls != null || item.videoUrls != null || item.travel != null)) {
+    if (!hasFiles && (item.imageUrls != null || item.videoUrls != null || item.travel != null || item.teamId != null)) {
       return fetchWithAuth(`/api/items/${id}`, {
         method: 'PUT',
         headers: {
@@ -251,6 +313,7 @@ export const api = {
           imageUrls: item.imageUrls,
           videoUrls: item.videoUrls,
           travel: item.travel,
+          ...(item.teamId !== undefined ? { teamId: item.teamId } : {}),
         }),
       });
     }
@@ -694,6 +757,81 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ additional_professor_emails: additional }),
     });
+  },
+
+  async syncUser(): Promise<{ ok: boolean; userId: string }> {
+    return fetchWithAuth('/api/users/sync', { method: 'POST' });
+  },
+
+  async listTeams(): Promise<{ teams: TeamSummary[] }> {
+    return fetchWithAuth('/api/teams');
+  },
+
+  async createTeam(body: { name: string; description?: string }): Promise<{
+    id: string;
+    name: string;
+    memberCount: number;
+    createdBy: string;
+  }> {
+    return fetchWithAuth('/api/teams', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async getTeam(teamId: string): Promise<TeamDetail> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}`);
+  },
+
+  async addTeamMember(teamId: string, email: string): Promise<{ members: TeamMember[]; message?: string }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async leaveTeam(teamId: string): Promise<{ ok: boolean }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/members/me`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getTeamMessages(teamId: string, limit?: number): Promise<{ messages: TeamMessage[] }> {
+    const q = limit != null ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/messages${q}`);
+  },
+
+  async sendTeamMessage(
+    teamId: string,
+    content: string,
+    opts?: { invokeAssistant?: boolean }
+  ): Promise<{ userMessage: TeamMessage; assistantMessage: TeamMessage | null }> {
+    const body: { content: string; invokeAssistant?: boolean } = { content };
+    if (opts?.invokeAssistant !== undefined) {
+      body.invokeAssistant = opts.invokeAssistant;
+    }
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async getTeamReturnFeed(teamId: string): Promise<Item[]> {
+    const res = (await fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/return-feed`)) as {
+      items?: Item[];
+    };
+    return Array.isArray(res.items) ? res.items : [];
+  },
+
+  async generateInstagramCaption(teamId: string, itemId: string): Promise<{ caption: string }> {
+    return fetchWithAuth(
+      `/api/teams/${encodeURIComponent(teamId)}/items/${encodeURIComponent(itemId)}/instagram-caption`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }
+    ) as Promise<{ caption: string }>;
   },
 };
 
