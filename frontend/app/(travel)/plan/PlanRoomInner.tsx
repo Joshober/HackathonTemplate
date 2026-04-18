@@ -11,6 +11,11 @@ import { api } from '@/lib/api';
 
 // ── OpenRouter Config ────────────────────────────────────────────────────────
 const OPENROUTER_KEY = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY ?? '';
+const VAD_LOUD_RMS = 0.02;
+const VAD_SILENCE_MS = 900;
+const VAD_MIN_SPEECH_MS = 250;
+const VAD_MIN_RECORD_MS = 800;
+const VAD_MAX_RECORD_MS = 15_000;
 
 // ── Agent definitions ─────────────────────────────────────────────────────────
 const AGENTS = [
@@ -71,6 +76,14 @@ const APPROVAL_TRIGGERS = ['i agree', "let's approve", 'lets approve', 'make app
 
 function agentById(id: AgentId) {
   return AGENTS.find(a => a.id === id);
+}
+
+function pickRecorderMime(): string | undefined {
+  if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') {
+    return undefined;
+  }
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+  return candidates.find((mime) => MediaRecorder.isTypeSupported(mime));
 }
 
 // ── Animated orb ─────────────────────────────────────────────────────────────
@@ -186,6 +199,7 @@ export default function PlanRoomInner() {
   const [planGenerating, setPlanGenerating] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const conversationRef = useRef<string[]>([]);
+  const isMountedRef = useRef(true);
 
   // Mic state
   const inputRef = useRef(input);
@@ -200,10 +214,17 @@ export default function PlanRoomInner() {
 
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceOrbState, setVoiceOrbState] = useState<'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'>('idle');
-  const [activeVoiceAgentId, setActiveVoiceAgentId] = useState<string | null>(null);
+  const [activeVoiceAgentId, setActiveVoiceAgentId] = useState<AgentId | null>(null);
 
   const voiceModeRef = useRef(voiceMode);
   const playbackRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     voiceModeRef.current = voiceMode;
@@ -768,7 +789,7 @@ export default function PlanRoomInner() {
             </div>
 
             <p className="text-white mt-12 text-center text-lg max-w-xl font-medium drop-shadow-sm min-h-[4rem]">
-              {voiceOrbState === 'speaking' && messages.length > 0 && messages[messages.length - 1].role !== 'user'
+              {voiceOrbState === 'speaking' && messages.length > 0 && messages[messages.length - 1].agentId !== 'user'
                 ? messages[messages.length - 1].content 
                 : voiceOrbState === 'listening' 
                 ? "Go ahead, speak..."

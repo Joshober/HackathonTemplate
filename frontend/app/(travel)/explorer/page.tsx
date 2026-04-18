@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Search, SlidersHorizontal, Send, CheckCircle2, Loader2, Users } from 'lucide-react';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
@@ -24,6 +24,8 @@ import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBo
 import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
 import ApproveExplorerPlanningPanel from '@/components/travel/approve/ApproveExplorerPlanningPanel';
 import { TravelPricingOriginProvider } from '@/components/travel/approve/TravelPricingOriginContext';
+import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
+import TeamSelectorDropdown from '@/components/travel/TeamSelectorDropdown';
 
 const MAX_CITIES = 5;
 const MAX_PER_CITY = 8;
@@ -1420,47 +1422,6 @@ export default function ExplorerPage() {
           </section>
         ))}
       </div>
-
-      {/* APPROVE STAGE UI APPENDED */}
-      {stage === 'approve' && (
-        <div className="space-y-6 pt-6 mt-8 border-t border-gray-200">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Approve Phase: Booking &amp; Cost Optimization</h2>
-              <p className="text-sm text-travel-muted mt-1">
-                Compare flight bundles and run the calculator while your group approvals are ongoing.
-              </p>
-            </div>
-
-            {/* ── Send Request to Director ── */}
-            <button
-              onClick={openDirectorRequest}
-              className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white px-5 py-3 rounded-2xl font-semibold text-sm shadow-md shadow-violet-500/30 hover:shadow-lg hover:shadow-violet-500/40 hover:scale-[1.02] active:scale-95 transition-all whitespace-nowrap"
-            >
-              <Send className="w-4 h-4" />
-              Send Request to Director
-            </button>
-          </div>
-
-          <ApprovedEventsLivePricing items={panelItems} />
-          <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
-          <TravelCostCalculator
-            key={approvePanel.eligibleFinalizeItem?._id ?? 'calc-ex'}
-            initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
-            initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
-            initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
-            initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
-            busy={approvePanel.calcBusy}
-            onApply={approvePanel.onApplyCalculator}
-            applyLabel="Save estimate to first in-approval trip"
-          />
-          {approvePanel.approveMsg ? (
-            <p className="text-xs text-center text-travel-muted border border-emerald-200 bg-emerald-50 rounded-lg py-2 px-3">
-              {approvePanel.approveMsg}
-            </p>
-          ) : null}
-        </div>
-      )}
 
       {/* ── Send-to-Director modal ── */}
       {isRequestOpen && (

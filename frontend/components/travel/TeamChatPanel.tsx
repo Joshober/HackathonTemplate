@@ -223,7 +223,8 @@ export default function TeamChatPanel({
             <p className="text-[#94a3b8] text-sm mt-0.5">Start the conversation!</p>
           </div>
         ) : (
-          messages.map((m) => {
+          <>
+            {messages.map((m) => {
             const systemEvent = parseSystemEvent(m.content);
             const isUser = m.role === 'user';
             const isSystemNotice = m.content.startsWith('[SYSTEM] ') || Boolean(systemEvent);
@@ -278,10 +279,11 @@ export default function TeamChatPanel({
                     </div>
                   ) : null}
                 </div>
+              </div>
               );
             })}
             <div ref={bottomRef} />
-          </div>
+          </>
         )}
       </div>
 
@@ -296,9 +298,23 @@ export default function TeamChatPanel({
           }}
           className="flex items-center gap-2 bg-[#f8f9fa] outline outline-1 outline-gray-100 rounded-full pl-5 pr-2 py-1.5 focus-within:outline-blue-500 transition-all shadow-sm max-w-full overflow-hidden"
         >
-          {pending ? '…' : 'Send'}
-        </button>
-      </form>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message"
+            className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none min-w-0"
+            disabled={pending}
+          />
+          <button
+            type="submit"
+            disabled={pending || !input.trim()}
+            className="w-9 h-9 rounded-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center text-white shrink-0"
+            aria-label="Send message"
+          >
+            {pending ? '…' : <Send className="w-4 h-4" />}
+          </button>
+        </form>
+      </div>
       {selectedAvailabilityEvent ? (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white border border-gray-200 shadow-xl overflow-hidden">

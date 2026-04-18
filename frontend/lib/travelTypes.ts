@@ -207,6 +207,32 @@ export interface TravelItemPayload {
   privacy?: TravelPrivacyMeta;
 }
 
+export type PlanningStage = 'chat' | 'plan' | 'approve' | 'travel' | 'return';
+
+export interface TeamPlanDay {
+  day: number;
+  date: string;
+  morning: string;
+  afternoon: string;
+  evening: string;
+  hotel?: string;
+}
+
+export interface TeamPlan {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  highlights: string[];
+  budgetEstimateUSD: {
+    low: number;
+    high: number;
+  };
+  dayByDay: TeamPlanDay[];
+  notes?: string;
+  rawSummary?: string;
+  generatedAt: string;
+}
+
 export const TRAVEL_STAGES: { id: TravelStageId; label: string }[] = [
   { id: 'plan', label: 'Plan' },
   { id: 'approve', label: 'Approve' },

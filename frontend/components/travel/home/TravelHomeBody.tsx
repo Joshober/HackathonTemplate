@@ -1,13 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata } from '@/lib/api';
+import { ChevronDown } from 'lucide-react';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import PlanStagePanel from '@/components/travel/home/PlanStagePanel';
 import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import { filterTeamTripIdeas } from '@/lib/travelTeamPipeline';
 import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTypes';
 import type { User } from '@/lib/auth';
+import { useTravelStage } from '@/lib/travelContext';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import ReturnStagePanel from '@/components/travel/home/ReturnStagePanel';
 import PreTripChecklistPanel from '@/components/travel/workflow/PreTripChecklistPanel';
@@ -35,6 +38,7 @@ function statusBadge(status: TravelOpportunityStatus | undefined) {
 }
 
 export default function TravelHomeBody({ user }: { user: User }) {
+  const { stage } = useTravelStage();
   const [items, setItems] = useState<Item[]>([]);
   const [teamApprovedItems, setTeamApprovedItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -248,6 +252,37 @@ export default function TravelHomeBody({ user }: { user: User }) {
     await refresh();
   };
 
+  const voteCounts = (travel: { teamOptionVotes?: Record<string, string> } | null | undefined) => {
+    const votes = travel?.teamOptionVotes;
+    if (!votes || typeof votes !== 'object') return { a: 0, b: 0 };
+    let a = 0;
+    let b = 0;
+    Object.values(votes).forEach((v) => {
+      if (v === 'a') a += 1;
+      if (v === 'b') b += 1;
+    });
+    return { a, b };
+  };
+
+  const voteOption = async (itemId: string, option: 'a' | 'b') => {
+    if (!voterEmail) return;
+    const current = items.find((i) => i._id === itemId);
+    if (!current) return;
+    const payload = getTravelPayload(current);
+    if (!payload) return;
+    const nextVotes = {
+      ...(payload.teamOptionVotes || {}),
+      [voterEmail]: option,
+    };
+    await api.updateItem(itemId, {
+      travel: {
+        ...payload,
+        teamOptionVotes: nextVotes,
+      } as unknown as TravelMetadata,
+    });
+    await refresh();
+  };
+
 
   if (loading && !items.length) {
     return (
@@ -428,7 +463,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }
 
   if (stage === 'travel') {
-    const options = [
+    const options: Array<{ key: 'a' | 'b'; label: string }> = [
       { key: 'a', label: 'Option A — morning departure' },
       { key: 'b', label: 'Option B — flexible afternoon' },
     ];

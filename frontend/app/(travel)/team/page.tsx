@@ -376,7 +376,7 @@ export default function TeamPage() {
 
           {/* Central Area: Chat or specific stage UI */}
           <div className="flex-1 overflow-hidden relative bg-white flex flex-col">
-            {(stage === 'chat' || stage === 'plan' || stage === 'approve') ? (
+            {(stage === 'plan' || stage === 'approve') ? (
               <TeamChatPanel teamId={activeTeamId} user={user} />
             ) : stage === 'travel' ? (
               <div className="flex-1 overflow-y-auto px-5 py-4">

@@ -106,7 +106,7 @@ export default function ApprovePlanInner() {
               <MapPin className="w-3 h-3" /> Highlights
             </h4>
             <div className="flex flex-wrap gap-1.5">
-              {plan.highlights.map((h, i) => (
+              {plan.highlights.map((h: string, i: number) => (
                 <span key={i} className="bg-violet-50 text-violet-700 border border-violet-100 rounded-full px-2.5 py-0.5 text-xs font-medium">
                   {h}
                 </span>
@@ -132,7 +132,14 @@ export default function ApprovePlanInner() {
                 <Calendar className="w-3 h-3" /> Itinerary Preview
               </h4>
               <div className="space-y-2">
-                {plan.dayByDay.slice(0, 3).map(day => (
+                {plan.dayByDay.slice(0, 3).map((day: {
+                  day: number;
+                  date: string;
+                  morning?: string;
+                  afternoon?: string;
+                  evening?: string;
+                  hotel?: string;
+                }) => (
                   <div key={day.day} className="bg-gray-50 rounded-xl px-3 py-2.5 border border-gray-100">
                     <p className="text-xs font-bold text-violet-700 mb-1">Day {day.day} · {day.date}</p>
                     <div className="grid grid-cols-3 gap-1 text-[11px] text-gray-600">
