@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowRight, Search, SlidersHorizontal, Send, CheckCircle2, Loader2, Users } from 'lucide-react';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import OpportunityCard from '@/components/travel/OpportunityCard';
@@ -49,6 +49,7 @@ export default function ExplorerPage() {
   const [teamCities, setTeamCities] = useState<string[]>([]);
   const [selectedCities, setSelectedCities] = useState<string[]>([]);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(null);
   const [presetInput, setPresetInput] = useState('');
   const [presetSuggestions, setPresetSuggestions] = useState<CitySuggestion[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -61,6 +62,18 @@ export default function ExplorerPage() {
   const [endDate, setEndDate] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'relevance'>('date');
   const [maxPerCity, setMaxPerCity] = useState(MAX_PER_CITY);
+
+  // Send-to-Director modal state
+  const [isRequestOpen, setIsRequestOpen] = useState(false);
+  const [requestStatus, setRequestStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+
+  const openDirectorRequest = () => { setRequestStatus('idle'); setIsRequestOpen(true); };
+  const closeDirectorRequest = () => { setIsRequestOpen(false); setTimeout(() => setRequestStatus('idle'), 300); };
+  const sendDirectorRequest = async () => {
+    setRequestStatus('sending');
+    await new Promise((res) => setTimeout(res, 1500));
+    setRequestStatus('sent');
+  };
   const [sourceTicketmaster, setSourceTicketmaster] = useState(true);
   const [sourceDuckduckgo, setSourceDuckduckgo] = useState(true);
   const [sourceOpenstreetmap, setSourceOpenstreetmap] = useState(true);
@@ -87,6 +100,7 @@ export default function ExplorerPage() {
     if (!activeTeamId) {
       setTeamCities([]);
       setSelectedCities([]);
+      setTeamName(null);
       return;
     }
     let mounted = true;
@@ -104,6 +118,7 @@ export default function ExplorerPage() {
         const fromPresets = Array.from(new Set((detail.cityPresets || []).map((c) => c.trim()).filter(Boolean)));
         const unique = Array.from(new Set([...fromPresets, ...fromItems])).sort((a, b) => a.localeCompare(b)).slice(0, 30);
         setTeamCities(unique);
+        setTeamName(detail.name || null);
         setSelectedCities((prev) => {
           if (prev.length) {
             return prev.filter((c) => unique.includes(c)).slice(0, MAX_CITIES);
@@ -679,12 +694,24 @@ export default function ExplorerPage() {
       {/* APPROVE STAGE UI APPENDED */}
       {stage === 'approve' && (
         <div className="space-y-6 pt-6 mt-8 border-t border-gray-200">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Approve Phase: Booking & Cost Optimization</h2>
-            <p className="text-sm text-travel-muted mt-1">
-              Compare flight bundles and run the calculator while your group approvals are ongoing.
-            </p>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Approve Phase: Booking &amp; Cost Optimization</h2>
+              <p className="text-sm text-travel-muted mt-1">
+                Compare flight bundles and run the calculator while your group approvals are ongoing.
+              </p>
+            </div>
+
+            {/* ── Send Request to Director ── */}
+            <button
+              onClick={openDirectorRequest}
+              className="flex items-center gap-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white px-5 py-3 rounded-2xl font-semibold text-sm shadow-md shadow-violet-500/30 hover:shadow-lg hover:shadow-violet-500/40 hover:scale-[1.02] active:scale-95 transition-all whitespace-nowrap"
+            >
+              <Send className="w-4 h-4" />
+              Send Request to Director
+            </button>
           </div>
+
           <ApprovedEventsLivePricing items={panelItems} />
           <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
           <TravelCostCalculator
@@ -702,6 +729,95 @@ export default function ExplorerPage() {
               {approvePanel.approveMsg}
             </p>
           ) : null}
+        </div>
+      )}
+
+      {/* ── Send-to-Director modal ── */}
+      {isRequestOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"
+            onClick={requestStatus !== 'sending' ? closeDirectorRequest : undefined}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-auto space-y-5 animate-in fade-in zoom-in duration-200">
+            {requestStatus !== 'sent' ? (
+              <>
+                <button
+                  onClick={closeDirectorRequest}
+                  disabled={requestStatus === 'sending'}
+                  className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center disabled:opacity-40 transition-colors"
+                >
+                  <span className="text-gray-500 text-lg leading-none">&times;</span>
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-100 to-blue-100 flex items-center justify-center flex-shrink-0">
+                    <Send className="w-5 h-5 text-violet-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900">Send Request to Director</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Your director will be notified for approval</p>
+                  </div>
+                </div>
+
+                {teamName && (
+                  <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Selected Team</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#4472fa] to-[#a445f6] flex items-center justify-center flex-shrink-0">
+                        <Users className="w-3 h-3 text-white" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900">{teamName}</p>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-sm text-gray-600">
+                  Your director will receive a notification to review and approve this team&apos;s travel plan. Once sent, they will be able to accept or request changes.
+                </p>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={closeDirectorRequest}
+                    disabled={requestStatus === 'sending'}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void sendDirectorRequest()}
+                    disabled={requestStatus === 'sending'}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white text-sm font-semibold transition-all disabled:opacity-70 shadow-sm shadow-violet-500/30"
+                  >
+                    {requestStatus === 'sending' ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" />Sending&hellip;</>
+                    ) : (
+                      <><Send className="w-4 h-4" />Send Request</>
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center text-center py-4 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <CheckCircle2 className="w-9 h-9 text-emerald-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Request Sent! 🎉</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Your director has been notified to review
+                    {teamName ? <> <span className="font-semibold text-gray-700">{teamName}</span>&apos;s</> : null} travel plan.
+                  </p>
+                </div>
+                <button
+                  onClick={closeDirectorRequest}
+                  className="w-full px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-semibold transition-colors shadow-sm"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -7,7 +7,7 @@ import { Compass, Home, LayoutGrid, MessageSquare, Users } from 'lucide-react';
 const tabs: { href: string; label: string; Icon: typeof Home }[] = [
   { href: '/home', label: 'Home', Icon: Home },
   { href: '/explorer', label: 'Explorer', Icon: Compass },
-  { href: '/assistant', label: 'AI', Icon: MessageSquare },
+  { href: '/assistant', label: 'Copilot', Icon: MessageSquare },
   { href: '/team', label: 'Team', Icon: Users },
   { href: '/profile', label: 'More', Icon: LayoutGrid },
 ];

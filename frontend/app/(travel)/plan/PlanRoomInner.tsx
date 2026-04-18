@@ -153,7 +153,7 @@ export default function PlanRoomInner() {
     {
       id: 'welcome',
       agentId: 'system',
-      content: 'Welcome to the AI Planning Room. Tell us your destination to get started!',
+      content: 'Welcome to the TripReady Copilot Hub. Tell us your destination to get started!',
       timestamp: new Date(),
     },
     {

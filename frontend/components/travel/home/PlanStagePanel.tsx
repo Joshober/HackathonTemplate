@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Sparkles } from 'lucide-react';
 import { animate, motion, useMotionValue, useTransform } from 'motion/react';
 import type { Item } from '@/lib/api';
 import { getTravelPayload } from '@/lib/travelItem';
@@ -248,9 +249,24 @@ export default function PlanStagePanel({
     return (
       <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-white">Planning dashboard</h2>
+          <h2 className="text-lg font-semibold text-white">Copilot Dashboard</h2>
           <p className="text-sm text-travel-muted mt-1">Review suggestions and track trips that are already approved.</p>
         </div>
+
+        {/* Pre-Trip Copilot Policy Brief */}
+        <div className="rounded-xl border border-blue-400/30 bg-blue-900/40 p-4 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="w-4 h-4 text-blue-400" />
+            <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">Copilot Pre-Trip Brief</span>
+          </div>
+          <ul className="text-sm text-blue-100 flex flex-col gap-1.5 list-disc pl-4">
+            <li><strong>Company Policy:</strong> Flights max $500, Hotels max $200/night.</li>
+            <li><strong>Requirements:</strong> Director approval needed for international destinations.</li>
+            <li><strong>Action Items:</strong> Ensure passport is valid for 6+ months for London travel.</li>
+          </ul>
+        </div>
+
         <ApprovedEventsSlider items={approvedStrip} />
         <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-travel-muted text-sm">
           Nothing new to review.{' '}
@@ -278,8 +294,22 @@ export default function PlanStagePanel({
       ) : null}
 
       <div>
-        <h2 className="text-lg font-semibold text-white">Planning dashboard</h2>
+        <h2 className="text-lg font-semibold text-white">Copilot Dashboard</h2>
         <p className="text-sm text-travel-muted mt-1">Scroll approved trips, then swipe through new suggestions.</p>
+      </div>
+
+      {/* Pre-Trip Copilot Policy Brief */}
+      <div className="rounded-xl border border-blue-400/30 bg-blue-900/40 p-4 relative overflow-hidden backdrop-blur-sm">
+        <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+        <div className="flex items-center gap-2 mb-2">
+          <Sparkles className="w-4 h-4 text-blue-400" />
+          <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">Copilot Pre-Trip Brief</span>
+        </div>
+        <ul className="text-sm text-blue-100 flex flex-col gap-1.5 list-disc pl-4">
+          <li><strong>Company Policy:</strong> Flights max $500, Hotels max $200/night.</li>
+          <li><strong>Requirements:</strong> Director approval needed for international destinations.</li>
+          <li><strong>Action Items:</strong> Ensure passport is valid for 6+ months for London travel.</li>
+        </ul>
       </div>
 
       <ApprovedEventsSlider items={approvedStrip} />

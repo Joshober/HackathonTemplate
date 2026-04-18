@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { Receipt, CheckCircle, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, type Item, type TravelMetadata, TRAVEL_ACTIVE_TEAM_STORAGE_KEY } from '@/lib/api';
 import type { User } from '@/lib/auth';
@@ -34,6 +35,9 @@ export default function ReturnStagePanel({ user }: { user: User }) {
   const [shareBusy, setShareBusy] = useState<string | null>(null);
   const [capBusy, setCapBusy] = useState<string | null>(null);
   const [uploadBusy, setUploadBusy] = useState<string | null>(null);
+
+  const [expensesDone, setExpensesDone] = useState(false);
+  const [expensing, setExpensing] = useState(false);
 
   const readTeamFromStorage = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -219,11 +223,49 @@ export default function ReturnStagePanel({ user }: { user: User }) {
       ) : null}
 
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">Team Return feed</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Post-Trip Workspace</h2>
         <p className="text-sm text-travel-muted mt-1">
-          Approved and booked trips shared with this team, plus post-trip moments teammates add.
+          Automate your expenses and build trip memories with your team.
         </p>
       </div>
+
+      {/* EXPENSE RECONCILIATION COPILOT (MOCK) */}
+      {!expensesDone ? (
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 space-y-3 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-violet-500" />
+          <div className="flex items-center gap-2">
+            <Receipt className="w-5 h-5 text-violet-600" />
+            <h4 className="text-sm font-bold text-violet-900">Copilot Expense Assistant</h4>
+          </div>
+          <p className="text-xs text-violet-800">
+            I've detected 3 unexpensed receipts from your recent travel totaling $214.50 (Uber, Starbucks, and Delta WiFi). 
+          </p>
+          <div className="bg-white/60 p-3 rounded-xl border border-violet-100 flex items-center justify-between">
+            <span className="text-xs font-semibold text-gray-800">Ready to reconcile?</span>
+            <button 
+              onClick={() => {
+                setExpensing(true);
+                setTimeout(() => setExpensesDone(true), 2000);
+              }}
+              disabled={expensing}
+              className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold disabled:opacity-50 flex items-center gap-2"
+            >
+              {expensing ? <RefreshCw className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Auto-Generate Report'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 space-y-2 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <span className="text-sm font-bold text-emerald-900">Expenses Submitted</span>
+          </div>
+          <p className="text-xs text-emerald-800">
+            Copilot automatically generated the report and pushed it to Concur. Your manager has been notified.
+          </p>
+        </div>
+      )}
 
       {shareable.length > 0 ? (
         <div className="space-y-2">
