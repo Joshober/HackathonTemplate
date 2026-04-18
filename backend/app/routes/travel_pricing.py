@@ -278,7 +278,13 @@ def pricing_preview(user_id):
         row["scrapedOptions"] = []
         row["scrapeNote"] = None
         if scrape_enabled() and ob:
-            opts, serr = collect_scraped_options(origin_iata, dest_q or "travel", ob, ib)
+            opts, serr = collect_scraped_options(
+                origin_iata,
+                dest_q or "travel",
+                ob,
+                ib,
+                destination_iata=dest_code,
+            )
             row["scrapedOptions"] = opts
             if serr:
                 row["scrapeNote"] = serr

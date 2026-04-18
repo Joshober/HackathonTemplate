@@ -208,7 +208,9 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
         <p className="text-xs text-travel-muted mt-1">
           Flights: Amadeus test API if <code className="text-gray-800 bg-gray-100 px-1 rounded">AMADEUS_CLIENT_ID</code> is set, otherwise
           Duffel if <code className="text-gray-800 bg-gray-100 px-1 rounded">DUFFEL_ACCESS_TOKEN</code> is set, otherwise links only. Hotels
-          still need Amadeus. Optional scrape: <code className="text-gray-800 bg-gray-100 px-1 rounded">TRAVEL_SCRAPE_OPTIONS=1</code>. Override:{' '}
+          still need Amadeus. Optional scrape: <code className="text-gray-800 bg-gray-100 px-1 rounded">TRAVEL_SCRAPE_OPTIONS=1</code>
+          ; SerpAPI Google Flights + DuckDuckGo engines: <code className="text-gray-800 bg-gray-100 px-1 rounded">SERPAPI_API_KEY</code>{' '}
+          + <code className="text-gray-800 bg-gray-100 px-1 rounded">TRAVEL_SERPAPI_SCRAPE=1</code> (needs destination resolved to IATA for flight rows). Override:{' '}
           <code className="text-gray-800 bg-gray-100 px-1 rounded">TRAVEL_FLIGHT_PROVIDER</code> (<code className="text-gray-800 bg-gray-100 px-1 rounded">auto</code>,{' '}
           <code className="text-gray-800 bg-gray-100 px-1 rounded">amadeus</code>, <code className="text-gray-800 bg-gray-100 px-1 rounded">duffel</code>).
         </p>

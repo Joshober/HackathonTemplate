@@ -1,4 +1,4 @@
-.PHONY: kill stack-up stack-down stack-restart run-flutter-mobile flutter-run docker-doctor dev-backend dev-frontend compose-reset
+.PHONY: kill stack-up stack-down stack-restart run-flutter-mobile flutter-run run-travelbot docker-doctor dev-backend dev-frontend compose-reset
 
 COMPOSE_RUN := "$(CURDIR)/scripts/compose-with-desktop.sh"
 DOCKER_RUN := "$(CURDIR)/scripts/docker-with-desktop.sh"
@@ -6,6 +6,9 @@ COMPOSE_PROJECT_NAME ?= hackathonstack
 
 FLUTTER_BRANCH ?= flutter-mobile
 FLUTTER_DEVICE ?= macos
+
+# Travelbot feature branch (see origin/Travelbot)
+TRAVELBOT_BRANCH ?= Travelbot
 
 kill:
 	@$(COMPOSE_RUN) -f "$(CURDIR)/docker-compose.yml" -p $(COMPOSE_PROJECT_NAME) down --remove-orphans 2>/dev/null || true
@@ -59,3 +62,13 @@ run-flutter-mobile:
 
 flutter-run:
 	cd mobile && flutter pub get && flutter run -d $(FLUTTER_DEVICE)
+
+# Kill local/docker dev, switch to Travelbot, start stack (same pattern as run-flutter-mobile)
+run-travelbot: kill
+	@git fetch origin $(TRAVELBOT_BRANCH) 2>/dev/null || true
+	@git checkout $(TRAVELBOT_BRANCH) 2>/dev/null || git checkout -B $(TRAVELBOT_BRANCH) origin/$(TRAVELBOT_BRANCH)
+	@git pull --ff-only origin $(TRAVELBOT_BRANCH) 2>/dev/null || true
+	$(COMPOSE_RUN) -f "$(CURDIR)/docker-compose.yml" -p $(COMPOSE_PROJECT_NAME) up --build -d
+	@echo ""
+	@echo "Travelbot: http://localhost:3000 — API http://localhost:5001"
+	@echo "Logs: $(COMPOSE_RUN) -f \"$(CURDIR)/docker-compose.yml\" -p $(COMPOSE_PROJECT_NAME) logs -f frontend"

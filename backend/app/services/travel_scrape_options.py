@@ -1,4 +1,9 @@
-"""Hackathon-only: DDG snippets + optional light HTML fetch. Set TRAVEL_SCRAPE_OPTIONS=1."""
+"""Hackathon-only: DDG snippets + optional light HTML fetch. Set TRAVEL_SCRAPE_OPTIONS=1.
+
+SerpAPI (optional): set TRAVEL_SERPAPI_SCRAPE=1 and SERPAPI_API_KEY to use
+  - engine=google_flights when destination_iata is known (passed from pricing preview)
+  - engine=duckduckgo for text queries instead of the local ddgs client
+"""
 
 from __future__ import annotations
 
@@ -7,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.services.web_search import duckduckgo_text_results
+from app.services.web_search import _ddgs_text_query
 
 _SCRAPE_ON = frozenset({"1", "true", "yes"})
 
@@ -15,6 +20,27 @@ _SCRAPE_ON = frozenset({"1", "true", "yes"})
 def scrape_enabled() -> bool:
     v = (os.getenv("TRAVEL_SCRAPE_OPTIONS") or "").strip().lower()
     return v in _SCRAPE_ON
+
+
+def serpapi_travel_scrape_enabled() -> bool:
+    """Use SerpAPI google_flights + duckduckgo engines for travel scrape (needs SERPAPI_API_KEY)."""
+    if (os.getenv("TRAVEL_SERPAPI_SCRAPE") or "").strip().lower() not in _SCRAPE_ON:
+        return False
+    from app.services.serpapi_travel import get_serpapi_key
+
+    return bool(get_serpapi_key())
+
+
+def _text_search_rows(query: str, max_results: int) -> tuple[list[dict[str, str]], str | None]:
+    """Local DuckDuckGo (ddgs) or SerpAPI engine=duckduckgo."""
+    if serpapi_travel_scrape_enabled():
+        from app.services.serpapi_travel import serpapi_duckduckgo_text_results
+
+        return serpapi_duckduckgo_text_results(query, max_results=max_results)
+    rows, err = _ddgs_text_query(query, max_results)
+    if err == "empty":
+        return [], None
+    return rows, err
 
 
 def _fetch_page_title(url: str, timeout: float = 4.0, max_bytes: int = 120_000) -> str | None:
@@ -66,6 +92,7 @@ def collect_scraped_options(
     city: str,
     outbound: str,
     inbound: str | None,
+    destination_iata: str | None = None,
     max_ddg: int = 6,
     max_html: int = 2,
 ) -> tuple[list[dict], str | None]:
@@ -73,16 +100,55 @@ def collect_scraped_options(
         return [], None
     out: list[dict] = []
     seen: set[str] = set()
+    err: str | None = None
+
+    # SerpAPI Google Flights — needs resolved 3-letter destination airport (from Amadeus/Duffel in pricing route)
+    if serpapi_travel_scrape_enabled() and destination_iata:
+        try:
+            from app.services.serpapi_travel import serpapi_google_flights_scraped_rows
+
+            gf_rows, gf_err = serpapi_google_flights_scraped_rows(
+                origin_iata,
+                destination_iata,
+                outbound,
+                inbound,
+                max_options=5,
+            )
+            if gf_err and not gf_rows:
+                err = gf_err
+            elif gf_err and gf_rows:
+                err = err or gf_err
+            gf_dedupe: set[str] = set()
+            for gr in gf_rows:
+                t = (gr.get("title") or "")[:240]
+                u = (gr.get("url") or "").strip() or "https://www.google.com/travel/flights"
+                dkey = f"{t}|{u}"
+                if dkey in gf_dedupe:
+                    continue
+                gf_dedupe.add(dkey)
+                out.append(
+                    {
+                        "title": gr.get("title") or "Flight",
+                        "snippet": gr.get("snippet") or "",
+                        "url": u[:2000],
+                        "kind": gr.get("kind") or "flight",
+                        "sourceQuery": gr.get("sourceQuery") or "google_flights",
+                    }
+                )
+        except Exception as e:
+            err = str(e)
+
     queries = [
         f"cheap flights {origin_iata} to {city} {outbound}",
         f"hotels {city} check in {outbound}",
     ]
     if inbound:
         queries.append(f"round trip flights {origin_iata} {city} return {inbound}")
-    err: str | None = None
     for q in queries:
         try:
-            rows = duckduckgo_text_results(q, max_results=max_ddg)
+            rows, row_err = _text_search_rows(q, max_ddg)
+            if row_err and row_err != "empty query":
+                err = err or row_err
         except Exception as e:
             err = str(e)
             rows = []
