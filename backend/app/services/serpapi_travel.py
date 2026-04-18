@@ -18,23 +18,21 @@ def get_serpapi_key() -> str | None:
     return str(k).strip()
 
 
-_ENV_ON = frozenset({"1", "true", "yes"})
-
-
-def _serpapi_scrape_flag() -> bool:
-    return (os.getenv("TRAVEL_SERPAPI_SCRAPE") or "").strip().lower() in _ENV_ON
+_ENV_OFF = frozenset({"0", "false", "no", "off"})
 
 
 def serpapi_google_hotels_enabled() -> bool:
     """
-    Needs SERPAPI_API_KEY and either TRAVEL_SERPAPI_GOOGLE_HOTELS=1 or TRAVEL_SERPAPI_SCRAPE=1
-    (same key as Google Flights scrape).
+    Google Hotels via SerpAPI when SERPAPI_API_KEY is set (default on).
+
+    Opt out: TRAVEL_SERPAPI_GOOGLE_HOTELS=0|false|off|no.
     """
     if not get_serpapi_key():
         return False
-    if (os.getenv("TRAVEL_SERPAPI_GOOGLE_HOTELS") or "").strip().lower() in _ENV_ON:
-        return True
-    return _serpapi_scrape_flag()
+    raw = (os.getenv("TRAVEL_SERPAPI_GOOGLE_HOTELS") or "").strip().lower()
+    if raw in _ENV_OFF:
+        return False
+    return True
 
 
 def parse_duration_to_minutes(text: str) -> int | None:
@@ -131,10 +129,30 @@ def serpapi_google_hotels_offer_rows(
     if isinstance(meta.get("google_hotels_url"), str):
         fallback_url = meta["google_hotels_url"].strip()[:2000]
 
+    def _property_dicts_for_offers() -> list[dict[str, Any]]:
+        """SerpAPI may return `properties`, a single property on the root (property-details layout), or `ads`."""
+        raw = data.get("properties")
+        if isinstance(raw, list) and raw:
+            return [p for p in raw if isinstance(p, dict)][:max_properties]
+
+        si = data.get("search_information") if isinstance(data.get("search_information"), dict) else {}
+        state = str(si.get("hotels_results_state") or "").lower()
+        name = (data.get("name") or "").strip() if isinstance(data.get("name"), str) else ""
+        typ = str(data.get("type") or "").lower()
+        if name and (
+            "property details" in state
+            or (data.get("property_token") and typ in ("hotel", "vacation rental"))
+        ):
+            return [data]
+
+        ads = data.get("ads")
+        if isinstance(ads, list) and ads:
+            return [p for p in ads if isinstance(p, dict)][:max_properties]
+
+        return []
+
     offers: list[dict[str, Any]] = []
-    for prop in (data.get("properties") or [])[:max_properties]:
-        if not isinstance(prop, dict):
-            continue
+    for prop in _property_dicts_for_offers():
         name = (prop.get("name") or "Hotel").strip()[:240]
         ptype = (prop.get("type") or "").strip()
         token = (prop.get("property_token") or "")[:120]
@@ -149,6 +167,8 @@ def serpapi_google_hotels_offer_rows(
         ext_total = tr.get("extracted_lowest")
         if ext_total is None:
             ext_total = rn.get("extracted_lowest")
+        if ext_total is None and prop.get("extracted_price") is not None:
+            ext_total = prop.get("extracted_price")
         total_s = tr.get("lowest") or rn.get("lowest")
         if ext_total is not None:
             total_out = str(ext_total)

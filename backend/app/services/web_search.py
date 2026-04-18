@@ -4,6 +4,22 @@ import os
 import requests
 
 
+def _ddgs_class():
+    """Prefer the `ddgs` module (duckduckgo-search 7+); fall back to `duckduckgo_search`."""
+    try:
+        from ddgs import DDGS  # type: ignore[import-untyped]
+
+        return DDGS
+    except ImportError:
+        pass
+    try:
+        from duckduckgo_search import DDGS  # type: ignore[import-untyped]
+
+        return DDGS
+    except ImportError:
+        return None
+
+
 def _ddgs_text_query(query: str, max_results: int) -> tuple[list[dict[str, str]], str | None]:
     """
     Run a DuckDuckGo text search.
@@ -12,9 +28,13 @@ def _ddgs_text_query(query: str, max_results: int) -> tuple[list[dict[str, str]]
     """
     if not query or not str(query).strip():
         return [], "empty"
+    DDGS = _ddgs_class()
+    if DDGS is None:
+        return (
+            [],
+            "DuckDuckGo client not installed (pip install duckduckgo-search)",
+        )
     try:
-        from ddgs import DDGS
-
         ddgs = DDGS()
         raw = list(ddgs.text(str(query).strip(), max_results=max_results))
     except Exception as e:

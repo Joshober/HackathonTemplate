@@ -189,6 +189,14 @@ export interface TravelPricingFlightOfferSummary {
   source?: string;
 }
 
+export interface TravelPricingMatrixFlightOption extends TravelPricingFlightOfferSummary {
+  optionId?: string;
+  outboundDepartureAt?: string;
+  outboundArrivalAt?: string;
+  returnDepartureAt?: string;
+  returnArrivalAt?: string;
+}
+
 export interface TravelPricingHotelOfferRow {
   hotelId?: string;
   hotelName?: string;
@@ -202,6 +210,47 @@ export interface TravelPricingHotelOfferRow {
   distanceHint?: string | null;
   listingUrl?: string | null;
   source?: string;
+}
+
+export interface TravelPricingMatrixHotelOption extends TravelPricingHotelOfferRow {
+  optionId?: string;
+}
+
+export interface TravelPricingBundleOption {
+  bundleId: string;
+  flightOptionId?: string;
+  hotelOptionId?: string;
+  flightSource?: string;
+  hotelSource?: string;
+  currency?: string;
+  flightTotal?: number | null;
+  hotelTotal?: number | null;
+  totalEstimated?: number | null;
+  score?: number;
+  scoreBreakdown?: {
+    attendance?: number;
+    approval?: number;
+    price?: number;
+  };
+}
+
+export interface TravelPricingWindowSummary {
+  windowStart: string;
+  windowEnd: string;
+  tripCount: number;
+  cheapestFlight?: number | null;
+  cheapestHotel?: number | null;
+  cheapestBundle?: number | null;
+  assumptionFlags?: string[];
+}
+
+export interface TravelPricingAttendance {
+  canAttend?: boolean | null;
+  score?: number;
+  eventStartDate?: string | null;
+  eventEndDate?: string | null;
+  assumedEventDate?: string | null;
+  evaluation?: string | null;
 }
 
 export interface TravelPricingDeepLinks {
@@ -224,8 +273,11 @@ export interface TravelPricingEventResult {
   itemId?: string;
   title: string;
   destinationQuery: string;
+  outboundDate?: string;
+  inboundDate?: string;
   deepLinks: TravelPricingDeepLinks;
   resolvedDestination?: { iata: string | null; label: string | null } | null;
+  attendance?: TravelPricingAttendance;
   flight: {
     offers: TravelPricingFlightOfferSummary[];
     error?: string | null;
@@ -241,6 +293,17 @@ export interface TravelPricingEventResult {
     averageDistanceMinutes?: number | null;
     distanceSummary?: string | null;
   };
+  flightOptions?: TravelPricingMatrixFlightOption[];
+  hotelOptions?: TravelPricingMatrixHotelOption[];
+  bundleOptions?: TravelPricingBundleOption[];
+  assumptionFlags?: string[];
+  matrixSummary?: {
+    flightOptionsCount?: number;
+    hotelOptionsCount?: number;
+    bundleOptionsCount?: number;
+    bestBundleTotal?: number | null;
+    bestBundleScore?: number | null;
+  };
   scrapedOptions: TravelPricingScrapedOption[];
   scrapeNote?: string | null;
   /** amadeus | duffel | none — which backend served flights for this row */
@@ -251,8 +314,48 @@ export interface TravelPricingPreviewResponse {
   mode: 'amadeus' | 'duffel' | 'links_only';
   /** Global preference resolution: amadeus | duffel | none */
   flightBackend?: string;
+  flightBackends?: string[];
   scrapeEnabled: boolean;
+  matrixCaps?: {
+    flightOptions?: number;
+    hotelOptions?: number;
+    bundleOptions?: number;
+  };
+  windowSummaries?: TravelPricingWindowSummary[];
+  tripEvaluations?: TravelPricingEventResult[];
   events: TravelPricingEventResult[];
+}
+
+export interface ExplorerAiHelpRecommendation {
+  title: string;
+  reasoning: string;
+  totalEstimated?: number | null;
+  score?: number | null;
+  assumptions?: string[];
+}
+
+export interface ExplorerAiHelpResponse {
+  message: string;
+  recommendations: ExplorerAiHelpRecommendation[];
+  refreshApplied?: boolean;
+  searchRefresh?: {
+    opportunityCount?: number;
+    topOpportunities?: ExplorerOpportunity[];
+  } | null;
+  pricingRefresh?: {
+    mode?: string;
+    flightBackends?: string[];
+    windowSummaries?: TravelPricingWindowSummary[];
+    trips?: Array<{
+      itemId?: string;
+      title?: string;
+      destinationQuery?: string;
+      attendance?: TravelPricingAttendance;
+      bestBundle?: TravelPricingBundleOption | null;
+      assumptionFlags?: string[];
+    }>;
+  } | null;
+  model?: string | null;
 }
 
 async function getAccessToken(): Promise<string | null> {
@@ -438,6 +541,36 @@ export const api = {
     });
   },
 
+  async getExplorerAiHelp(body: {
+    prompt: string;
+    refresh?: boolean;
+    context?: Record<string, unknown>;
+    refreshSearchParams?: ExplorerSearchParams;
+    refreshPricingParams?: {
+      originIata: string;
+      events: Array<{
+        itemId?: string;
+        title?: string;
+        destinationQuery?: string;
+        location?: string;
+        outboundDate: string;
+        inboundDate?: string;
+        checkIn?: string;
+        checkOut?: string;
+        adults?: number;
+        eventStartDate?: string;
+        eventEndDate?: string;
+        approvalSignal?: number;
+      }>;
+    };
+  }): Promise<ExplorerAiHelpResponse> {
+    return fetchWithAuth('/api/explorer/ai-help', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  },
+
   async getGoogleCalendarAuthUrl(): Promise<{ auth_url: string }> {
     return fetchWithAuth('/api/auth/google/calendar/login');
   },
@@ -471,6 +604,9 @@ export const api = {
       checkIn?: string;
       checkOut?: string;
       adults?: number;
+      eventStartDate?: string;
+      eventEndDate?: string;
+      approvalSignal?: number;
     }>;
   }): Promise<TravelPricingPreviewResponse> {
     return fetchWithAuth('/api/travel/pricing-preview', {

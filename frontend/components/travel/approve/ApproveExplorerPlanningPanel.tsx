@@ -10,7 +10,6 @@ import {
   type ExplorerOpportunity,
   type Item,
   type TeamCalendarCoverage,
-  type TeamMemberAvailability,
 } from '@/lib/api';
 import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import type { TravelItemPayload, TravelOpportunityStatus } from '@/lib/travelTypes';
@@ -19,6 +18,7 @@ import {
   pickLargestInterval,
   type ManualOverlapResult,
 } from '@/lib/teamAvailabilityOverlap';
+import PricingFlyingFromSection from '@/components/travel/approve/PricingFlyingFromSection';
 
 const MAX_CITIES = 5;
 const MAX_PER_CITY = 8;
@@ -92,7 +92,6 @@ export default function ApproveExplorerPlanningPanel({
   onAddEventOption,
   busyOptionId,
 }: Props) {
-  const [members, setMembers] = useState<TeamMemberAvailability[]>([]);
   const [calendarCoverage, setCalendarCoverage] = useState<TeamCalendarCoverage | null>(null);
   const [overlap, setOverlap] = useState<ManualOverlapResult | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -108,13 +107,10 @@ export default function ApproveExplorerPlanningPanel({
   const skipAutoApplyWindowRef = useRef(false);
   const [tripWindowIsCustom, setTripWindowIsCustom] = useState(false);
   const [customDatesOpen, setCustomDatesOpen] = useState(false);
-  const [planningPanelOpen, setPlanningPanelOpen] = useState(false);
-
   const refreshAvailability = useCallback(async () => {
     if (!teamId) {
       skipAutoApplyWindowRef.current = false;
       setTripWindowIsCustom(false);
-      setMembers([]);
       setCalendarCoverage(null);
       setOverlap(null);
       return;
@@ -122,7 +118,6 @@ export default function ApproveExplorerPlanningPanel({
     setLoadErr(null);
     try {
       const [avail, cov] = await Promise.all([api.getTeamAvailability(teamId), api.getTeamCalendarCoverage(teamId)]);
-      setMembers(avail.members || []);
       setCalendarCoverage(cov);
       const computed = computeManualTeamOverlap(avail.members || []);
       setOverlap(computed);
@@ -134,7 +129,6 @@ export default function ApproveExplorerPlanningPanel({
       }
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : 'Could not load team availability');
-      setMembers([]);
       setCalendarCoverage(null);
       setOverlap(null);
     }
@@ -168,8 +162,6 @@ export default function ApproveExplorerPlanningPanel({
     }
   }, [windowStart, windowEnd, onPlanningWindowChange]);
 
-  const calendarByUserId = new Map((calendarCoverage?.members || []).map((m) => [m.userId, m]));
-
   const windowValid = Boolean(windowStart && windowEnd && windowStart <= windowEnd);
 
   const { tripsInWindow, tripsOutsideWindow, tripsUnknownDates } = useMemo(() => {
@@ -195,7 +187,7 @@ export default function ApproveExplorerPlanningPanel({
     return { tripsInWindow: inside, tripsOutsideWindow: outside, tripsUnknownDates: unknown };
   }, [pipelineItems, windowStart, windowEnd, windowValid]);
 
-  const renderTeamTripCard = (item: Item) => {
+  const renderTeamTripCard = (item: Item, compact?: boolean) => {
     const t = getTravelPayload(item);
     const img = t?.imageUrl || item.imageUrls?.[0];
     const when =
@@ -210,7 +202,8 @@ export default function ApproveExplorerPlanningPanel({
         key={item._id || item.title}
         title={item.title}
         subtitle={[t?.location, when, est].filter(Boolean).join(' · ') || undefined}
-        imageUrl={img}
+        imageUrl={compact ? undefined : img}
+        compact={compact}
         footer={
           <div className="flex flex-wrap items-center gap-2">
             {statusPill(t?.opportunityStatus)}
@@ -287,51 +280,56 @@ export default function ApproveExplorerPlanningPanel({
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{loadErr}</div>
       ) : null}
 
-      {!teamId ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
-          <p className="font-medium text-gray-900">No active team</p>
-          <p className="text-xs mt-1 text-amber-800/90">
-            Pick a team to load shared availability, run &quot;everyone free&quot; search, and see calendar coverage.
-          </p>
-          <Link href="/team" className="inline-block mt-2 text-xs text-blue-700 font-medium hover:underline">
-            Open Team tab
-          </Link>
-        </div>
-      ) : null}
-
-      {teamId ? (
-        <details
-          className="group rounded-2xl border border-gray-200 bg-white shadow-sm open:shadow-md transition-shadow"
-          open={planningPanelOpen}
-          onToggle={(e) => setPlanningPanelOpen(e.currentTarget.open)}
-        >
-          <summary className="list-none cursor-pointer select-none px-4 py-3 [&::-webkit-details-marker]:hidden">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-gray-900">Team window, availability &amp; search</h3>
-                <p className="text-[11px] text-travel-muted mt-1">
-                  {windowValid ? (
-                    <>
-                      <span className="font-medium text-gray-800">
-                        {windowStart} → {windowEnd}
-                      </span>
-                      {overlap && overlap.commonIntervals.length > 0 ? (
-                        <span> · {overlap.commonIntervals.length} overlap option(s)</span>
-                      ) : null}
-                    </>
-                  ) : (
-                    'Expand to set availability, overlaps, and event search.'
-                  )}
+      <section
+        id="approve-step-team"
+        className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden scroll-mt-28"
+      >
+        <details className="group">
+          <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-2 select-none [&::-webkit-details-marker]:hidden bg-gray-50/90 border-b border-gray-100">
+            <div className="min-w-0">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                1–2 · Home airport &amp; team planning
+              </h3>
+              {teamId && windowValid ? (
+                <p className="text-[11px] text-travel-muted mt-0.5 truncate">
+                  Trip window <span className="font-mono text-gray-800">{windowStart}</span>
+                  {' → '}
+                  <span className="font-mono text-gray-800">{windowEnd}</span>
                 </p>
-              </div>
-              <span className="text-[10px] font-medium uppercase tracking-wide text-travel-muted shrink-0 pt-0.5">
-                {planningPanelOpen ? 'Hide' : 'Show'}
-              </span>
+              ) : (
+                <p className="text-[11px] text-travel-muted mt-0.5">Expand for airport, overlaps, trip ideas &amp; search</p>
+              )}
             </div>
+            <span className="text-[10px] font-normal text-travel-muted shrink-0 group-open:hidden">Expand</span>
+            <span className="text-[10px] font-normal text-travel-muted shrink-0 hidden group-open:inline">Collapse</span>
           </summary>
-          <div className="px-4 pb-4 pt-0 space-y-4 border-t border-gray-100">
+          <div className="divide-y divide-gray-100">
+        <div id="approve-step-fly" className="p-4 space-y-3 scroll-mt-28">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">1 · Home airport</h3>
+          <PricingFlyingFromSection />
+        </div>
+        {teamId ? (
+          <>
+            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/90">
+              <h3 className="text-sm font-semibold text-gray-900">2 · Team window, availability &amp; search</h3>
+              <p className="text-[11px] text-travel-muted mt-0.5">
+                {windowValid ? (
+                  <>
+                    <span className="font-medium text-gray-800">
+                      {windowStart} → {windowEnd}
+                    </span>
+                    {overlap && overlap.commonIntervals.length > 0 ? (
+                      <span> · {overlap.commonIntervals.length} overlap option(s)</span>
+                    ) : null}
+                  </>
+                ) : (
+                  'Set availability, overlaps, and event search below.'
+                )}
+              </p>
+            </div>
+            <div className="px-4 pb-4 pt-4 space-y-4">
           <div>
-            <p className="text-xs text-travel-muted mt-3">
+            <p className="text-xs text-travel-muted mt-0">
               Manual trip windows are intersected below. <strong className="text-gray-800 font-medium">Tap an overlap</strong> to use it for
               ideas and search, or open <strong className="text-gray-800 font-medium">Custom dates</strong> to try a different range. The
               longest overlap is applied on load until you override. Teammates without manual dates use Google Calendar for &quot;everyone
@@ -351,45 +349,19 @@ export default function ApproveExplorerPlanningPanel({
             </p>
           ) : null}
 
-          <div className="rounded-xl border border-gray-100 overflow-hidden">
-            <p className="px-3 py-2 text-[11px] font-medium text-gray-800 bg-gray-50 border-b border-gray-100">Teammate availability</p>
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50/80 text-travel-muted">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Teammate</th>
-                  <th className="px-3 py-2 font-medium">Manual trip windows</th>
-                  <th className="px-3 py-2 font-medium">Calendar</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {members.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-3 py-3 text-travel-muted">
-                      No members loaded.
-                    </td>
-                  </tr>
-                ) : (
-                  members.map((m) => {
-                    const cal = calendarByUserId.get(m.userId);
-                    const win = m.windows?.length
-                      ? m.windows.map((w) => `${w.startDate} → ${w.endDate}`).join('; ')
-                      : null;
-                    return (
-                      <tr key={m.userId} className="text-gray-800">
-                        <td className="px-3 py-2 align-top">{(m.displayName || m.email || m.userId).trim()}</td>
-                        <td className="px-3 py-2 align-top text-travel-muted">
-                          {win || 'Calendar-only or not set'}
-                        </td>
-                        <td className="px-3 py-2 align-top text-travel-muted">
-                          {cal?.connected ? 'Connected' : 'Not connected'}
-                          {cal?.manualAvailability ? ' · manual flag' : ''}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+          <div id="approve-step-availability" className="rounded-xl border border-gray-100 px-3 py-2.5 bg-gray-50/80 scroll-mt-20">
+            <p className="text-xs text-gray-800">
+              {windowValid ? (
+                <>
+                  Trip window:{' '}
+                  <span className="font-semibold text-gray-900">
+                    {windowStart} → {windowEnd}
+                  </span>
+                </>
+              ) : (
+                <span className="text-travel-muted">Pick an overlap or set custom dates below.</span>
+              )}
+            </p>
           </div>
 
           {overlap ? (
@@ -562,14 +534,20 @@ export default function ApproveExplorerPlanningPanel({
                     <p className="text-[11px] text-travel-muted">
                       Add start/end dates on the trip (or source event time) to classify vs the window.
                     </p>
-                    <div className="space-y-3">{tripsUnknownDates.map((item) => renderTeamTripCard(item))}</div>
+                    <ul className="space-y-2">
+                      {tripsUnknownDates.map((item) => (
+                        <li key={item._id || item.title} className="list-none">
+                          {renderTeamTripCard(item, true)}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 ) : null}
               </>
             )}
           </div>
 
-          <div className="border-t border-gray-100 pt-3 space-y-2">
+          <div id="approve-step-search" className="border-t border-gray-100 pt-3 space-y-2 scroll-mt-20">
             <label className="block text-[11px] text-travel-muted">
               Keyword (optional)
               <input
@@ -682,7 +660,22 @@ export default function ApproveExplorerPlanningPanel({
             </div>
           ) : null}
           </div>
+          </>
+      ) : null}
+          </div>
         </details>
+      </section>
+
+      {!teamId ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+          <p className="font-medium text-gray-900">No active team</p>
+          <p className="text-xs mt-1 text-amber-800/90">
+            Pick a team to load shared availability, run &quot;everyone free&quot; search, and see calendar coverage.
+          </p>
+          <Link href="/team" className="inline-block mt-2 text-xs text-blue-700 font-medium hover:underline">
+            Open Team tab
+          </Link>
+        </div>
       ) : null}
     </div>
   );

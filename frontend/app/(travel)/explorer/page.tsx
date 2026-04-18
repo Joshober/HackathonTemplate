@@ -9,6 +9,7 @@ import {
   api,
   TRAVEL_ACTIVE_TEAM_STORAGE_KEY,
   type CitySuggestion,
+  type ExplorerAiHelpResponse,
   type ExplorerAvailabilityCoverage,
   type ExplorerEventOption,
   type ExplorerOpportunity,
@@ -18,10 +19,12 @@ import {
 } from '@/lib/api';
 import PolicyHint from '@/components/travel/PolicyHint';
 import { dedupeItemsById, filterTeamTripIdeas } from '@/lib/travelTeamPipeline';
+import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
 import ApproveExplorerPlanningPanel from '@/components/travel/approve/ApproveExplorerPlanningPanel';
+import { TravelPricingOriginProvider } from '@/components/travel/approve/TravelPricingOriginContext';
 
 const MAX_CITIES = 5;
 const MAX_PER_CITY = 8;
@@ -38,6 +41,10 @@ function sourceLabel(source?: ExplorerOpportunity['source']): string {
   return 'duckduckgo';
 }
 
+function isPricingPipelineStatus(status: string | undefined): boolean {
+  return status === 'submitted' || status === 'pending' || status === 'approved' || status === 'needs_changes';
+}
+
 function cityFromItem(item: Item): string | null {
   const travel = item.travel;
   if (!travel || typeof travel !== 'object') return null;
@@ -45,6 +52,20 @@ function cityFromItem(item: Item): string | null {
   if (typeof raw !== 'string') return null;
   const city = raw.split(',')[0]?.trim();
   return city ? city.slice(0, 80) : null;
+}
+
+function defaultIsoDate(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function approvalSignalForStatus(status: string | undefined): number {
+  if (status === 'approved') return 1;
+  if (status === 'pending') return 0.75;
+  if (status === 'submitted') return 0.65;
+  if (status === 'needs_changes') return 0.35;
+  return 0.5;
 }
 
 export default function ExplorerPage() {
@@ -85,7 +106,7 @@ export default function ExplorerPage() {
   const [availabilityCoverage, setAvailabilityCoverage] = useState<ExplorerAvailabilityCoverage | null>(null);
   const [eventOptions, setEventOptions] = useState<ExplorerEventOption[]>([]);
   const [itineraryPackages, setItineraryPackages] = useState<ExplorerItineraryPackage[]>([]);
-  const [resultsView, setResultsView] = useState<'events' | 'packages'>('events');
+  const [resultsView, setResultsView] = useState<'events' | 'packages' | 'ai_help'>('events');
   const [manualStartDate, setManualStartDate] = useState('');
   const [manualEndDate, setManualEndDate] = useState('');
   const [manualAvailabilitySaving, setManualAvailabilitySaving] = useState(false);
@@ -93,6 +114,11 @@ export default function ExplorerPage() {
   const [approvePlanningWindow, setApprovePlanningWindow] = useState<{ start: string; end: string } | null>(null);
   const [approveOverlapPresets, setApproveOverlapPresets] = useState<{ start: string; end: string }[]>([]);
   const [teamFeedItems, setTeamFeedItems] = useState<Item[]>([]);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiRefresh, setAiRefresh] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiResponse, setAiResponse] = useState<ExplorerAiHelpResponse | null>(null);
 
   const onApprovePlanningWindow = useCallback((w: { start: string; end: string } | null) => {
     setApprovePlanningWindow(w);
@@ -123,7 +149,7 @@ export default function ExplorerPage() {
   }, [stage, refreshPanelItems]);
 
   useEffect(() => {
-    if (stage !== 'approve' || !teamId) {
+    if (!teamId) {
       setTeamFeedItems([]);
       return;
     }
@@ -139,7 +165,7 @@ export default function ExplorerPage() {
     return () => {
       cancelled = true;
     };
-  }, [stage, teamId]);
+  }, [teamId]);
 
   useEffect(() => {
     const activeTeamId = typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY) : null;
@@ -394,6 +420,101 @@ export default function ExplorerPage() {
     }
   };
 
+  const runAiHelp = async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      setAiError('Enter a question or goal for AI Help.');
+      return;
+    }
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const parsedAiMaxPrice = maxPrice.trim() ? Number(maxPrice) : null;
+      const pricingStart =
+        availabilityStartDate || startDate || approvePlanningWindow?.start || defaultIsoDate(14);
+      const pricingEnd =
+        availabilityEndDate || endDate || approvePlanningWindow?.end || defaultIsoDate(16);
+
+      const pricingEvents = approvePipelineItems
+        .filter((item) => {
+          if (!isTravelItem(item)) return false;
+          const t = getTravelPayload(item);
+          return isPricingPipelineStatus(t?.opportunityStatus);
+        })
+        .slice(0, 8)
+        .map((item) => {
+          const t = getTravelPayload(item);
+          const outbound = (typeof t?.startDate === 'string' && t.startDate.slice(0, 10)) || pricingStart;
+          const inbound = (typeof t?.endDate === 'string' && t.endDate.slice(0, 10)) || pricingEnd;
+          return {
+            itemId: item._id || undefined,
+            title: item.title,
+            destinationQuery: t?.location || '',
+            outboundDate: outbound,
+            inboundDate: inbound,
+            checkIn: outbound,
+            checkOut: inbound,
+            adults: 1,
+            eventStartDate: typeof t?.startDate === 'string' ? t.startDate.slice(0, 10) : undefined,
+            eventEndDate: typeof t?.endDate === 'string' ? t.endDate.slice(0, 10) : undefined,
+            approvalSignal: approvalSignalForStatus(t?.opportunityStatus),
+          };
+        });
+
+      const response = await api.getExplorerAiHelp({
+        prompt,
+        refresh: aiRefresh,
+        context: {
+          teamId,
+          selectedCities,
+          keyword: keyword.trim() || null,
+          requireAllMembersFree,
+          availabilityWindow:
+            availabilityStartDate && availabilityEndDate
+              ? { start: availabilityStartDate, end: availabilityEndDate }
+              : null,
+          availabilityCoverage,
+          searchedLabel,
+          eventOptions: eventOptions.slice(0, 20),
+          itineraryPackages: itineraryPackages.slice(0, 10),
+        },
+        refreshSearchParams: {
+          ...(keyword.trim() ? { query: keyword.trim() } : {}),
+          ...(selectedCities.length ? { cities: selectedCities } : {}),
+          maxPerCity,
+          ...(startDate ? { startDate } : {}),
+          ...(endDate ? { endDate } : {}),
+          sortBy,
+          sources: [
+            ...(sourceTicketmaster ? (['ticketmaster'] as const) : []),
+            ...(sourceDuckduckgo ? (['duckduckgo'] as const) : []),
+            ...(sourceOpenstreetmap ? (['openstreetmap'] as const) : []),
+          ],
+          ...(eventTypes.length ? { eventTypes } : {}),
+          ...(parsedAiMaxPrice != null && Number.isFinite(parsedAiMaxPrice) ? { maxPrice: parsedAiMaxPrice } : {}),
+          ...(teamId ? { teamId } : {}),
+          ...(requireAllMembersFree ? { requireAllMembersFree: true } : {}),
+          ...(availabilityStartDate ? { availabilityWindowStart: `${availabilityStartDate}T00:00:00Z` } : {}),
+          ...(availabilityEndDate ? { availabilityWindowEnd: `${availabilityEndDate}T23:59:59Z` } : {}),
+        },
+        ...(pricingEvents.length
+          ? {
+              refreshPricingParams: {
+                originIata: 'ORD',
+                events: pricingEvents,
+              },
+            }
+          : {}),
+      });
+      setAiResponse(response);
+      setResultsView('ai_help');
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'AI Help request failed');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   const addToPlan = async (o: ExplorerOpportunity) => {
     if (!user?.email) return;
     setBusyId(o.id);
@@ -520,40 +641,56 @@ export default function ExplorerPage() {
 
   if (stage === 'approve') {
     return (
-      <div className="space-y-8">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Team window, events, and quotes</h2>
-          <p className="text-sm text-travel-muted mt-1">
-            See where manual availability overlaps, find events while everyone is free, then refresh deep flight and
-            hotel quotes for trips in the approval pipeline.
-          </p>
+      <TravelPricingOriginProvider originHintCities={teamCities}>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Approve trips</h2>
+            <p className="text-sm text-travel-muted mt-1">
+              Work through home airport, team window, availability, and search — then load flight and hotel quotes in the grid.
+            </p>
+          </div>
+
+          <ApproveExplorerPlanningPanel
+            teamId={teamId}
+            teamCities={teamCities}
+            pipelineItems={approvePipelineItems}
+            onPlanningWindowChange={onApprovePlanningWindow}
+            onOverlapPresetsChange={onApproveOverlapPresets}
+            onAddEventOption={addEventOptionToPlan}
+            busyOptionId={busyId}
+          />
+
+          {toast ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
+          ) : null}
+
+          <section id="approve-step-quotes" className="scroll-mt-28 space-y-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-1">5 · Quotes &amp; grid</h3>
+            <ApprovedEventsLivePricing
+              hideFlyingFrom
+              items={approvePipelineItems}
+              planningWindow={approvePlanningWindow}
+              overlapPresets={approveOverlapPresets}
+              originHintCities={teamCities}
+              onFinalizeBooking={approvePanel.onFinalize}
+              finalizeBusy={approvePanel.finalizeBusy}
+              onQuotesPersisted={
+                teamId
+                  ? () => {
+                      void api.getTeamReturnFeed(teamId).then(setTeamFeedItems);
+                    }
+                  : undefined
+              }
+            />
+          </section>
+
+          {approvePanel.approveMsg ? (
+            <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
+              {approvePanel.approveMsg}
+            </p>
+          ) : null}
         </div>
-        <ApproveExplorerPlanningPanel
-          teamId={teamId}
-          teamCities={teamCities}
-          pipelineItems={approvePipelineItems}
-          onPlanningWindowChange={onApprovePlanningWindow}
-          onOverlapPresetsChange={onApproveOverlapPresets}
-          onAddEventOption={addEventOptionToPlan}
-          busyOptionId={busyId}
-        />
-        {toast ? (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
-        ) : null}
-        <ApprovedEventsLivePricing
-          items={approvePipelineItems}
-          planningWindow={approvePlanningWindow}
-          overlapPresets={approveOverlapPresets}
-          originHintCities={teamCities}
-          onFinalizeBooking={approvePanel.onFinalize}
-          finalizeBusy={approvePanel.finalizeBusy}
-        />
-        {approvePanel.approveMsg ? (
-          <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
-            {approvePanel.approveMsg}
-          </p>
-        ) : null}
-      </div>
+      </TravelPricingOriginProvider>
     );
   }
 
@@ -1042,14 +1179,91 @@ export default function ExplorerPage() {
         >
           Package options
         </button>
+        <button
+          type="button"
+          onClick={() => setResultsView('ai_help')}
+          className={`px-3 py-1.5 rounded-full text-xs border ${
+            resultsView === 'ai_help' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          AI Help
+        </button>
+      </div>
+      <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 space-y-2">
+        <p className="text-xs font-medium text-gray-900">AI Help</p>
+        <p className="text-[11px] text-travel-muted">
+          Ask for ranked recommendations by team window, attendance fit, and trip cost. Toggle refresh to run fresh live search/quotes first.
+        </p>
+        <textarea
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
+          placeholder="Example: Find the best low-cost option where everyone can attend and explain tradeoffs."
+          rows={2}
+          className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-900"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-[11px] text-gray-700">
+            <input type="checkbox" checked={aiRefresh} onChange={(e) => setAiRefresh(e.target.checked)} />
+            Refresh live data before suggestions
+          </label>
+          <button
+            type="button"
+            onClick={() => void runAiHelp()}
+            disabled={aiLoading}
+            className="ml-auto px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-semibold disabled:opacity-50"
+          >
+            {aiLoading ? 'Thinking…' : 'Ask AI Help'}
+          </button>
+        </div>
       </div>
       {searchError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{searchError}</div>
+      ) : null}
+      {aiError ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{aiError}</div>
       ) : null}
       {toast ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
       ) : null}
       <div className="space-y-4 pb-4">
+        {resultsView === 'ai_help' ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">AI recommendations</h3>
+            {aiResponse ? (
+              <>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 whitespace-pre-wrap">
+                  {aiResponse.message}
+                </div>
+                {aiResponse.refreshApplied ? (
+                  <p className="text-[11px] text-travel-muted">
+                    Refreshed data: {aiResponse.searchRefresh?.opportunityCount ?? 0} opportunities
+                    {aiResponse.pricingRefresh?.windowSummaries?.length
+                      ? ` · ${aiResponse.pricingRefresh.windowSummaries.length} team windows priced`
+                      : ''}
+                    {aiResponse.model ? ` · model ${aiResponse.model}` : ''}
+                  </p>
+                ) : null}
+                <div className="space-y-2">
+                  {(aiResponse.recommendations || []).map((rec, i) => (
+                    <div key={`${rec.title}-${i}`} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+                      <p className="text-sm font-semibold text-gray-900">{rec.title}</p>
+                      <p className="text-xs text-travel-muted mt-1">{rec.reasoning}</p>
+                      <p className="text-xs text-gray-700 mt-1">
+                        {rec.totalEstimated != null ? `Est. total $${Math.round(rec.totalEstimated)}` : 'Est. total unavailable'}
+                        {rec.score != null ? ` · score ${Math.round(rec.score)}` : ''}
+                      </p>
+                      {rec.assumptions?.length ? (
+                        <p className="text-[11px] text-amber-800 mt-1">Assumptions: {rec.assumptions.join(', ')}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-travel-muted">Ask AI Help above to get ranked suggestions.</p>
+            )}
+          </section>
+        ) : null}
         {resultsView === 'events' && eventOptions.length ? (
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-900">Ranked event options</h3>
@@ -1133,10 +1347,10 @@ export default function ExplorerPage() {
             ))}
           </section>
         ) : null}
-        {!searchLoading && !opportunities.length && !searchError ? (
+        {!searchLoading && resultsView !== 'ai_help' && !opportunities.length && !searchError ? (
           <p className="text-sm text-travel-muted">Enter an event keyword and optionally choose city filters, then press Search.</p>
         ) : null}
-        {groupedCities.map((city) => (
+        {resultsView !== 'ai_help' && groupedCities.map((city) => (
           <section key={city} className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900">{city}</h3>

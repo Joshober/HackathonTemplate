@@ -163,11 +163,12 @@ export default function ApprovedEventsPage() {
                     if (!activeItem._id) return;
                     const t = getTravelPayload(activeItem);
                     if (!t) return;
+                    const itemId = activeItem._id;
                     void (async () => {
                       setSaveBusy(true);
                       setErr(null);
                       try {
-                        await api.updateItem(activeItem._id, {
+                        await api.updateItem(itemId, {
                           title: editTitle.trim(),
                           description: editDescription.trim() || activeItem.description,
                           imageUrls: editImageUrl.trim() ? [editImageUrl.trim()] : activeItem.imageUrls,

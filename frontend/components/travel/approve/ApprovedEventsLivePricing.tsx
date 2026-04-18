@@ -1,19 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type Item, type TravelPricingEventResult, type TravelPricingPreviewResponse } from '@/lib/api';
+import { persistTeamPricingQuotes } from '@/lib/travelQuotePersist';
+import {
+  type QuoteRankMode,
+  topBundlesForRank,
+  topFlightsForRank,
+  topHotelsForRank,
+} from '@/lib/travelQuoteRank';
 import { saveLastPricingSession } from '@/lib/travelPricingSession';
 import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import { daySpanInclusive } from '@/lib/teamAvailabilityOverlap';
+import PricingFlyingFromSection from '@/components/travel/approve/PricingFlyingFromSection';
 import {
-  airportCodeFromCityHints,
-  nearestTravelOriginCode,
-  TRAVEL_ORIGIN_AIRPORTS,
-} from '@/lib/travelOriginAirports';
-
-const ORIGIN_KEY = 'travel_explorer_origin_iata';
-
-const CUSTOM_ORIGIN_VALUE = '__custom__';
+  TravelPricingOriginProvider,
+  useTravelPricingOrigin,
+} from '@/components/travel/approve/TravelPricingOriginContext';
 
 function defaultIsoDate(offsetDays: number): string {
   const d = new Date();
@@ -112,6 +115,19 @@ function cheapestHotelLine(ev: TravelPricingEventResult | undefined): string {
   return `${bestC} ${Math.round(bestN)}`;
 }
 
+function bestBundleLine(ev: TravelPricingEventResult | undefined): string {
+  const best = ev?.bundleOptions?.[0];
+  if (!best) return '—';
+  const cur = best.currency?.trim() || 'USD';
+  if (best.totalEstimated != null && Number.isFinite(best.totalEstimated)) {
+    return `${cur} ${Math.round(best.totalEstimated)} · score ${Math.round(best.score || 0)}`;
+  }
+  if (best.flightTotal != null && Number.isFinite(best.flightTotal)) {
+    return `${cur} ${Math.round(best.flightTotal)}+ · score ${Math.round(best.score || 0)}`;
+  }
+  return `score ${Math.round(best.score || 0)}`;
+}
+
 function truncateTitle(s: string, max = 22): string {
   const t = s.trim();
   if (t.length <= max) return t;
@@ -132,14 +148,41 @@ function hotelScrapedRows(ev: TravelPricingEventResult) {
   });
 }
 
-function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
+const RANK_LABELS: Record<QuoteRankMode, string> = {
+  lowest_cost: 'Lowest cost',
+  longest_leg: 'Longest flight leg',
+  closest_hotel: 'Closest hotel',
+};
+
+function PricingEventDetails({ ev, rankMode }: { ev: TravelPricingEventResult; rankMode: QuoteRankMode }) {
+  const flightRows = topFlightsForRank(ev, rankMode, 3);
+  const hotelRows = topHotelsForRank(ev, rankMode, 3);
+  const bundleRows = topBundlesForRank(ev, rankMode, 3);
   return (
     <div className="space-y-3 text-xs border-t border-gray-100 pt-3">
+      <p className="text-[10px] text-travel-muted">
+        Top 3 by <span className="font-medium text-gray-800">{RANK_LABELS[rankMode]}</span> — saved on this trip in MongoDB when quotes load.
+      </p>
       {ev.resolvedDestination?.iata ? (
         <p className="text-travel-muted">
           Resolved destination: <span className="text-gray-900 font-mono font-medium">{ev.resolvedDestination.iata}</span>
           {ev.resolvedDestination.label ? ` · ${ev.resolvedDestination.label}` : null}
         </p>
+      ) : null}
+      {bundleRows.length ? (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 space-y-1">
+          <p className="text-gray-900 font-medium">Bundles</p>
+          <ul className="space-y-1 list-disc pl-4 text-travel-muted">
+            {bundleRows.map((b) => (
+              <li key={b.bundleId}>
+                score {Math.round(b.score || 0)}
+                {b.totalEstimated != null ? ` · ${b.currency || 'USD'} ${Math.round(b.totalEstimated)}` : ''}
+                {b.flightSource ? ` · flight ${b.flightSource}` : ''}
+                {b.hotelSource ? ` · hotel ${b.hotelSource}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 space-y-1">
         <p className="text-gray-900 font-medium">Flights</p>
@@ -148,12 +191,16 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
           {bookableLabel(ev.flight.bookable)} — {ev.flight.reason}
         </p>
         <ul className="space-y-1 list-disc pl-4 text-travel-muted">
-          {ev.flight.offers.slice(0, 5).map((o, i) => (
-            <li key={i}>
-              {o.carrierSummary || '—'} · {o.currency} {o.grandTotal}
-              {o.departureAt ? ` · dep ${o.departureAt}` : null}
-            </li>
-          ))}
+          {flightRows.length ? (
+            flightRows.map((o, i) => (
+              <li key={i}>
+                {o.carrierSummary || '—'} · {o.currency} {o.grandTotal}
+                {o.departureAt ? ` · dep ${o.departureAt}` : null}
+              </li>
+            ))
+          ) : (
+            <li className="list-none text-travel-muted">No flight rows for this ranking.</li>
+          )}
         </ul>
       </div>
       <div className="rounded-lg bg-gray-50 border border-gray-100 p-2 space-y-1">
@@ -172,7 +219,7 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
                     <span className="text-violet-900 font-medium">Deep link + web search</span>
                     {' — '}
                     {ev.hotel.reason ||
-                      'No Amadeus hotel rates — open Google Hotels, enable SerpAPI Google Hotels, or use scraped links.'}
+                      'No Amadeus hotel rates — open Google Hotels, or add SERPAPI_API_KEY for live Google Hotels rows and scraped links.'}
                   </>
                 )
               : (
@@ -190,12 +237,15 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
             Avg transit hint ~{ev.hotel.averageDistanceMinutes} min across listings (area, not exact venue).
           </p>
         ) : null}
-        {ev.hotel.offers?.length ? (
+        {hotelRows.length ? (
           <ul className="space-y-2 list-disc pl-4 text-travel-muted">
-            {ev.hotel.offers.slice(0, 8).map((o, i) => (
+            {hotelRows.map((o, i) => (
               <li key={i} className="leading-snug">
                 <span className="text-gray-900">
-                  {o.hotelName || o.hotelId || 'Hotel'} · {o.currency} {o.total}
+                  {o.hotelName || o.hotelId || 'Hotel'}
+                  {o.total != null && String(o.total).trim() !== '' && String(o.total).trim() !== '—'
+                    ? ` · ${o.currency} ${o.total}`
+                    : ' · see link for prices'}
                 </span>
                 {o.distanceMinutes != null ? (
                   <span className="text-travel-muted"> · ~{o.distanceMinutes} min (area transit)</span>
@@ -218,7 +268,7 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
           </ul>
         ) : (
           <p className="text-[11px] text-travel-muted pl-1">
-            No hotel rate rows yet.{hotelScrapedRows(ev).length ? ' See hotel-specific web results below.' : ''}
+            No hotel rate rows for this ranking.{hotelScrapedRows(ev).length ? ' See hotel-specific web results below.' : ''}
           </p>
         )}
         {ev.deepLinks.googleHotelsSearch ? (
@@ -235,7 +285,7 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
           <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
             <p className="text-[11px] font-medium text-gray-900">Hotel leads from web scrape</p>
             <ul className="space-y-2">
-              {hotelScrapedRows(ev).slice(0, 6).map((s, i) => (
+              {hotelScrapedRows(ev).slice(0, 3).map((s, i) => (
                 <li key={i}>
                   <span className="text-[10px] uppercase text-travel-muted">{s.kind}</span>{' '}
                   <a
@@ -280,7 +330,7 @@ function PricingEventDetails({ ev }: { ev: TravelPricingEventResult }) {
           <p className="text-amber-900 font-medium">Web options (scraped / unverified)</p>
           <p className="text-[10px] text-travel-muted">Demo only; may violate site ToS — not for production.</p>
           <ul className="space-y-2">
-            {ev.scrapedOptions.map((s, i) => (
+            {ev.scrapedOptions.slice(0, 3).map((s, i) => (
               <li key={i}>
                 <span className="text-[10px] uppercase text-travel-muted">{s.kind}</span>{' '}
                 <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline block font-medium">
@@ -301,6 +351,14 @@ function isPipelinePricingStatus(s: string | undefined): boolean {
   return s === 'submitted' || s === 'pending' || s === 'approved' || s === 'needs_changes';
 }
 
+function approvalSignalForStatus(s: string | undefined): number {
+  if (s === 'approved') return 1.0;
+  if (s === 'pending') return 0.75;
+  if (s === 'submitted') return 0.65;
+  if (s === 'needs_changes') return 0.35;
+  return 0.5;
+}
+
 function dedupePresets(list: { start: string; end: string }[]): { start: string; end: string }[] {
   const seen = new Set<string>();
   const out: { start: string; end: string }[] = [];
@@ -314,24 +372,53 @@ function dedupePresets(list: { start: string; end: string }[]): { start: string;
   return out;
 }
 
-export default function ApprovedEventsLivePricing({
-  items,
-  planningWindow,
-  overlapPresets,
-  originHintCities,
-  onFinalizeBooking,
-  finalizeBusy,
-}: {
+function eventForTrip(
+  item: Item,
+  idx: number,
+  dr: DateRow,
+  originIata: string,
+  live: TravelPricingPreviewResponse | null,
+): TravelPricingEventResult | undefined {
+  const liveEv = live?.events?.[idx];
+  if (liveEv) return liveEv;
+  const t = getTravelPayload(item);
+  const c = t?.travelPricingQuoteCache;
+  if (!c?.event) return undefined;
+  if (c.originIata?.toUpperCase() !== originIata.trim().toUpperCase()) return undefined;
+  if (
+    c.outboundDate?.slice(0, 10) !== dr.outbound.slice(0, 10) ||
+    c.inboundDate?.slice(0, 10) !== dr.inbound.slice(0, 10)
+  ) {
+    return undefined;
+  }
+  return c.event;
+}
+
+type ApprovedEventsLivePricingProps = {
   items: Item[];
   planningWindow?: { start: string; end: string } | null;
   /** Common manual overlap intervals from the team planning panel (all scenarios for pricing). */
   overlapPresets?: { start: string; end: string }[];
   /** Team preset cities — used to suggest an origin when the browser can’t use location. */
   originHintCities?: string[];
+  /** When true, origin UI is omitted (render PricingFlyingFromSection separately with same provider). */
+  hideFlyingFrom?: boolean;
   /** Optional: mark first in-approval trip booked (uses estimate on file + last pricing session). */
   onFinalizeBooking?: (bundleIndex: number) => void | Promise<void>;
   finalizeBusy?: boolean;
-}) {
+  /** After quotes are saved to each trip in MongoDB, refetch team feed so payloads include `travelPricingQuoteCache`. */
+  onQuotesPersisted?: () => void | Promise<void>;
+};
+
+function ApprovedEventsLivePricingInner({
+  items,
+  planningWindow,
+  overlapPresets,
+  hideFlyingFrom,
+  onFinalizeBooking,
+  finalizeBusy,
+  onQuotesPersisted,
+}: ApprovedEventsLivePricingProps) {
   const pricedTrips = useMemo(
     () =>
       items.filter((i) => {
@@ -355,8 +442,7 @@ export default function ApprovedEventsLivePricing({
     return [];
   }, [overlapPresets, planningWindow]);
 
-  const [originIata, setOriginIata] = useState('ORD');
-  const [originSuggestionNote, setOriginSuggestionNote] = useState<string | null>(null);
+  const { originIata } = useTravelPricingOrigin();
   const [datesById, setDatesById] = useState<Record<string, DateRow>>({});
   const [result, setResult] = useState<TravelPricingPreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -365,6 +451,23 @@ export default function ApprovedEventsLivePricing({
   const [quotesBatchLoading, setQuotesBatchLoading] = useState(false);
   const [quotesBatchErr, setQuotesBatchErr] = useState<string | null>(null);
   const [quotesBatchDone, setQuotesBatchDone] = useState(0);
+  const [quoteRankMode, setQuoteRankMode] = useState<QuoteRankMode>('lowest_cost');
+
+  const runPersist = useCallback(
+    async (preview: TravelPricingPreviewResponse, scenarioKey: string, datesOverride?: Record<string, DateRow>) => {
+      const o = originIata.trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(o)) return;
+      await persistTeamPricingQuotes({
+        pricedTrips,
+        preview,
+        originIata: o,
+        datesById: datesOverride ?? datesById,
+        scenarioKey,
+      });
+      await onQuotesPersisted?.();
+    },
+    [pricedTrips, originIata, datesById, onQuotesPersisted],
+  );
 
   useEffect(() => {
     setDatesById((prev) => {
@@ -385,118 +488,15 @@ export default function ApprovedEventsLivePricing({
     });
   }, [pricedTrips, planningWindow]);
 
-  const persistOrigin = (u: string) => {
-    try {
-      sessionStorage.setItem(ORIGIN_KEY, u);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const teamCitiesKey = useMemo(
-    () =>
-      (originHintCities ?? [])
-        .map((c) => c.trim())
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .join('|'),
-    [originHintCities],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const readSessionCode = (): string | null => {
-      try {
-        const s = sessionStorage.getItem(ORIGIN_KEY);
-        if (s && /^[A-Za-z]{3}$/.test(s)) return s.toUpperCase();
-      } catch {
-        /* ignore */
-      }
-      return null;
-    };
-
-    const applyFromSession = (code: string) => {
-      if (cancelled) return;
-      setOriginIata(code);
-      setOriginSuggestionNote(null);
-    };
-
-    const applyAuto = (code: string, note: string, shouldPersist = true) => {
-      if (cancelled) return;
-      const u = code.toUpperCase();
-      setOriginIata(u);
-      if (shouldPersist) persistOrigin(u);
-      setOriginSuggestionNote(note || null);
-    };
-
-    const sessionCode = readSessionCode();
-    if (sessionCode) {
-      applyFromSession(sessionCode);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const code = nearestTravelOriginCode(pos.coords.latitude, pos.coords.longitude);
-          applyAuto(code, 'Closest listed airport to your current location.');
-        },
-        () => {
-          const team = airportCodeFromCityHints(originHintCities);
-          if (team) {
-            applyAuto(team, 'Suggested from a team preset city (location not shared).');
-          } else {
-            applyAuto('ORD', '', false);
-          }
-        },
-        { enableHighAccuracy: false, timeout: 9000, maximumAge: 300_000 },
-      );
-    } else {
-      const team = airportCodeFromCityHints(originHintCities);
-      if (team) {
-        applyAuto(team, 'Suggested from a team preset city (browser location unavailable).');
-      } else {
-        applyAuto('ORD', '', false);
-      }
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [teamCitiesKey, originHintCities]);
-
-  const savedAirportOption = useMemo(() => {
-    const u = originIata.trim().toUpperCase();
-    if (!/^[A-Z]{3}$/.test(u)) return null;
-    if (TRAVEL_ORIGIN_AIRPORTS.some((o) => o.code === u)) return null;
-    return { code: u, label: `${u} — saved` };
-  }, [originIata]);
-
-  const originSelectValue = useMemo(() => {
-    const u = originIata.trim().toUpperCase();
-    if (
-      /^[A-Z]{3}$/.test(u) &&
-      (TRAVEL_ORIGIN_AIRPORTS.some((o) => o.code === u) || savedAirportOption?.code === u)
-    ) {
-      return u;
-    }
-    return CUSTOM_ORIGIN_VALUE;
-  }, [originIata, savedAirportOption]);
-
   const applyPresetToAllTrips = useCallback(
     (p: { start: string; end: string }) => {
       const key = scenarioKey(p);
-      setDatesById((prev) => {
-        const next = { ...prev };
-        pricedTrips.forEach((item, idx) => {
-          const stableId = item._id || `idx-${idx}`;
-          next[stableId] = { outbound: p.start, inbound: p.end };
-        });
-        return next;
+      const nextDates: Record<string, DateRow> = {};
+      pricedTrips.forEach((item, idx) => {
+        const stableId = item._id || `idx-${idx}`;
+        nextDates[stableId] = { outbound: p.start, inbound: p.end };
       });
+      setDatesById((prev) => ({ ...prev, ...nextDates }));
       const hit = quotesByScenario[key];
       if (hit) {
         setResult(hit);
@@ -506,9 +506,10 @@ export default function ApprovedEventsLivePricing({
         } catch {
           /* ignore */
         }
+        void runPersist(hit, key, nextDates);
       }
     },
-    [pricedTrips, quotesByScenario, originIata],
+    [pricedTrips, quotesByScenario, originIata, runPersist],
   );
 
   const allTripsUsePreset = useCallback(
@@ -537,6 +538,9 @@ export default function ApprovedEventsLivePricing({
           checkIn: dr.outbound,
           checkOut: dr.inbound,
           adults: 1,
+          eventStartDate: typeof t?.startDate === 'string' ? t.startDate.slice(0, 10) : undefined,
+          eventEndDate: typeof t?.endDate === 'string' ? t.endDate.slice(0, 10) : undefined,
+          approvalSignal: approvalSignalForStatus(t?.opportunityStatus),
         };
       });
     },
@@ -561,13 +565,18 @@ export default function ApprovedEventsLivePricing({
       const data = await api.fetchTravelPricingPreview({ originIata: o, events });
       setResult(data);
       saveLastPricingSession(o, data);
+      const sid0 = pricedTrips[0] ? pricedTrips[0]._id || 'idx-0' : '';
+      const dr0 = sid0 ? datesById[sid0] : undefined;
+      const sk =
+        dr0?.outbound && dr0?.inbound ? `${dr0.outbound}|${dr0.inbound}` : 'current-dates';
+      void runPersist(data, sk);
     } catch (e) {
       setResult(null);
       setErr(e instanceof Error ? e.message : 'Pricing request failed');
     } finally {
       setLoading(false);
     }
-  }, [pricedTrips, datesById, originIata, buildPricingEvents]);
+  }, [pricedTrips, datesById, originIata, buildPricingEvents, runPersist]);
 
   const loadQuotesAllScenarios = useCallback(async () => {
     if (!pricedTrips.length || !pricingDatePresets.length) return;
@@ -601,21 +610,36 @@ export default function ApprovedEventsLivePricing({
       if (pick) {
         setResult(pick);
         saveLastPricingSession(o, pick);
+        const keyUsed = matchPreset ? scenarioKey(matchPreset) : scenarioKey(pricingDatePresets[0]);
+        void runPersist(pick, keyUsed);
       }
     } catch (e) {
       setQuotesBatchErr(e instanceof Error ? e.message : 'Batch pricing failed');
     } finally {
       setQuotesBatchLoading(false);
     }
-  }, [pricedTrips, pricingDatePresets, originIata, buildPricingEvents, datesById]);
+  }, [pricedTrips, pricingDatePresets, originIata, buildPricingEvents, datesById, runPersist]);
+
+  const loadQuotesAllScenariosRef = useRef(loadQuotesAllScenarios);
+  loadQuotesAllScenariosRef.current = loadQuotesAllScenarios;
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+
+  /** Auto-fetch when trips, team windows, and origin are ready (avoids re-running when only per-trip dates sync). */
+  useEffect(() => {
+    const o = originIata.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(o) || pricedTrips.length === 0) return;
+    void (pricingDatePresets.length > 0
+      ? loadQuotesAllScenariosRef.current()
+      : refreshRef.current());
+  }, [pricedTrips, pricingDatePresets, originIata]);
 
   if (!pricedTrips.length) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 shadow-sm">
         <p className="text-sm text-travel-muted">
-          No trips in the approval pipeline yet (submitted, pending, approved, or needs changes). Send cards from Plan or
-          add options above, then use Refresh live quotes once trips appear here. Dates default from the team window when
-          set.
+          No trips in the approval pipeline yet (submitted, pending, approved, or needs changes).           Send cards from Plan or add options above. Dates default from the team window when set; live quotes run when
+          trips appear and a home airport is chosen.
         </p>
       </div>
     );
@@ -623,78 +647,26 @@ export default function ApprovedEventsLivePricing({
 
   return (
     <div className="space-y-5">
-      <div>
-        <h3 className="text-base font-semibold text-gray-900">Trips in approval — live pricing</h3>
-        <p className="text-xs text-travel-muted mt-1 leading-relaxed">
-          Pick <strong className="text-gray-800 font-medium">departure and return</strong> dates, use the grid to check{' '}
-          <strong className="text-gray-800 font-medium">attendance vs event dates</strong>, and compare the cheapest flight and hotel for each team
-          window. Tap a date row to apply it to every trip, then load quotes below.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor="travel-pricing-origin" className="block text-xs font-medium text-gray-800">
-          Flying from
-        </label>
-        <select
-          id="travel-pricing-origin"
-          value={originSelectValue}
-          onChange={(e) => {
-            const v = e.target.value;
-            setOriginSuggestionNote(null);
-            if (v === CUSTOM_ORIGIN_VALUE) {
-              setOriginIata('');
-              return;
-            }
-            setOriginIata(v);
-            persistOrigin(v);
-          }}
-          className="w-full rounded-xl bg-white border border-gray-200 px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-400"
-        >
-          {savedAirportOption ? (
-            <option value={savedAirportOption.code}>{savedAirportOption.label}</option>
-          ) : null}
-          {TRAVEL_ORIGIN_AIRPORTS.map((o) => (
-            <option key={o.code} value={o.code}>
-              {o.label}
-            </option>
-          ))}
-          <option value={CUSTOM_ORIGIN_VALUE}>Other airport…</option>
-        </select>
-        {originSelectValue === CUSTOM_ORIGIN_VALUE ? (
-          <div className="space-y-1">
-            <label htmlFor="travel-pricing-origin-custom" className="sr-only">
-              Other airport code
-            </label>
-            <input
-              id="travel-pricing-origin-custom"
-              type="text"
-              inputMode="text"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={3}
-              placeholder="3-letter code (e.g. DSM)"
-              value={originIata}
-              onChange={(e) => {
-                setOriginSuggestionNote(null);
-                setOriginIata(e.target.value.toUpperCase().replace(/[^A-Za-z]/g, '').slice(0, 3));
-              }}
-              onBlur={() => {
-                const u = originIata.trim().toUpperCase();
-                if (/^[A-Z]{3}$/.test(u)) persistOrigin(u);
-              }}
-              className="w-full rounded-xl bg-white border border-gray-200 px-3 py-2.5 text-sm text-gray-900 font-mono uppercase shadow-sm focus:outline-none focus:ring-2 focus:ring-violet-400/40 focus:border-violet-400"
-            />
-            <p className="text-[11px] text-travel-muted">Use the IATA code from your ticket or airline app.</p>
+      {!hideFlyingFrom ? (
+        <>
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Trips in approval — live pricing</h3>
+            <p className="text-xs text-travel-muted mt-1 leading-relaxed">
+              Pick <strong className="text-gray-800 font-medium">departure and return</strong> dates, use the grid to check{' '}
+              <strong className="text-gray-800 font-medium">attendance vs event dates</strong>, and compare the cheapest flight and hotel for
+              each team window. Tap a date row to apply it to every trip — quotes load for all windows once the home airport is set.
+            </p>
           </div>
-        ) : null}
-        {originSuggestionNote ? (
-          <p className="text-[11px] text-emerald-900/90 bg-emerald-50/80 border border-emerald-100 rounded-lg px-2.5 py-1.5">
-            {originSuggestionNote}
+          <PricingFlyingFromSection />
+        </>
+      ) : (
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Flight &amp; hotel quotes</h3>
+          <p className="text-xs text-travel-muted mt-1">
+            Compare team windows to each trip; quotes load automatically. Home airport is set in the step above.
           </p>
-        ) : null}
-      </div>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-4 shadow-sm">
         {pricingDatePresets.length > 0 ? (
@@ -703,7 +675,7 @@ export default function ApprovedEventsLivePricing({
               <p className="text-xs font-semibold text-gray-900">Trip windows, attendance &amp; prices</p>
               <p className="text-[11px] text-travel-muted mt-1">
                 <strong className="text-gray-800 font-medium">Tap a date row</strong> to apply that window to every trip. Cells show event
-                attendance and flight/hotel lows after you load quotes.
+                attendance and flight/hotel lows once quotes have loaded.
               </p>
             </div>
             {quotesBatchErr ? (
@@ -798,14 +770,24 @@ export default function ApprovedEventsLivePricing({
                                   <p>
                                     <span className="text-travel-muted">Hotel</span> · {cheapestHotelLine(evRes)}
                                   </p>
+                                  <p>
+                                    <span className="text-travel-muted">Bundle</span> · {bestBundleLine(evRes)}
+                                  </p>
                                   {evRes?.hotel?.averageDistanceMinutes != null ? (
                                     <p className="text-[10px] text-travel-muted">
                                       Avg area transit ~{evRes.hotel.averageDistanceMinutes} min
                                     </p>
                                   ) : null}
+                                  {evRes?.assumptionFlags?.length ? (
+                                    <p className="text-[10px] text-amber-800">
+                                      Assumptions: {evRes.assumptionFlags.join(', ')}
+                                    </p>
+                                  ) : null}
                                 </div>
+                              ) : quotesBatchLoading ? (
+                                <p className="text-travel-muted mt-2">Loading…</p>
                               ) : (
-                                <p className="text-travel-muted mt-2 italic">Load quotes below</p>
+                                <p className="text-travel-muted mt-2 italic">Pending…</p>
                               )}
                             </td>
                           );
@@ -819,13 +801,14 @@ export default function ApprovedEventsLivePricing({
           </>
         ) : (
           <p className="text-[11px] text-travel-muted">
-            No team overlap windows yet — set dates on each trip, then use <strong className="text-gray-800 font-medium">Get quotes</strong>{' '}
-            below.
+            No team overlap windows yet — set dates on each trip. With a valid home airport, current-date quotes load automatically; use{' '}
+            <strong className="text-gray-800 font-medium">Refresh</strong> below to retry.
           </p>
         )}
 
-        <div className="space-y-5 border-t border-gray-100 pt-4">
-          <p className="text-[11px] font-medium text-gray-900">Quote detail (same order as grid columns)</p>
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-[11px] font-medium text-gray-900 mb-3">Quote detail (same order as grid columns)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {pricedTrips.map((item, idx) => {
             const stableId = item._id || `idx-${idx}`;
             const t = getTravelPayload(item);
@@ -836,7 +819,10 @@ export default function ApprovedEventsLivePricing({
               .map((a) => a.name?.trim())
               .filter((name): name is string => Boolean(name));
             return (
-              <div key={stableId} className="space-y-2">
+              <div
+                key={stableId}
+                className="space-y-2 rounded-xl border border-gray-100 bg-gray-50/50 p-3 shadow-sm"
+              >
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
                   <span className="font-semibold text-gray-900 leading-snug">{item.title}</span>
                   {t?.location ? <span className="text-travel-muted">· {t.location}</span> : null}
@@ -893,15 +879,17 @@ export default function ApprovedEventsLivePricing({
                   </div>
                 ) : null}
                 {ev ? (
-                  <PricingEventDetails ev={ev} />
+                  <PricingEventDetails ev={ev} rankMode={quoteRankMode} />
                 ) : (
                   <p className="text-xs text-travel-muted">
-                    Use <strong className="text-gray-800 font-medium">Get quotes</strong> below — summaries are in the grid above.
+                    Quotes load automatically when the home airport is valid — summaries appear in the grid above, or use{' '}
+                    <strong className="text-gray-800 font-medium">Refresh</strong> below.
                   </p>
                 )}
               </div>
             );
           })}
+          </div>
         </div>
 
         {err ? <div className="text-sm text-amber-900 border border-amber-200 bg-amber-50 rounded-lg px-3 py-2">{err}</div> : null}
@@ -916,7 +904,7 @@ export default function ApprovedEventsLivePricing({
             >
               {quotesBatchLoading
                 ? `Loading ${quotesBatchDone}/${pricingDatePresets.length}…`
-                : `Get quotes (${pricingDatePresets.length} team windows)`}
+                : `Refresh all (${pricingDatePresets.length} team windows)`}
             </button>
           ) : null}
           <button
@@ -929,7 +917,7 @@ export default function ApprovedEventsLivePricing({
                 : 'w-full bg-emerald-600 hover:bg-emerald-500 text-white'
             }`}
           >
-            {loading ? 'Loading…' : pricingDatePresets.length > 0 ? 'Current dates only' : 'Get quotes'}
+            {loading ? 'Loading…' : pricingDatePresets.length > 0 ? 'Current dates only' : 'Refresh quotes'}
           </button>
         </div>
 
@@ -973,5 +961,16 @@ export default function ApprovedEventsLivePricing({
         </p>
       ) : null}
     </div>
+  );
+}
+
+export default function ApprovedEventsLivePricing(props: ApprovedEventsLivePricingProps) {
+  if (props.hideFlyingFrom) {
+    return <ApprovedEventsLivePricingInner {...props} />;
+  }
+  return (
+    <TravelPricingOriginProvider originHintCities={props.originHintCities}>
+      <ApprovedEventsLivePricingInner {...props} />
+    </TravelPricingOriginProvider>
   );
 }

@@ -9,6 +9,7 @@ export default function OpportunityCard({
   footer,
   action,
   onClick,
+  compact,
 }: {
   title: string;
   subtitle?: string;
@@ -16,7 +17,37 @@ export default function OpportunityCard({
   footer?: React.ReactNode;
   action?: React.ReactNode;
   onClick?: () => void;
+  /** List-style row: no hero image block (avoids large placeholders when images are omitted). */
+  compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <article
+        className={`rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-sm ${
+          onClick ? 'cursor-pointer hover:border-gray-300 transition-colors' : ''
+        }`}
+        onClick={onClick}
+        role={onClick ? 'button' : undefined}
+        tabIndex={onClick ? 0 : undefined}
+        onKeyDown={
+          onClick
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onClick();
+                }
+              }
+            : undefined
+        }
+      >
+        <h3 className="text-sm font-semibold text-gray-900 leading-snug">{title}</h3>
+        {subtitle ? <p className="text-[11px] text-travel-muted mt-0.5 leading-snug">{subtitle}</p> : null}
+        {footer ? <div className="mt-2">{footer}</div> : null}
+        {action ? <div className="mt-2">{action}</div> : null}
+      </article>
+    );
+  }
+
   return (
     <article
       className={`rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm ${

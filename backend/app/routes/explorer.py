@@ -1,6 +1,9 @@
+import json
+import os
 from datetime import date, datetime, timezone, timedelta
 from typing import Any
 
+import requests
 from flask import Blueprint, jsonify, request
 
 from app.db.mongodb import get_db
@@ -19,6 +22,7 @@ from app.services.explorer_opportunities import (
 from app.services.team_items_access import parse_team_oid, user_member_of_team
 from app.services.amadeus_client import client_or_none as amadeus_client_or_none, summarize_flight_offer
 from app.services.duffel_client import client_or_none as duffel_client_or_none, summarize_duffel_offer
+from app.routes.travel_pricing import compute_pricing_preview
 
 bp = Blueprint("explorer", __name__)
 ALLOWED_SOURCES = frozenset({"ticketmaster", "duckduckgo", "openstreetmap"})
@@ -485,3 +489,258 @@ def explorer_opportunities(user_id):
             "itineraryPackages": packages,
         }
     ), 200
+
+
+def _compact_pricing_for_ai(preview: dict[str, Any]) -> dict[str, Any]:
+    events = preview.get("events") if isinstance(preview.get("events"), list) else []
+    rows: list[dict[str, Any]] = []
+    for ev in events[:12]:
+        if not isinstance(ev, dict):
+            continue
+        best = None
+        if isinstance(ev.get("bundleOptions"), list) and ev.get("bundleOptions"):
+            best = ev["bundleOptions"][0]
+        rows.append(
+            {
+                "itemId": ev.get("itemId"),
+                "title": ev.get("title"),
+                "destinationQuery": ev.get("destinationQuery"),
+                "attendance": ev.get("attendance"),
+                "bestBundle": best,
+                "assumptionFlags": ev.get("assumptionFlags") or [],
+            }
+        )
+    return {
+        "mode": preview.get("mode"),
+        "flightBackends": preview.get("flightBackends") or [],
+        "windowSummaries": preview.get("windowSummaries") or [],
+        "trips": rows,
+    }
+
+
+def _safe_json_trimmed(value: Any, max_chars: int = 14_000) -> str:
+    try:
+        s = json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        s = "{}"
+    if len(s) <= max_chars:
+        return s
+    return s[: max_chars - 3] + "..."
+
+
+def _heuristic_recommendations(
+    prompt: str,
+    context: dict[str, Any],
+    pricing_brief: dict[str, Any] | None,
+    search_refresh: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    trips = pricing_brief.get("trips") if isinstance(pricing_brief, dict) else []
+    if isinstance(trips, list):
+        for t in trips:
+            if not isinstance(t, dict):
+                continue
+            best = t.get("bestBundle") if isinstance(t.get("bestBundle"), dict) else {}
+            out.append(
+                {
+                    "title": f"{t.get('title') or 'Trip'}",
+                    "reasoning": "Selected from lowest available total with balanced attendance and approval weighting.",
+                    "totalEstimated": best.get("totalEstimated"),
+                    "score": best.get("score"),
+                    "assumptions": t.get("assumptionFlags") or [],
+                }
+            )
+    if not out and isinstance(search_refresh, dict):
+        tops = search_refresh.get("topOpportunities") if isinstance(search_refresh.get("topOpportunities"), list) else []
+        for o in tops[:5]:
+            if not isinstance(o, dict):
+                continue
+            out.append(
+                {
+                    "title": str(o.get("title") or "Opportunity"),
+                    "reasoning": "Included from refreshed explorer results with current search filters.",
+                    "totalEstimated": None,
+                    "score": None,
+                    "assumptions": [],
+                }
+            )
+    if not out:
+        out.append(
+            {
+                "title": "Need more context",
+                "reasoning": "Add a team window and at least one event/trip to generate ranked recommendations.",
+                "totalEstimated": None,
+                "score": None,
+                "assumptions": ["insufficient_data"],
+            }
+        )
+    # Keep bounded payload for client cards.
+    return out[:8]
+
+
+@bp.route("/explorer/ai-help", methods=["POST"])
+@require_auth
+def explorer_ai_help(user_id):
+    _ = user_id
+    body = request.get_json(silent=True) or {}
+    prompt = " ".join(str(body.get("prompt") or "").split()).strip()
+    if not prompt:
+        return jsonify({"error": "prompt is required."}), 400
+
+    refresh = _parse_bool(body.get("refresh"))
+    context = body.get("context") if isinstance(body.get("context"), dict) else {}
+
+    search_refresh: dict[str, Any] | None = None
+    pricing_refresh: dict[str, Any] | None = None
+
+    if refresh:
+        search_payload = body.get("refreshSearchParams")
+        if isinstance(search_payload, dict):
+            cities = _parse_cities(search_payload.get("cities"))
+            query = " ".join(str(search_payload.get("query") or "").split()).strip()
+            try:
+                max_per = int(search_payload.get("maxPerCity") or 8)
+            except (TypeError, ValueError):
+                max_per = 8
+            max_per = max(1, min(max_per, MAX_PER_CITY_CAP))
+            sort_by = str(search_payload.get("sortBy") or "date").strip().lower()
+            if sort_by not in ALLOWED_SORTS:
+                sort_by = "date"
+            start_date = _parse_date(search_payload.get("startDate"))
+            end_date = _parse_date(search_payload.get("endDate"))
+            sources = _parse_sources(search_payload.get("sources"))
+            event_types = _parse_event_types(search_payload.get("eventTypes"))
+            max_price = search_payload.get("maxPrice")
+            if max_price is not None:
+                try:
+                    max_price = float(max_price)
+                except (TypeError, ValueError):
+                    max_price = None
+
+            refreshed_rows = travel_opportunities(
+                cities=cities,
+                query=query,
+                max_per_city=max_per,
+                start_date=start_date,
+                end_date=end_date,
+                sort_by=sort_by,
+                sources=sources or None,
+                event_types=event_types or None,
+                max_price=max_price,
+            )
+            search_refresh = {
+                "opportunityCount": len(refreshed_rows),
+                "topOpportunities": refreshed_rows[:12],
+            }
+
+        pricing_payload = body.get("refreshPricingParams")
+        if isinstance(pricing_payload, dict):
+            origin_iata = (pricing_payload.get("originIata") or "").strip().upper()[:3]
+            events = pricing_payload.get("events")
+            if len(origin_iata) == 3 and isinstance(events, list) and events:
+                pricing_refresh = compute_pricing_preview(origin_iata=origin_iata, events=events)
+
+    pricing_brief = _compact_pricing_for_ai(pricing_refresh) if pricing_refresh else None
+
+    recs_seed = _heuristic_recommendations(
+        prompt=prompt,
+        context=context,
+        pricing_brief=pricing_brief,
+        search_refresh=search_refresh,
+    )
+
+    api_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    if not api_key:
+        return jsonify(
+            {
+                "message": "OpenRouter is not configured. Returning local heuristic recommendations.",
+                "recommendations": recs_seed,
+                "refreshApplied": bool(refresh and (search_refresh or pricing_refresh)),
+                "searchRefresh": search_refresh,
+                "pricingRefresh": pricing_brief,
+                "model": None,
+            }
+        ), 200
+
+    model = (os.getenv("OPENROUTER_CHAT_MODEL") or "openai/gpt-4o-mini").strip()
+    system_prompt = (
+        "You are Explorer AI Help for team travel planning. "
+        "Give practical recommendations grounded in provided data. "
+        "Never fabricate prices or availability. "
+        "If data is assumed or missing, call it out explicitly. "
+        "Return compact JSON with keys: message (string) and recommendations (array of {title, reasoning, totalEstimated, score, assumptions[]})."
+    )
+    model_input = {
+        "prompt": prompt,
+        "context": context,
+        "refreshApplied": bool(refresh),
+        "searchRefresh": search_refresh,
+        "pricingRefresh": pricing_brief,
+        "seedRecommendations": recs_seed,
+    }
+
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "X-Title": "Explorer AI Help",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": _safe_json_trimmed(model_input)},
+                ],
+                "temperature": 0.2,
+            },
+            timeout=60,
+        )
+        if not resp.ok:
+            err_data = resp.json() if resp.content else {}
+            err = err_data.get("error", {})
+            if isinstance(err, dict):
+                err = err.get("message", str(err))
+            raise RuntimeError(str(err or f"OpenRouter error {resp.status_code}"))
+        payload = resp.json()
+        content = (
+            ((payload.get("choices") or [{}])[0].get("message") or {}).get("content")
+            if isinstance(payload, dict)
+            else None
+        )
+        text = str(content or "").strip()
+        parsed = None
+        if text:
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError):
+                parsed = None
+        recs = recs_seed
+        message = text or "Generated recommendations."
+        if isinstance(parsed, dict):
+            if isinstance(parsed.get("recommendations"), list):
+                recs = parsed.get("recommendations")[:8]
+            if isinstance(parsed.get("message"), str) and parsed.get("message").strip():
+                message = parsed.get("message").strip()
+        return jsonify(
+            {
+                "message": message,
+                "recommendations": recs,
+                "refreshApplied": bool(refresh and (search_refresh or pricing_refresh)),
+                "searchRefresh": search_refresh,
+                "pricingRefresh": pricing_brief,
+                "model": model,
+            }
+        ), 200
+    except Exception as e:
+        return jsonify(
+            {
+                "message": f"AI call failed; returning heuristic recommendations. ({str(e)[:200]})",
+                "recommendations": recs_seed,
+                "refreshApplied": bool(refresh and (search_refresh or pricing_refresh)),
+                "searchRefresh": search_refresh,
+                "pricingRefresh": pricing_brief,
+                "model": model,
+            }
+        ), 200
