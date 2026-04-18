@@ -3,10 +3,23 @@ from functools import wraps
 import requests
 import os
 import ssl
+import uuid
 import certifi
 import jwt
 from jwt import PyJWKClient
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
+
+from app.db.mongodb import get_db
+from app.services.google_calendar import (
+    disconnect_google_calendar,
+    get_google_calendar_token_doc,
+    google_client_id,
+    google_client_secret,
+    google_frontend_return_url,
+    google_redirect_uri,
+    upsert_google_calendar_token,
+)
 
 bp = Blueprint('auth_backend', __name__)
 
@@ -454,3 +467,82 @@ def get_token():
         return jsonify({'error': 'No access token available'}), 401
     
     return jsonify({'accessToken': access_token}), 200
+
+
+@bp.route('/auth/google/calendar/login', methods=['GET'])
+@require_auth
+def google_calendar_login(user_id):
+    client_id = google_client_id()
+    if not client_id:
+        return jsonify({'error': 'GOOGLE_CLIENT_ID is not configured'}), 500
+    state = uuid.uuid4().hex
+    session['google_calendar_oauth'] = {'state': state, 'userId': user_id}
+    session.permanent = True
+    params = {
+        'client_id': client_id,
+        'redirect_uri': google_redirect_uri(),
+        'response_type': 'code',
+        'scope': 'https://www.googleapis.com/auth/calendar.readonly',
+        'access_type': 'offline',
+        'include_granted_scopes': 'true',
+        'prompt': 'consent',
+        'state': state,
+    }
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+    return jsonify({'auth_url': auth_url}), 200
+
+
+@bp.route('/auth/google/calendar/callback', methods=['GET'])
+def google_calendar_callback():
+    code = (request.args.get('code') or '').strip()
+    state = (request.args.get('state') or '').strip()
+    ctx = session.get('google_calendar_oauth') or {}
+    expected_state = (ctx.get('state') or '').strip() if isinstance(ctx, dict) else ''
+    user_id = (ctx.get('userId') or '').strip() if isinstance(ctx, dict) else ''
+    frontend_url = google_frontend_return_url()
+    if not code or not state or not expected_state or state != expected_state or not user_id:
+        return redirect(f'{frontend_url}?calendar=error')
+    client_id = google_client_id()
+    client_secret = google_client_secret()
+    if not client_id or not client_secret:
+        return redirect(f'{frontend_url}?calendar=config_error')
+    try:
+        resp = requests.post(
+            'https://oauth2.googleapis.com/token',
+            data={
+                'code': code,
+                'client_id': client_id,
+                'client_secret': client_secret,
+                'redirect_uri': google_redirect_uri(),
+                'grant_type': 'authorization_code',
+            },
+            timeout=20,
+        )
+        data = resp.json() if resp.ok else {}
+        if not resp.ok:
+            return redirect(f'{frontend_url}?calendar=token_error')
+        if not isinstance(data, dict) or not data.get('access_token'):
+            return redirect(f'{frontend_url}?calendar=token_missing')
+        db = get_db()
+        upsert_google_calendar_token(db, user_id, data)
+        session.pop('google_calendar_oauth', None)
+        return redirect(f'{frontend_url}?calendar=connected')
+    except Exception:
+        return redirect(f'{frontend_url}?calendar=error')
+
+
+@bp.route('/auth/google/calendar/status', methods=['GET'])
+@require_auth
+def google_calendar_status(user_id):
+    db = get_db()
+    doc = get_google_calendar_token_doc(db, user_id)
+    connected = bool(doc and (doc.get('accessToken') or doc.get('refreshToken')))
+    return jsonify({'connected': connected}), 200
+
+
+@bp.route('/auth/google/calendar/disconnect', methods=['POST'])
+@require_auth
+def google_calendar_disconnect(user_id):
+    db = get_db()
+    disconnect_google_calendar(db, user_id)
+    return jsonify({'ok': True}), 200

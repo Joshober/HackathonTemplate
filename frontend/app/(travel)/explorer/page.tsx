@@ -5,13 +5,25 @@ import { ArrowRight, Search, SlidersHorizontal, Send, CheckCircle2, Loader2, Use
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import OpportunityCard from '@/components/travel/OpportunityCard';
-import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type CitySuggestion, type ExplorerOpportunity, type Item } from '@/lib/api';
+import {
+  api,
+  TRAVEL_ACTIVE_TEAM_STORAGE_KEY,
+  type CitySuggestion,
+  type ExplorerAiHelpResponse,
+  type ExplorerAvailabilityCoverage,
+  type ExplorerEventOption,
+  type ExplorerOpportunity,
+  type ExplorerItineraryPackage,
+  type Item,
+  type TeamCalendarCoverage,
+} from '@/lib/api';
 import PolicyHint from '@/components/travel/PolicyHint';
-import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
-import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
+import { dedupeItemsById, filterTeamTripIdeas } from '@/lib/travelTeamPipeline';
+import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
-import TeamSelectorDropdown from '@/components/travel/TeamSelectorDropdown';
+import ApproveExplorerPlanningPanel from '@/components/travel/approve/ApproveExplorerPlanningPanel';
+import { TravelPricingOriginProvider } from '@/components/travel/approve/TravelPricingOriginContext';
 
 const MAX_CITIES = 5;
 const MAX_PER_CITY = 8;
@@ -28,6 +40,10 @@ function sourceLabel(source?: ExplorerOpportunity['source']): string {
   return 'duckduckgo';
 }
 
+function isPricingPipelineStatus(status: string | undefined): boolean {
+  return status === 'submitted' || status === 'pending' || status === 'approved' || status === 'needs_changes';
+}
+
 function cityFromItem(item: Item): string | null {
   const travel = item.travel;
   if (!travel || typeof travel !== 'object') return null;
@@ -35,6 +51,20 @@ function cityFromItem(item: Item): string | null {
   if (typeof raw !== 'string') return null;
   const city = raw.split(',')[0]?.trim();
   return city ? city.slice(0, 80) : null;
+}
+
+function defaultIsoDate(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function approvalSignalForStatus(status: string | undefined): number {
+  if (status === 'approved') return 1;
+  if (status === 'pending') return 0.75;
+  if (status === 'submitted') return 0.65;
+  if (status === 'needs_changes') return 0.35;
+  return 0.5;
 }
 
 export default function ExplorerPage() {
@@ -79,6 +109,42 @@ export default function ExplorerPage() {
   const [sourceOpenstreetmap, setSourceOpenstreetmap] = useState(true);
   const [eventTypes, setEventTypes] = useState<Array<'music' | 'sports' | 'arts' | 'film' | 'miscellaneous'>>([]);
   const [maxPrice, setMaxPrice] = useState('');
+  const [expandedOpportunityIds, setExpandedOpportunityIds] = useState<Record<string, boolean>>({});
+  const [requireAllMembersFree, setRequireAllMembersFree] = useState(false);
+  const [availabilityStartDate, setAvailabilityStartDate] = useState('');
+  const [availabilityEndDate, setAvailabilityEndDate] = useState('');
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarCoverage, setCalendarCoverage] = useState<TeamCalendarCoverage | null>(null);
+  const [availabilityCoverage, setAvailabilityCoverage] = useState<ExplorerAvailabilityCoverage | null>(null);
+  const [eventOptions, setEventOptions] = useState<ExplorerEventOption[]>([]);
+  const [itineraryPackages, setItineraryPackages] = useState<ExplorerItineraryPackage[]>([]);
+  const [resultsView, setResultsView] = useState<'events' | 'packages' | 'ai_help'>('events');
+  const [manualStartDate, setManualStartDate] = useState('');
+  const [manualEndDate, setManualEndDate] = useState('');
+  const [manualAvailabilitySaving, setManualAvailabilitySaving] = useState(false);
+  const [manualAvailabilityCount, setManualAvailabilityCount] = useState(0);
+  const [approvePlanningWindow, setApprovePlanningWindow] = useState<{ start: string; end: string } | null>(null);
+  const [approveOverlapPresets, setApproveOverlapPresets] = useState<{ start: string; end: string }[]>([]);
+  const [teamFeedItems, setTeamFeedItems] = useState<Item[]>([]);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiRefresh, setAiRefresh] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiResponse, setAiResponse] = useState<ExplorerAiHelpResponse | null>(null);
+
+  const onApprovePlanningWindow = useCallback((w: { start: string; end: string } | null) => {
+    setApprovePlanningWindow(w);
+  }, []);
+
+  const onApproveOverlapPresets = useCallback((windows: { start: string; end: string }[]) => {
+    setApproveOverlapPresets(windows);
+  }, []);
+
+  /** Same rows as Home Approve "Team trip ideas": team return-feed only, deduped, same status filter. */
+  const approvePipelineItems = useMemo(
+    () => filterTeamTripIdeas(dedupeItemsById(teamFeedItems)),
+    [teamFeedItems],
+  );
 
   const refreshPanelItems = useCallback(async () => {
     try {
@@ -93,6 +159,25 @@ export default function ExplorerPage() {
       void refreshPanelItems();
     }
   }, [stage, refreshPanelItems]);
+
+  useEffect(() => {
+    if (!teamId) {
+      setTeamFeedItems([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .getTeamReturnFeed(teamId)
+      .then((items) => {
+        if (!cancelled) setTeamFeedItems(items);
+      })
+      .catch(() => {
+        if (!cancelled) setTeamFeedItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [teamId]);
 
   useEffect(() => {
     const activeTeamId = typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY) : null;
@@ -135,6 +220,32 @@ export default function ExplorerPage() {
       mounted = false;
     };
   }, [stage, user?.email]);
+
+  useEffect(() => {
+    if (!teamId) {
+      setCalendarCoverage(null);
+      setCalendarConnected(false);
+      setManualAvailabilityCount(0);
+      return;
+    }
+    void (async () => {
+      try {
+        const [status, coverage, availability] = await Promise.all([
+          api.getGoogleCalendarStatus(),
+          api.getTeamCalendarCoverage(teamId),
+          api.getTeamAvailability(teamId),
+        ]);
+        setCalendarConnected(Boolean(status.connected));
+        setCalendarCoverage(coverage);
+        const mine = availability.members.find((m) => (m.email || '').toLowerCase() === (user?.email || '').toLowerCase());
+        setManualAvailabilityCount(mine?.windows?.length || 0);
+      } catch {
+        setCalendarCoverage(null);
+        setCalendarConnected(false);
+        setManualAvailabilityCount(0);
+      }
+    })();
+  }, [teamId, user?.email]);
 
   const savePresetCities = async (nextCities: string[]) => {
     if (!teamId) return;
@@ -244,6 +355,20 @@ export default function ExplorerPage() {
       setSearchError('Max ticket price must be a valid positive number.');
       return;
     }
+    if (requireAllMembersFree) {
+      if (!teamId) {
+        setSearchError('Select an active team to use calendar availability filtering.');
+        return;
+      }
+      if (!availabilityStartDate || !availabilityEndDate) {
+        setSearchError('Pick availability window dates to filter by team calendar.');
+        return;
+      }
+      if (availabilityStartDate > availabilityEndDate) {
+        setSearchError('Availability window start must be before end.');
+        return;
+      }
+    }
     if (!query && !cities.length) {
       setSearchError('Enter a keyword or select at least one city.');
       setOpportunities([]);
@@ -259,12 +384,20 @@ export default function ExplorerPage() {
         `Sort: ${sortBy}`,
         eventTypes.length ? `Types: ${eventTypes.join(', ')}` : null,
         parsedMaxPrice != null ? `Max price: $${parsedMaxPrice}` : null,
+        requireAllMembersFree && availabilityStartDate && availabilityEndDate
+          ? `Team free: ${availabilityStartDate} to ${availabilityEndDate}`
+          : null,
       ]
         .filter(Boolean)
         .join(' · ')
     );
     try {
-      const { opportunities: rows } = await api.searchExplorerOpportunities({
+      const {
+        opportunities: rows,
+        availabilityCoverage: coverage,
+        eventOptions: optionRows,
+        itineraryPackages: packageRows,
+      } = await api.searchExplorerOpportunities({
         ...(query ? { query } : {}),
         ...(cities.length ? { cities } : {}),
         maxPerCity,
@@ -274,16 +407,125 @@ export default function ExplorerPage() {
         sources,
         ...(eventTypes.length ? { eventTypes } : {}),
         ...(parsedMaxPrice != null ? { maxPrice: parsedMaxPrice } : {}),
+        ...(requireAllMembersFree && teamId ? { teamId } : {}),
+        ...(requireAllMembersFree ? { requireAllMembersFree: true } : {}),
+        ...(requireAllMembersFree && availabilityStartDate
+          ? { availabilityWindowStart: `${availabilityStartDate}T00:00:00Z` }
+          : {}),
+        ...(requireAllMembersFree && availabilityEndDate
+          ? { availabilityWindowEnd: `${availabilityEndDate}T23:59:59Z` }
+          : {}),
       });
       setOpportunities(rows);
+      setAvailabilityCoverage(coverage || null);
+      setEventOptions(optionRows || []);
+      setItineraryPackages(packageRows || []);
       if (!rows.length) {
         setSearchError('No matching events found. Try a broader keyword or fewer city filters.');
       }
     } catch (e) {
       setOpportunities([]);
+      setAvailabilityCoverage(null);
+      setEventOptions([]);
+      setItineraryPackages([]);
       setSearchError(e instanceof Error ? e.message : 'Search failed');
     } finally {
       setSearchLoading(false);
+    }
+  };
+
+  const runAiHelp = async () => {
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      setAiError('Enter a question or goal for AI Help.');
+      return;
+    }
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const parsedAiMaxPrice = maxPrice.trim() ? Number(maxPrice) : null;
+      const pricingStart =
+        availabilityStartDate || startDate || approvePlanningWindow?.start || defaultIsoDate(14);
+      const pricingEnd =
+        availabilityEndDate || endDate || approvePlanningWindow?.end || defaultIsoDate(16);
+
+      const pricingEvents = approvePipelineItems
+        .filter((item) => {
+          if (!isTravelItem(item)) return false;
+          const t = getTravelPayload(item);
+          return isPricingPipelineStatus(t?.opportunityStatus);
+        })
+        .slice(0, 8)
+        .map((item) => {
+          const t = getTravelPayload(item);
+          const outbound = (typeof t?.startDate === 'string' && t.startDate.slice(0, 10)) || pricingStart;
+          const inbound = (typeof t?.endDate === 'string' && t.endDate.slice(0, 10)) || pricingEnd;
+          return {
+            itemId: item._id || undefined,
+            title: item.title,
+            destinationQuery: t?.location || '',
+            outboundDate: outbound,
+            inboundDate: inbound,
+            checkIn: outbound,
+            checkOut: inbound,
+            adults: 1,
+            eventStartDate: typeof t?.startDate === 'string' ? t.startDate.slice(0, 10) : undefined,
+            eventEndDate: typeof t?.endDate === 'string' ? t.endDate.slice(0, 10) : undefined,
+            approvalSignal: approvalSignalForStatus(t?.opportunityStatus),
+          };
+        });
+
+      const response = await api.getExplorerAiHelp({
+        prompt,
+        refresh: aiRefresh,
+        context: {
+          teamId,
+          selectedCities,
+          keyword: keyword.trim() || null,
+          requireAllMembersFree,
+          availabilityWindow:
+            availabilityStartDate && availabilityEndDate
+              ? { start: availabilityStartDate, end: availabilityEndDate }
+              : null,
+          availabilityCoverage,
+          searchedLabel,
+          eventOptions: eventOptions.slice(0, 20),
+          itineraryPackages: itineraryPackages.slice(0, 10),
+        },
+        refreshSearchParams: {
+          ...(keyword.trim() ? { query: keyword.trim() } : {}),
+          ...(selectedCities.length ? { cities: selectedCities } : {}),
+          maxPerCity,
+          ...(startDate ? { startDate } : {}),
+          ...(endDate ? { endDate } : {}),
+          sortBy,
+          sources: [
+            ...(sourceTicketmaster ? (['ticketmaster'] as const) : []),
+            ...(sourceDuckduckgo ? (['duckduckgo'] as const) : []),
+            ...(sourceOpenstreetmap ? (['openstreetmap'] as const) : []),
+          ],
+          ...(eventTypes.length ? { eventTypes } : {}),
+          ...(parsedAiMaxPrice != null && Number.isFinite(parsedAiMaxPrice) ? { maxPrice: parsedAiMaxPrice } : {}),
+          ...(teamId ? { teamId } : {}),
+          ...(requireAllMembersFree ? { requireAllMembersFree: true } : {}),
+          ...(availabilityStartDate ? { availabilityWindowStart: `${availabilityStartDate}T00:00:00Z` } : {}),
+          ...(availabilityEndDate ? { availabilityWindowEnd: `${availabilityEndDate}T23:59:59Z` } : {}),
+        },
+        ...(pricingEvents.length
+          ? {
+              refreshPricingParams: {
+                originIata: 'ORD',
+                events: pricingEvents,
+              },
+            }
+          : {}),
+      });
+      setAiResponse(response);
+      setResultsView('ai_help');
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'AI Help request failed');
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -297,19 +539,38 @@ export default function ExplorerPage() {
       o.url ? `Source: ${o.url}` : null,
     ].filter(Boolean) as string[];
     try {
-      await api.createItem({
+      const created = await api.createItem({
         title: o.title.slice(0, 200),
         description: descLines.join('\n\n'),
+        imageUrls: o.imageUrl ? [o.imageUrl] : undefined,
         travel: {
           location: o.city,
           costEstimate: maxBudget,
           tags: ['events', sourceLabel(o.source), o.city],
           tripType: 'research',
+          ...(o.imageUrl ? { imageUrl: o.imageUrl } : {}),
           sourceUrl: o.url,
           addedBy: user.email || 'You',
           opportunityStatus: 'draft',
         },
+        ...(teamId ? { teamId } : {}),
       });
+      if (teamId) {
+        const voteMessage = `[SYSTEM_EVENT]${JSON.stringify({
+          type: 'event_vote',
+          itemId: created._id || null,
+          title: o.title,
+          city: o.city,
+          description: o.snippet || '',
+          imageUrl: o.imageUrl || '',
+          sourceUrl: o.url || '',
+        })}`;
+        try {
+          await api.sendTeamMessage(teamId, voteMessage, { invokeAssistant: false });
+        } catch {
+          // Do not fail item creation if chat post fails.
+        }
+      }
       setToast(`Added “${o.title}” to your plan.`);
     } catch (e) {
       setToast(e instanceof Error ? e.message : 'Could not add');
@@ -334,6 +595,52 @@ export default function ExplorerPage() {
     setEventTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
   };
 
+  const toggleOpportunityExpanded = (id: string) => {
+    setExpandedOpportunityIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const addEventOptionToPlan = async (opt: ExplorerEventOption) => {
+    if (!user?.email) return;
+    const title = `${opt.title}${opt.startAt ? ` (${opt.startAt})` : ''}`;
+    const lines = [
+      opt.snippet || null,
+      opt.url ? `Source: ${opt.url}` : null,
+      opt.cost?.totalEstimated != null ? `Estimated total: $${Math.round(opt.cost.totalEstimated)}` : null,
+      opt.availability ? `Availability: ${opt.availability.availableCount}/${opt.availability.totalMembers}` : null,
+    ].filter(Boolean) as string[];
+    setBusyId(opt.optionId);
+    try {
+      await api.createItem({
+        title: title.slice(0, 200),
+        description: lines.join('\n\n') || 'Explorer option',
+        imageUrls: opt.imageUrl ? [opt.imageUrl] : undefined,
+        travel: {
+          location: opt.city,
+          costEstimate: Math.round(opt.cost?.totalEstimated || maxBudget),
+          tags: ['events', opt.source || 'explorer', opt.city],
+          tripType: 'research',
+          sourceUrl: opt.url,
+          startDate: opt.startAt ? opt.startAt.slice(0, 10) : undefined,
+          ...(opt.imageUrl ? { imageUrl: opt.imageUrl } : {}),
+          addedBy: user.email || 'You',
+          opportunityStatus: 'draft',
+        },
+        ...(teamId ? { teamId } : {}),
+      });
+      setToast(`Added option for “${opt.title}” to your plan.`);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Could not add');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const addPackageToPlan = async (pkg: ExplorerItineraryPackage) => {
+    const first = pkg.options?.[0];
+    if (!first) return;
+    await addEventOptionToPlan(first);
+  };
+
   const grouped = opportunities.reduce<Record<string, ExplorerOpportunity[]>>((acc, row) => {
     const city = row.city?.trim() || 'Other';
     if (!acc[city]) acc[city] = [];
@@ -344,6 +651,89 @@ export default function ExplorerPage() {
 
   if (loading || !user) {
     return <div className="py-24 text-center text-travel-muted text-sm">Signing you in…</div>;
+  }
+
+  if (stage === 'approve') {
+    return (
+      <TravelPricingOriginProvider originHintCities={teamCities}>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Approve trips</h2>
+            <p className="text-sm text-travel-muted mt-1">
+              Work through home airport, team window, availability, and search — then load flight and hotel quotes in the grid.
+            </p>
+          </div>
+
+          <ApproveExplorerPlanningPanel
+            teamId={teamId}
+            teamCities={teamCities}
+            pipelineItems={approvePipelineItems}
+            onPlanningWindowChange={onApprovePlanningWindow}
+            onOverlapPresetsChange={onApproveOverlapPresets}
+            onAddEventOption={addEventOptionToPlan}
+            busyOptionId={busyId}
+          />
+
+          {toast ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
+          ) : null}
+
+          <section id="approve-step-quotes" className="scroll-mt-28 space-y-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-1">5 · Quotes &amp; grid</h3>
+            <ApprovedEventsLivePricing
+              hideFlyingFrom
+              items={approvePipelineItems}
+              planningWindow={approvePlanningWindow}
+              overlapPresets={approveOverlapPresets}
+              originHintCities={teamCities}
+              onFinalizeBooking={approvePanel.onFinalize}
+              finalizeBusy={approvePanel.finalizeBusy}
+              onQuotesPersisted={
+                teamId
+                  ? () => {
+                      void api.getTeamReturnFeed(teamId).then(setTeamFeedItems);
+                    }
+                  : undefined
+              }
+            />
+          </section>
+
+          {approvePanel.approveMsg ? (
+            <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
+              {approvePanel.approveMsg}
+            </p>
+          ) : null}
+        </div>
+      </TravelPricingOriginProvider>
+    );
+  }
+
+  if (stage === 'travel') {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Today & trip record</h2>
+          <p className="text-sm text-travel-muted mt-1">Same trip record as Home — checklist and links from your saved pricing.</p>
+        </div>
+        <TravelDayItinerary items={panelItems} compact />
+      </div>
+    );
+  }
+
+  if (stage === 'return') {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold text-gray-900">Memory + content builder</h2>
+        <p className="text-sm text-travel-muted">
+          Upload trip photos in the full profile editor or paste context into the AI Assistant for captions and post ideas.
+        </p>
+        <ul className="text-sm text-gray-700 space-y-2 list-disc pl-4">
+          <li>Instagram-ready captions</li>
+          <li>LinkedIn post variants</li>
+          <li>Export as plain text</li>
+        </ul>
+      </div>
+    );
   }
 
   return (
@@ -615,6 +1005,145 @@ export default function ExplorerPage() {
                 </label>
               </div>
             </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-gray-700 font-medium">Team calendar availability</p>
+                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={requireAllMembersFree}
+                    onChange={(e) => setRequireAllMembersFree(e.target.checked)}
+                    disabled={!teamId}
+                  />
+                  Require everyone free
+                </label>
+              </div>
+              {!teamId ? (
+                <p className="text-[11px] text-amber-800">Pick an active team on the Team tab first.</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-travel-muted">
+                    Connected calendars: {calendarCoverage?.connectedMembers || 0}/{calendarCoverage?.totalMembers || 0}
+                  </p>
+                  <p className="text-[11px] text-travel-muted">
+                    Manual availability submitted: {calendarCoverage?.manualAvailabilityMembers || 0}/{calendarCoverage?.totalMembers || 0}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void (async () => {
+                          const { auth_url } = await api.getGoogleCalendarAuthUrl();
+                          window.location.href = auth_url;
+                        })()
+                      }
+                      className="text-[11px] px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white"
+                    >
+                      {calendarConnected ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
+                    </button>
+                    {calendarConnected ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (async () => {
+                            await api.disconnectGoogleCalendar();
+                            setCalendarConnected(false);
+                            if (teamId) {
+                              const coverage = await api.getTeamCalendarCoverage(teamId);
+                              setCalendarCoverage(coverage);
+                            }
+                          })()
+                        }
+                        className="text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+                      >
+                        Disconnect
+                      </button>
+                    ) : null}
+                  </div>
+                  {requireAllMembersFree ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] text-travel-muted">
+                        Free window start
+                        <input
+                          type="date"
+                          value={availabilityStartDate}
+                          onChange={(e) => setAvailabilityStartDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                      <label className="text-[11px] text-travel-muted">
+                        Free window end
+                        <input
+                          type="date"
+                          value={availabilityEndDate}
+                          onChange={(e) => setAvailabilityEndDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                  <div className="rounded-lg border border-gray-200 bg-white p-2 space-y-2">
+                    <p className="text-[11px] text-gray-700 font-medium">
+                      Manual availability for you ({manualAvailabilityCount} window{manualAvailabilityCount === 1 ? '' : 's'})
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] text-travel-muted">
+                        Start
+                        <input
+                          type="date"
+                          value={manualStartDate}
+                          onChange={(e) => setManualStartDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                      <label className="text-[11px] text-travel-muted">
+                        End
+                        <input
+                          type="date"
+                          value={manualEndDate}
+                          onChange={(e) => setManualEndDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={manualAvailabilitySaving || !manualStartDate || !manualEndDate || manualStartDate > manualEndDate}
+                      onClick={() =>
+                        void (async () => {
+                          if (!teamId) return;
+                          setManualAvailabilitySaving(true);
+                          try {
+                            const existing = await api.getTeamAvailability(teamId);
+                            const mine = existing.members.find(
+                              (m) => (m.email || '').toLowerCase() === (user?.email || '').toLowerCase()
+                            );
+                            const windows = [...(mine?.windows || []), { startDate: manualStartDate, endDate: manualEndDate }];
+                            await api.setMyTeamAvailability(teamId, windows);
+                            const [coverage, updated] = await Promise.all([
+                              api.getTeamCalendarCoverage(teamId),
+                              api.getTeamAvailability(teamId),
+                            ]);
+                            setCalendarCoverage(coverage);
+                            const me = updated.members.find(
+                              (m) => (m.email || '').toLowerCase() === (user?.email || '').toLowerCase()
+                            );
+                            setManualAvailabilityCount(me?.windows?.length || 0);
+                            setManualStartDate('');
+                            setManualEndDate('');
+                          } finally {
+                            setManualAvailabilitySaving(false);
+                          }
+                        })()
+                      }
+                      className="text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white"
+                    >
+                      {manualAvailabilitySaving ? 'Saving…' : 'Add my manual availability'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <label className="text-xs text-travel-muted block">
               Planning budget when adding (USD)
               <input
@@ -632,60 +1161,261 @@ export default function ExplorerPage() {
       {searchedLabel && !searchLoading ? (
         <p className="text-xs text-travel-muted">Last search: {searchedLabel}</p>
       ) : null}
+      {availabilityCoverage ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          Team calendars connected: {availabilityCoverage.connectedMembers}/{availabilityCoverage.totalMembers}
+          {availabilityCoverage.removedByAvailability != null
+            ? ` · Removed by availability: ${availabilityCoverage.removedByAvailability}`
+            : ''}
+          {availabilityCoverage.includedWithMissingEventTime != null &&
+          availabilityCoverage.includedWithMissingEventTime > 0 ? (
+            <span className="block mt-1 text-blue-950">
+              {availabilityCoverage.includedWithMissingEventTime} result
+              {availabilityCoverage.includedWithMissingEventTime === 1 ? '' : 's'} with no event time — included using your
+              availability window (see labels on cards).
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setResultsView('events')}
+          className={`px-3 py-1.5 rounded-full text-xs border ${
+            resultsView === 'events' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          Event options
+        </button>
+        <button
+          type="button"
+          onClick={() => setResultsView('packages')}
+          className={`px-3 py-1.5 rounded-full text-xs border ${
+            resultsView === 'packages' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          Package options
+        </button>
+        <button
+          type="button"
+          onClick={() => setResultsView('ai_help')}
+          className={`px-3 py-1.5 rounded-full text-xs border ${
+            resultsView === 'ai_help' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          AI Help
+        </button>
+      </div>
+      <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 space-y-2">
+        <p className="text-xs font-medium text-gray-900">AI Help</p>
+        <p className="text-[11px] text-travel-muted">
+          Ask for ranked recommendations by team window, attendance fit, and trip cost. Toggle refresh to run fresh live search/quotes first.
+        </p>
+        <textarea
+          value={aiPrompt}
+          onChange={(e) => setAiPrompt(e.target.value)}
+          placeholder="Example: Find the best low-cost option where everyone can attend and explain tradeoffs."
+          rows={2}
+          className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-900"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-[11px] text-gray-700">
+            <input type="checkbox" checked={aiRefresh} onChange={(e) => setAiRefresh(e.target.checked)} />
+            Refresh live data before suggestions
+          </label>
+          <button
+            type="button"
+            onClick={() => void runAiHelp()}
+            disabled={aiLoading}
+            className="ml-auto px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-semibold disabled:opacity-50"
+          >
+            {aiLoading ? 'Thinking…' : 'Ask AI Help'}
+          </button>
+        </div>
+      </div>
       {searchError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{searchError}</div>
+      ) : null}
+      {aiError ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{aiError}</div>
       ) : null}
       {toast ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
       ) : null}
       <div className="space-y-4 pb-4">
-        {!searchLoading && !opportunities.length && !searchError ? (
+        {resultsView === 'ai_help' ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">AI recommendations</h3>
+            {aiResponse ? (
+              <>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 whitespace-pre-wrap">
+                  {aiResponse.message}
+                </div>
+                {aiResponse.refreshApplied ? (
+                  <p className="text-[11px] text-travel-muted">
+                    Refreshed data: {aiResponse.searchRefresh?.opportunityCount ?? 0} opportunities
+                    {aiResponse.pricingRefresh?.windowSummaries?.length
+                      ? ` · ${aiResponse.pricingRefresh.windowSummaries.length} team windows priced`
+                      : ''}
+                    {aiResponse.model ? ` · model ${aiResponse.model}` : ''}
+                  </p>
+                ) : null}
+                <div className="space-y-2">
+                  {(aiResponse.recommendations || []).map((rec, i) => (
+                    <div key={`${rec.title}-${i}`} className="rounded-xl border border-gray-200 bg-white px-3 py-2">
+                      <p className="text-sm font-semibold text-gray-900">{rec.title}</p>
+                      <p className="text-xs text-travel-muted mt-1">{rec.reasoning}</p>
+                      <p className="text-xs text-gray-700 mt-1">
+                        {rec.totalEstimated != null ? `Est. total $${Math.round(rec.totalEstimated)}` : 'Est. total unavailable'}
+                        {rec.score != null ? ` · score ${Math.round(rec.score)}` : ''}
+                      </p>
+                      {rec.assumptions?.length ? (
+                        <p className="text-[11px] text-amber-800 mt-1">Assumptions: {rec.assumptions.join(', ')}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-travel-muted">Ask AI Help above to get ranked suggestions.</p>
+            )}
+          </section>
+        ) : null}
+        {resultsView === 'events' && eventOptions.length ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Ranked event options</h3>
+            {eventOptions.map((opt) => (
+              <OpportunityCard
+                key={opt.optionId}
+                title={opt.title}
+                subtitle={
+                  opt.startAt
+                    ? new Date(opt.startAt).toLocaleString()
+                    : opt.eventTimeMissing || opt.availability?.eventTimeMissing
+                      ? 'No event time on listing'
+                      : opt.snippet
+                }
+                imageUrl={opt.imageUrl}
+                footer={
+                  <div className="space-y-1 text-xs text-travel-muted">
+                    <p>
+                      Availability: {opt.availability?.availableCount ?? 0}/{opt.availability?.totalMembers ?? 0}
+                      {opt.availability?.evaluatedAgainst === 'availability_window' ? (
+                        <span className="block text-amber-900 mt-0.5">
+                          Checked vs window {opt.availability.evaluationWindowStart?.slice(0, 10)} →{' '}
+                          {opt.availability.evaluationWindowEnd?.slice(0, 10)} (listing had no show time).
+                        </span>
+                      ) : null}
+                    </p>
+                    {opt.cost?.pricingUsedAvailabilityWindow ? (
+                      <p className="text-amber-800">Estimate uses window start — not a confirmed event date.</p>
+                    ) : null}
+                    <p>Estimated total: ${Math.round(opt.cost?.totalEstimated || 0)}</p>
+                  </div>
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void addEventOptionToPlan(opt);
+                    }}
+                    disabled={busyId === opt.optionId}
+                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
+                  >
+                    {busyId === opt.optionId ? 'Adding…' : 'Add option to plan'}
+                  </button>
+                }
+              />
+            ))}
+          </section>
+        ) : null}
+        {resultsView === 'packages' && itineraryPackages.length ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Ranked itinerary packages</h3>
+            {itineraryPackages.map((pkg) => (
+              <OpportunityCard
+                key={pkg.packageId}
+                title={pkg.title}
+                subtitle={`${pkg.city} · score ${pkg.score ?? 0}`}
+                imageUrl={pkg.options?.[0]?.imageUrl}
+                footer={
+                  <div className="space-y-1 text-xs text-travel-muted">
+                    <p>
+                      Availability: {pkg.availability?.availableCount ?? 0}/{pkg.availability?.totalMembers ?? 0}
+                    </p>
+                    <p>Estimated total: ${Math.round(pkg.cost?.totalEstimated || 0)}</p>
+                  </div>
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void addPackageToPlan(pkg);
+                    }}
+                    disabled={busyId === pkg.packageId}
+                    className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-semibold"
+                  >
+                    {busyId === pkg.packageId ? 'Adding…' : 'Add package to plan'}
+                  </button>
+                }
+              />
+            ))}
+          </section>
+        ) : null}
+        {!searchLoading && resultsView !== 'ai_help' && !opportunities.length && !searchError ? (
           <p className="text-sm text-travel-muted">Enter an event keyword and optionally choose city filters, then press Search.</p>
         ) : null}
-        {groupedCities.map((city) => (
+        {resultsView !== 'ai_help' && groupedCities.map((city) => (
           <section key={city} className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900">{city}</h3>
               <span className="text-xs text-travel-muted">{grouped[city].length} results</span>
             </div>
             {grouped[city].map((o) => (
-              <OpportunityCard
-                key={o.id}
-                title={o.title}
-                subtitle={truncateSnippet(o.snippet)}
-                imageUrl={o.imageUrl}
-                footer={
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {['events', sourceLabel(o.source), city].map((t) => (
-                        <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                    {o.url ? (
-                      <a
-                        href={o.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline inline-block font-medium"
-                      >
-                        Open link
-                      </a>
-                    ) : null}
-                  </div>
-                }
-                action={
-                  <button
-                    type="button"
-                    disabled={busyId === o.id}
-                    onClick={() => void addToPlan(o)}
-                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
-                  >
-                    {busyId === o.id ? 'Adding…' : 'Add to plan'}
-                  </button>
-                }
-              />
+              (() => {
+                const expanded = Boolean(expandedOpportunityIds[o.id]);
+                return (
+                  <OpportunityCard
+                    key={o.id}
+                    title={o.title}
+                    subtitle={expanded ? truncateSnippet(o.snippet) : undefined}
+                    imageUrl={o.imageUrl}
+                    onClick={() => toggleOpportunityExpanded(o.id)}
+                    footer={
+                      expanded ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {['events', sourceLabel(o.source), city].map((t) => (
+                              <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-travel-muted">Tap to view details</p>
+                      )
+                    }
+                    action={
+                      expanded ? (
+                        <button
+                          type="button"
+                          disabled={busyId === o.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void addToPlan(o);
+                          }}
+                          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
+                        >
+                          {busyId === o.id ? 'Adding…' : 'Add to plan'}
+                        </button>
+                      ) : null
+                    }
+                  />
+                );
+              })()
             ))}
           </section>
         ))}

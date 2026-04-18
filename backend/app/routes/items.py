@@ -41,7 +41,8 @@ def allowed_video_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
 
 
-MAX_TRAVEL_JSON_BYTES = 12000
+# Live pricing quote cache (per trip) can include many flight/hotel rows; keep a generous cap.
+MAX_TRAVEL_JSON_BYTES = 131072
 
 
 def _sanitize_travel(raw):

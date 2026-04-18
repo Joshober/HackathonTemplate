@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, type Profile } from '@/lib/api';
+import { Shield } from 'lucide-react';
 import { logout } from '@/lib/auth';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 
@@ -15,6 +16,7 @@ export default function TravelProfileBody() {
   const [ticketTitle, setTicketTitle] = useState('Travel support request');
   const [ticketBody, setTicketBody] = useState('');
   const [ticketMsg, setTicketMsg] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!user) return;
@@ -32,6 +34,18 @@ export default function TravelProfileBody() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        const me = await api.getAdminMe();
+        setIsAdmin(me.isAdmin === true);
+      } catch {
+        setIsAdmin(false);
+      }
+    })();
+  }, [user]);
 
   const submitTicket = async () => {
     if (!ticketBody.trim()) {
@@ -96,6 +110,16 @@ export default function TravelProfileBody() {
           <span className="text-gray-900">Disruption alerts on</span>
         </div>
       </div>
+
+      {isAdmin ? (
+        <Link
+          href="/admin/ai-solver"
+          className="flex items-center justify-center gap-2 w-full text-center py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-950 text-sm font-semibold hover:bg-amber-100 shadow-sm"
+        >
+          <Shield className="w-4 h-4 shrink-0" aria-hidden />
+          AI Admin Solver
+        </Link>
+      ) : null}
 
       <Link
         href="/profile/edit"

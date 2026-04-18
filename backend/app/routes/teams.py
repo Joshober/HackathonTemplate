@@ -5,7 +5,7 @@ import base64
 import io
 import os
 import re
-from datetime import datetime
+from datetime import datetime, date
 from functools import wraps
 
 import requests
@@ -16,13 +16,16 @@ from PIL import Image
 
 from app.db.mongodb import get_db
 from app.routes.auth_backend import require_auth, get_user_info_from_request as get_user_info_from_token
+from app.config.openrouter_models import DEFAULT_VISION_MODEL
 from app.services.team_chat import run_team_travel_assistant
 from app.services.team_items_access import format_item_document
+from app.services.google_calendar import get_google_calendar_token_doc
 
 bp = Blueprint('teams', __name__)
 
 _indexes_ensured = False
 MAX_TEAM_CITY_PRESETS = 20
+MAX_MANUAL_AVAILABILITY_WINDOWS = 24
 
 
 def _ensure_indexes(db):
@@ -60,6 +63,45 @@ def _normalize_city_list(raw) -> list[str]:
         if len(out) >= MAX_TEAM_CITY_PRESETS:
             break
     return out
+
+
+def _normalize_iso_day(raw) -> str | None:
+    s = " ".join(str(raw or "").split()).strip()
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s).isoformat()
+    except ValueError:
+        return None
+
+
+def _normalize_manual_windows(raw) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        start_day = _normalize_iso_day(row.get('startDate'))
+        end_day = _normalize_iso_day(row.get('endDate'))
+        if not start_day or not end_day or start_day > end_day:
+            continue
+        out.append({'startDate': start_day, 'endDate': end_day})
+        if len(out) >= MAX_MANUAL_AVAILABILITY_WINDOWS:
+            break
+    return out
+
+
+def _normalize_budget(raw) -> float | None:
+    if raw is None or raw == '':
+        return None
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if v < 0:
+        return None
+    return round(v, 2)
 
 
 def upsert_user_from_token(db, user_id: str) -> None:
@@ -421,7 +463,129 @@ def post_message(user_id, team_id):
     }), 201
 
 
-RETURN_FEED_STATUSES = ('approved', 'booked', 'completed')
+@bp.route('/teams/<team_id>/calendar-coverage', methods=['GET'])
+@require_auth
+@with_user_sync
+def team_calendar_coverage(user_id, team_id):
+    oid = _parse_oid(team_id)
+    if not oid:
+        return jsonify({'error': 'Invalid team id'}), 400
+    db = get_db()
+    team = _team_for_member(db, oid, user_id)
+    if not team:
+        return jsonify({'error': 'Forbidden'}), 403
+    members = _resolve_members(db, team.get('memberIds') or [])
+    manual_map = team.get('manualAvailability') if isinstance(team.get('manualAvailability'), dict) else {}
+    rows = []
+    connected_count = 0
+    manual_count = 0
+    for m in members:
+        uid = m.get('userId') or ''
+        token_doc = get_google_calendar_token_doc(db, uid) if uid else None
+        connected = bool(token_doc and (token_doc.get('accessToken') or token_doc.get('refreshToken')))
+        manual_windows = manual_map.get(uid) if isinstance(manual_map, dict) else None
+        has_manual = isinstance(manual_windows, list) and len(manual_windows) > 0
+        if connected:
+            connected_count += 1
+        if has_manual:
+            manual_count += 1
+        rows.append(
+            {
+                'userId': uid,
+                'displayName': m.get('displayName'),
+                'email': m.get('email'),
+                'connected': connected,
+                'manualAvailability': has_manual,
+            }
+        )
+    return jsonify(
+        {
+            'teamId': team_id,
+            'totalMembers': len(rows),
+            'connectedMembers': connected_count,
+            'manualAvailabilityMembers': manual_count,
+            'members': rows,
+        }
+    ), 200
+
+
+@bp.route('/teams/<team_id>/availability/me', methods=['PUT'])
+@require_auth
+@with_user_sync
+def set_team_manual_availability(user_id, team_id):
+    oid = _parse_oid(team_id)
+    if not oid:
+        return jsonify({'error': 'Invalid team id'}), 400
+    db = get_db()
+    team = _team_for_member(db, oid, user_id)
+    if not team:
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    windows = _normalize_manual_windows(data.get('windows') or [])
+    budget_min = _normalize_budget(data.get('budgetMin'))
+    budget_max = _normalize_budget(data.get('budgetMax'))
+    if budget_min is not None and budget_max is not None and budget_min > budget_max:
+        return jsonify({'error': 'budgetMin must be <= budgetMax'}), 400
+    db.teams.update_one(
+        {'_id': oid},
+        {
+            '$set': {
+                f'manualAvailability.{user_id}': windows,
+                f'manualBudget.{user_id}': {
+                    'min': budget_min,
+                    'max': budget_max,
+                },
+                'updatedAt': datetime.utcnow(),
+            }
+        },
+    )
+    return jsonify({'windows': windows, 'budgetMin': budget_min, 'budgetMax': budget_max}), 200
+
+
+@bp.route('/teams/<team_id>/availability', methods=['GET'])
+@require_auth
+@with_user_sync
+def get_team_manual_availability(user_id, team_id):
+    oid = _parse_oid(team_id)
+    if not oid:
+        return jsonify({'error': 'Invalid team id'}), 400
+    db = get_db()
+    team = _team_for_member(db, oid, user_id)
+    if not team:
+        return jsonify({'error': 'Forbidden'}), 403
+    members = _resolve_members(db, team.get('memberIds') or [])
+    manual_map = team.get('manualAvailability') if isinstance(team.get('manualAvailability'), dict) else {}
+    budget_map = team.get('manualBudget') if isinstance(team.get('manualBudget'), dict) else {}
+    rows = []
+    for m in members:
+        uid = m.get('userId') or ''
+        windows = manual_map.get(uid) if isinstance(manual_map, dict) else []
+        budget = budget_map.get(uid) if isinstance(budget_map, dict) and isinstance(budget_map.get(uid), dict) else {}
+        rows.append(
+            {
+                'userId': uid,
+                'displayName': m.get('displayName'),
+                'email': m.get('email'),
+                'windows': _normalize_manual_windows(windows if isinstance(windows, list) else []),
+                'budgetMin': _normalize_budget((budget or {}).get('min')),
+                'budgetMax': _normalize_budget((budget or {}).get('max')),
+            }
+        )
+    return jsonify({'teamId': team_id, 'members': rows}), 200
+
+
+# Team-scoped items surfaced in /return-feed: planning pipeline + finalized trips.
+# (Return-stage UI filters client-side so drafts are not mixed into post-trip tools.)
+RETURN_FEED_STATUSES = (
+    'draft',
+    'ready_for_approval',
+    'submitted',
+    'pending',
+    'needs_changes',
+    'approved',
+    'booked',
+    'completed',
+)
 
 INSTAGRAM_CAPTION_SYSTEM = (
     'You write Instagram captions for a professional travel / conference team. '
@@ -534,7 +698,7 @@ def instagram_caption(user_id, team_id, item_id):
     if not api_key:
         return jsonify({'error': 'OPENROUTER_API_KEY is not configured'}), 500
 
-    model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+    model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
     user_text = f'Event title: {title}\nLocation: {loc or "unknown"}\nWrite the Instagram caption for this photo.'
     content = [
         {'type': 'text', 'text': user_text},

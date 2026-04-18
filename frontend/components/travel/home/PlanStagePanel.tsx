@@ -48,7 +48,7 @@ function ApprovedEventsSlider({ items }: { items: Item[] }) {
       <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
         <p className="text-sm text-travel-muted">No approved trips yet.</p>
         <p className="text-xs text-gray-500 mt-1">
-          Swipe right on a suggestion below to submit for approval, then finish sign-off in the Approve stage.
+          Swipe right on a suggestion below to send it to the team for sign-off on the Approve stage.
         </p>
       </div>
     );
@@ -56,7 +56,12 @@ function ApprovedEventsSlider({ items }: { items: Item[] }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Approved & booked</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Approved & booked</p>
+        <Link href="/home/approved" className="text-[11px] text-blue-600 hover:underline font-medium">
+          Manage
+        </Link>
+      </div>
       <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory custom-scrollbar">
         {items.map((item) => {
           const t = getTravelPayload(item);
@@ -176,7 +181,7 @@ function TopSwipeCard({
             ))}
           </div>
           <p className="text-xs text-travel-muted">
-            Swipe right to approve (send to the Approve stage). Swipe left to veto (remove from this stack).
+            Swipe right to submit for team approval (Approve stage). Swipe left to veto (remove from this stack).
           </p>
         </div>
       </article>

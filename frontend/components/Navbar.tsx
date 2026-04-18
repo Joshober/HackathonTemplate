@@ -2,13 +2,15 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Plane } from 'lucide-react';
+import { Plane, Shield } from 'lucide-react';
 import { getCurrentUser, logout, User } from '@/lib/auth';
+import { api } from '@/lib/api';
 
 /** Optional top nav — Travel Companion only. */
 export default function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -21,6 +23,21 @@ export default function Navbar() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    (async () => {
+      try {
+        const me = await api.getAdminMe();
+        setIsAdmin(me.isAdmin === true);
+      } catch {
+        setIsAdmin(false);
+      }
+    })();
+  }, [user]);
 
   const linkClass =
     'text-gray-500 hover:text-gray-900 px-3 py-2 text-sm font-medium transition-colors border-b-2 border-transparent hover:border-blue-400/50 pb-0.5';
@@ -41,6 +58,15 @@ export default function Navbar() {
               <Link href="/profile" className={linkClass}>
                 Profile
               </Link>
+              {isAdmin ? (
+                <Link
+                  href="/admin/ai-solver"
+                  className="text-amber-700 hover:text-amber-900 px-3 py-2 text-sm font-medium transition-colors border-b-2 border-transparent hover:border-amber-400/50 pb-0.5 inline-flex items-center gap-1"
+                >
+                  <Shield className="w-4 h-4" aria-hidden />
+                  Admin AI
+                </Link>
+              ) : null}
               <span className="text-gray-400 text-sm truncate max-w-[140px]">{user.name || user.email}</span>
               <button
                 type="button"

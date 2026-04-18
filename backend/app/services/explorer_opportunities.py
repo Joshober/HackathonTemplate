@@ -2,7 +2,7 @@
 import hashlib
 import os
 from typing import Any
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 
 import requests
 
@@ -432,10 +432,14 @@ def _from_ticketmaster(
             url = (ev.get("url") or "").strip()
             title = (ev.get("name") or "").strip() or url or "Untitled"
             when = ""
+            start_at = None
             dates = ev.get("dates")
             if isinstance(dates, dict):
                 start = dates.get("start")
                 if isinstance(start, dict):
+                    dt = (start.get("dateTime") or "").strip()
+                    if dt:
+                        start_at = dt
                     local_date = start.get("localDate")
                     local_time = start.get("localTime")
                     when = " ".join(x for x in [str(local_date or "").strip(), str(local_time or "").strip()] if x).strip()
@@ -458,6 +462,8 @@ def _from_ticketmaster(
             image = _pick_ticketmaster_image(ev)
             if image:
                 item["imageUrl"] = image
+            if start_at:
+                item["startAt"] = start_at
             rows.append(item)
             if len(rows) >= max_per:
                 return rows
@@ -472,6 +478,185 @@ def _clean_date(value: str | None) -> str | None:
         return date.fromisoformat(v).isoformat()
     except ValueError:
         return None
+
+
+def _parse_iso_dt(raw: str | None) -> datetime | None:
+    v = " ".join(str(raw or "").split()).strip()
+    if not v:
+        return None
+    try:
+        dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt.astimezone(timezone.utc)
+
+
+def _opportunity_window(opportunity: dict[str, Any]) -> tuple[datetime, datetime] | None:
+    start = _parse_iso_dt(opportunity.get("startAt"))
+    if not start:
+        return None
+    end = _parse_iso_dt(opportunity.get("endAt"))
+    if not end or end <= start:
+        end = start + timedelta(hours=2)
+    return start, end
+
+
+def _overlaps(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> bool:
+    return a_start < b_end and b_start < a_end
+
+
+def filter_opportunities_by_busy(
+    opportunities: list[dict[str, Any]],
+    busy_by_user: dict[str, list[tuple[datetime, datetime]]],
+    require_all_members_free: bool = True,
+    exclude_unknown_event_times: bool = True,
+    available_by_user: dict[str, list[tuple[datetime, datetime]]] | None = None,
+    required_user_ids: list[str] | None = None,
+    *,
+    fallback_window: tuple[datetime, datetime] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    if not busy_by_user:
+        busy_by_user = {}
+    available_by_user = available_by_user or {}
+    required_ids = [u for u in (required_user_ids or []) if isinstance(u, str) and u.strip()]
+    if not busy_by_user and not available_by_user and not required_ids:
+        return opportunities, {
+            "total": len(opportunities),
+            "withEventTime": 0,
+            "removedByAvailability": 0,
+            "includedWithMissingEventTime": 0,
+        }
+    out: list[dict[str, Any]] = []
+    with_event_time = 0
+    removed = 0
+    included_missing_event_time = 0
+    for opp in opportunities:
+        window = _opportunity_window(opp)
+        if window is None:
+            if fallback_window is not None:
+                window = fallback_window
+                opp["eventTimeMissing"] = True
+            elif exclude_unknown_event_times:
+                removed += 1
+                continue
+            else:
+                out.append(opp)
+                continue
+        else:
+            opp["eventTimeMissing"] = False
+        with_event_time += 1
+        o_start, o_end = window
+        any_conflict = False
+        conflict_count = 0
+        missing_required = False
+        for uid in required_ids:
+            if uid in available_by_user:
+                windows = available_by_user.get(uid) or []
+                has_available_window = any(_overlaps(o_start, o_end, w_start, w_end) for (w_start, w_end) in windows)
+                if not has_available_window:
+                    missing_required = True
+                    break
+            elif uid in busy_by_user:
+                continue
+            else:
+                # user has no calendar or manual availability submitted
+                missing_required = True
+                break
+        if missing_required:
+            removed += 1
+            continue
+        for blocks in busy_by_user.values():
+            member_conflict = any(_overlaps(o_start, o_end, b_start, b_end) for (b_start, b_end) in blocks)
+            if member_conflict:
+                any_conflict = True
+                conflict_count += 1
+                if require_all_members_free:
+                    break
+        if require_all_members_free and any_conflict:
+            removed += 1
+            continue
+        if (not require_all_members_free) and conflict_count == len(busy_by_user):
+            removed += 1
+            continue
+        out.append(opp)
+        if opp.get("eventTimeMissing"):
+            included_missing_event_time += 1
+    return out, {
+        "total": len(opportunities),
+        "withEventTime": with_event_time,
+        "removedByAvailability": removed,
+        "includedWithMissingEventTime": included_missing_event_time,
+    }
+
+
+def expand_event_options(opportunities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Build per-event option rows by grouping related opportunities and collecting
+    all known start times in the current result set.
+    """
+    grouped: dict[str, dict[str, Any]] = {}
+    for opp in opportunities:
+        title = " ".join(str(opp.get("title") or "").split()).strip()
+        city = " ".join(str(opp.get("city") or "").split()).strip()
+        source = " ".join(str(opp.get("source") or "").split()).strip() or "unknown"
+        if not title:
+            continue
+        key = f"{source}|{city.lower()}|{title.lower()}"
+        row = grouped.get(key)
+        if row is None:
+            row = {
+                "eventKey": key,
+                "title": title,
+                "city": city,
+                "source": source,
+                "url": opp.get("url"),
+                "imageUrl": opp.get("imageUrl"),
+                "snippet": opp.get("snippet"),
+                "options": [],
+            }
+            grouped[key] = row
+        start_at = opp.get("startAt")
+        has_event_time = isinstance(start_at, str) and start_at.strip()
+        if has_event_time:
+            option_id = _result_id(f"{key}:{start_at.strip()}")
+            row["options"].append(
+                {
+                    "optionId": option_id,
+                    "sourceEventId": opp.get("id"),
+                    "startAt": start_at.strip(),
+                    "endAt": opp.get("endAt"),
+                    "eventTimeMissing": False,
+                }
+            )
+        else:
+            # Listing has no specific event time — still emit an option row; API marks availability vs team window.
+            und_ref = str(opp.get("id") or opp.get("url") or opp.get("snippet") or "")[:200]
+            option_id = _result_id(f"{key}:undated:{und_ref}")
+            row["options"].append(
+                {
+                    "optionId": option_id,
+                    "sourceEventId": opp.get("id"),
+                    "startAt": None,
+                    "endAt": opp.get("endAt"),
+                    "eventTimeMissing": True,
+                }
+            )
+    out = []
+    for row in grouped.values():
+        seen = set()
+        opts = []
+        for o in row["options"]:
+            oid = o.get("optionId")
+            if not oid or oid in seen:
+                continue
+            seen.add(oid)
+            opts.append(o)
+        opts.sort(key=lambda x: (str(x.get("startAt") or "\uffff"), x.get("optionId") or ""))
+        row["options"] = opts
+        row["optionCount"] = len(opts)
+        out.append(row)
+    out.sort(key=lambda r: (str(r.get("city") or ""), str(r.get("title") or "")))
+    return out
 
 
 def travel_opportunities(

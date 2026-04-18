@@ -51,6 +51,31 @@ export interface TeamDetail {
   cityPresets?: string[];
 }
 
+export interface TeamCalendarCoverageMember {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+  connected: boolean;
+  manualAvailability?: boolean;
+}
+
+export interface TeamCalendarCoverage {
+  teamId: string;
+  totalMembers: number;
+  connectedMembers: number;
+  manualAvailabilityMembers?: number;
+  members: TeamCalendarCoverageMember[];
+}
+
+export interface TeamMemberAvailability {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+  windows: Array<{ startDate: string; endDate: string }>;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+}
+
 export interface TeamMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -80,6 +105,69 @@ export interface ExplorerSearchParams {
   sources?: Array<'ticketmaster' | 'duckduckgo' | 'openstreetmap'>;
   eventTypes?: Array<'music' | 'sports' | 'arts' | 'film' | 'miscellaneous'>;
   maxPrice?: number;
+  teamId?: string;
+  requireAllMembersFree?: boolean;
+  availabilityWindowStart?: string;
+  availabilityWindowEnd?: string;
+}
+
+export interface ExplorerAvailabilityCoverage {
+  teamId: string;
+  totalMembers: number;
+  connectedMembers: number;
+  manualAvailabilityMembers?: number;
+  requireAllMembersFree: boolean;
+  total?: number;
+  withEventTime?: number;
+  removedByAvailability?: number;
+  /** Kept after filter using team availability window (no specific event time on listing). */
+  includedWithMissingEventTime?: number;
+}
+
+export interface ExplorerEventOption {
+  eventKey: string;
+  optionId: string;
+  sourceEventId?: string;
+  title: string;
+  city: string;
+  source?: string;
+  url?: string;
+  imageUrl?: string;
+  snippet?: string;
+  startAt?: string;
+  endAt?: string;
+  /** True when the source listing had no event time; availability used team search window. */
+  eventTimeMissing?: boolean;
+  availability?: {
+    availableCount: number;
+    totalMembers: number;
+    conflictMemberIds: string[];
+    availabilityScore: number;
+    meetsMajority: boolean;
+    eventTimeMissing?: boolean;
+    evaluatedAgainst?: 'event_time' | 'availability_window' | null;
+    evaluationWindowStart?: string | null;
+    evaluationWindowEnd?: string | null;
+  };
+  cost?: {
+    mode?: string;
+    flightTotal?: number;
+    hotelTotal?: number;
+    ticketEstimate?: number;
+    totalEstimated?: number;
+    /** Flight/hotel estimate used first day of team window — not a confirmed event date. */
+    pricingUsedAvailabilityWindow?: boolean;
+  };
+}
+
+export interface ExplorerItineraryPackage {
+  packageId: string;
+  title: string;
+  city: string;
+  options: ExplorerEventOption[];
+  availability?: ExplorerEventOption['availability'];
+  cost?: ExplorerEventOption['cost'];
+  score?: number;
 }
 
 export interface CitySuggestion {
@@ -101,6 +189,14 @@ export interface TravelPricingFlightOfferSummary {
   source?: string;
 }
 
+export interface TravelPricingMatrixFlightOption extends TravelPricingFlightOfferSummary {
+  optionId?: string;
+  outboundDepartureAt?: string;
+  outboundArrivalAt?: string;
+  returnDepartureAt?: string;
+  returnArrivalAt?: string;
+}
+
 export interface TravelPricingHotelOfferRow {
   hotelId?: string;
   hotelName?: string;
@@ -109,6 +205,52 @@ export interface TravelPricingHotelOfferRow {
   total?: string;
   currency?: string;
   boardType?: string;
+  /** Minutes from Google Hotels nearby_places transit hints (approximate). */
+  distanceMinutes?: number | null;
+  distanceHint?: string | null;
+  listingUrl?: string | null;
+  source?: string;
+}
+
+export interface TravelPricingMatrixHotelOption extends TravelPricingHotelOfferRow {
+  optionId?: string;
+}
+
+export interface TravelPricingBundleOption {
+  bundleId: string;
+  flightOptionId?: string;
+  hotelOptionId?: string;
+  flightSource?: string;
+  hotelSource?: string;
+  currency?: string;
+  flightTotal?: number | null;
+  hotelTotal?: number | null;
+  totalEstimated?: number | null;
+  score?: number;
+  scoreBreakdown?: {
+    attendance?: number;
+    approval?: number;
+    price?: number;
+  };
+}
+
+export interface TravelPricingWindowSummary {
+  windowStart: string;
+  windowEnd: string;
+  tripCount: number;
+  cheapestFlight?: number | null;
+  cheapestHotel?: number | null;
+  cheapestBundle?: number | null;
+  assumptionFlags?: string[];
+}
+
+export interface TravelPricingAttendance {
+  canAttend?: boolean | null;
+  score?: number;
+  eventStartDate?: string | null;
+  eventEndDate?: string | null;
+  assumedEventDate?: string | null;
+  evaluation?: string | null;
 }
 
 export interface TravelPricingDeepLinks {
@@ -131,8 +273,11 @@ export interface TravelPricingEventResult {
   itemId?: string;
   title: string;
   destinationQuery: string;
+  outboundDate?: string;
+  inboundDate?: string;
   deepLinks: TravelPricingDeepLinks;
   resolvedDestination?: { iata: string | null; label: string | null } | null;
+  attendance?: TravelPricingAttendance;
   flight: {
     offers: TravelPricingFlightOfferSummary[];
     error?: string | null;
@@ -144,6 +289,20 @@ export interface TravelPricingEventResult {
     error?: string | null;
     bookable?: boolean | null;
     reason?: string;
+    /** Average of per-listing distanceMinutes when from SerpAPI Google Hotels. */
+    averageDistanceMinutes?: number | null;
+    distanceSummary?: string | null;
+  };
+  flightOptions?: TravelPricingMatrixFlightOption[];
+  hotelOptions?: TravelPricingMatrixHotelOption[];
+  bundleOptions?: TravelPricingBundleOption[];
+  assumptionFlags?: string[];
+  matrixSummary?: {
+    flightOptionsCount?: number;
+    hotelOptionsCount?: number;
+    bundleOptionsCount?: number;
+    bestBundleTotal?: number | null;
+    bestBundleScore?: number | null;
   };
   scrapedOptions: TravelPricingScrapedOption[];
   scrapeNote?: string | null;
@@ -155,8 +314,103 @@ export interface TravelPricingPreviewResponse {
   mode: 'amadeus' | 'duffel' | 'links_only';
   /** Global preference resolution: amadeus | duffel | none */
   flightBackend?: string;
+  flightBackends?: string[];
   scrapeEnabled: boolean;
+  matrixCaps?: {
+    flightOptions?: number;
+    hotelOptions?: number;
+    bundleOptions?: number;
+  };
+  windowSummaries?: TravelPricingWindowSummary[];
+  tripEvaluations?: TravelPricingEventResult[];
   events: TravelPricingEventResult[];
+}
+
+export interface ExplorerAiHelpRecommendation {
+  title: string;
+  reasoning: string;
+  totalEstimated?: number | null;
+  score?: number | null;
+  assumptions?: string[];
+}
+
+export interface ExplorerAiHelpResponse {
+  message: string;
+  recommendations: ExplorerAiHelpRecommendation[];
+  refreshApplied?: boolean;
+  searchRefresh?: {
+    opportunityCount?: number;
+    topOpportunities?: ExplorerOpportunity[];
+  } | null;
+  pricingRefresh?: {
+    mode?: string;
+    flightBackends?: string[];
+    windowSummaries?: TravelPricingWindowSummary[];
+    trips?: Array<{
+      itemId?: string;
+      title?: string;
+      destinationQuery?: string;
+      attendance?: TravelPricingAttendance;
+      bestBundle?: TravelPricingBundleOption | null;
+      assumptionFlags?: string[];
+    }>;
+  } | null;
+  model?: string | null;
+}
+
+export interface TravelCopilotSuggestedAction {
+  label: string;
+  prompt: string;
+}
+
+/** Only these three AI Service modes are supported for the travel copilot. */
+export type TravelAssistantMode = 'travel_coach' | 'personal_assistant' | 'analytics';
+
+/** Backend-computed summary of trip context completeness (Mongo + UI hints). */
+export interface TravelCopilotContextQuality {
+  tripRef?: string;
+  summaryLine?: string;
+  completeness?: Record<string, boolean>;
+  gaps?: string[];
+}
+
+export interface TravelCopilotResponse {
+  reply: string;
+  mode: string;
+  contextUsed: Record<string, boolean>;
+  contextQuality?: TravelCopilotContextQuality;
+  suggestedActions: TravelCopilotSuggestedAction[];
+  usage?: Record<string, unknown>;
+}
+
+/** AI Admin Solver — structured JSON from backend + optional pending confirmation. */
+export interface AdminAiSolverStructured {
+  responseType?: string;
+  intent?: string;
+  confidence?: number;
+  requiresConfirmation?: boolean;
+  reasoningSummary?: string;
+  actionPayload?: Record<string, unknown> | null;
+  userFacingMessage?: string;
+  weatherDigest?: unknown;
+  structuredRecommendations?: string[];
+  validationErrors?: string[];
+  pendingActionBlocked?: boolean;
+}
+
+export interface AdminAiSolverResponse {
+  ok?: boolean;
+  structured?: AdminAiSolverStructured;
+  contextUsed?: Record<string, boolean>;
+  pendingActionId?: string | null;
+  usage?: Record<string, unknown>;
+  error?: string;
+}
+
+export interface AdminMeResponse {
+  email: string;
+  isAdmin: boolean;
+  isProfessor: boolean;
 }
 
 async function getAccessToken(): Promise<string | null> {
@@ -315,7 +569,12 @@ export const api = {
     return fetchWithAuth(`/api/items/${id}`);
   },
 
-  async searchExplorerOpportunities(params: ExplorerSearchParams): Promise<{ opportunities: ExplorerOpportunity[] }> {
+  async searchExplorerOpportunities(params: ExplorerSearchParams): Promise<{
+    opportunities: ExplorerOpportunity[];
+    availabilityCoverage?: ExplorerAvailabilityCoverage | null;
+    eventOptions?: ExplorerEventOption[];
+    itineraryPackages?: ExplorerItineraryPackage[];
+  }> {
     return fetchWithAuth('/api/explorer/opportunities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -329,7 +588,56 @@ export const api = {
         ...(params.sources?.length ? { sources: params.sources } : {}),
         ...(params.eventTypes?.length ? { eventTypes: params.eventTypes } : {}),
         ...(params.maxPrice != null ? { maxPrice: params.maxPrice } : {}),
+        ...(params.teamId ? { teamId: params.teamId } : {}),
+        ...(params.requireAllMembersFree ? { requireAllMembersFree: params.requireAllMembersFree } : {}),
+        ...(params.availabilityWindowStart ? { availabilityWindowStart: params.availabilityWindowStart } : {}),
+        ...(params.availabilityWindowEnd ? { availabilityWindowEnd: params.availabilityWindowEnd } : {}),
       }),
+    });
+  },
+
+  async getExplorerAiHelp(body: {
+    prompt: string;
+    refresh?: boolean;
+    context?: Record<string, unknown>;
+    refreshSearchParams?: ExplorerSearchParams;
+    refreshPricingParams?: {
+      originIata: string;
+      events: Array<{
+        itemId?: string;
+        title?: string;
+        destinationQuery?: string;
+        location?: string;
+        outboundDate: string;
+        inboundDate?: string;
+        checkIn?: string;
+        checkOut?: string;
+        adults?: number;
+        eventStartDate?: string;
+        eventEndDate?: string;
+        approvalSignal?: number;
+      }>;
+    };
+  }): Promise<ExplorerAiHelpResponse> {
+    return fetchWithAuth('/api/explorer/ai-help', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  },
+
+  async getGoogleCalendarAuthUrl(): Promise<{ auth_url: string }> {
+    return fetchWithAuth('/api/auth/google/calendar/login');
+  },
+
+  async getGoogleCalendarStatus(): Promise<{ connected: boolean }> {
+    return fetchWithAuth('/api/auth/google/calendar/status');
+  },
+
+  async disconnectGoogleCalendar(): Promise<{ ok: boolean }> {
+    return fetchWithAuth('/api/auth/google/calendar/disconnect', {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
 
@@ -351,6 +659,9 @@ export const api = {
       checkIn?: string;
       checkOut?: string;
       adults?: number;
+      eventStartDate?: string;
+      eventEndDate?: string;
+      approvalSignal?: number;
     }>;
   }): Promise<TravelPricingPreviewResponse> {
     return fetchWithAuth('/api/travel/pricing-preview', {
@@ -363,6 +674,8 @@ export const api = {
   async createItem(item: {
     title: string;
     description: string;
+    imageUrls?: string[];
+    videoUrls?: string[];
     images?: File[];
     videos?: File[];
     travel?: TravelMetadata;
@@ -376,6 +689,8 @@ export const api = {
         body: JSON.stringify({
           title: item.title,
           description: item.description,
+          imageUrls: item.imageUrls,
+          videoUrls: item.videoUrls,
           travel: item.travel,
           ...(item.teamId ? { teamId: item.teamId } : {}),
         }),
@@ -610,6 +925,71 @@ export const api = {
     });
   },
 
+  /** Context-aware travel copilot (MongoDB + OpenRouter tools). Requires auth. */
+  async chatTravelCopilot(params: {
+    message: string;
+    sessionId?: string;
+    currentPage?: string;
+    uiState?: Record<string, unknown>;
+    assistantMode?: TravelAssistantMode;
+    messages?: Array<{ role: string; content: string }>;
+    personality?: string;
+    model?: string;
+  }): Promise<TravelCopilotResponse> {
+    return fetchWithAuth('/api/chat/copilot', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: params.message,
+        sessionId: params.sessionId,
+        currentPage: params.currentPage,
+        uiState: params.uiState,
+        assistantMode: params.assistantMode ?? 'travel_coach',
+        messages: params.messages,
+        personality: params.personality,
+        model: params.model,
+      }),
+    }) as Promise<TravelCopilotResponse>;
+  },
+
+  async getAdminMe(): Promise<AdminMeResponse> {
+    return fetchWithAuth('/api/admin/me') as Promise<AdminMeResponse>;
+  },
+
+  async adminAiSolver(params: {
+    message: string;
+    currentPage?: string;
+    selectedTeamId?: string;
+    selectedTripId?: string;
+    selectedDateRange?: { start?: string; end?: string };
+    uiState?: Record<string, unknown>;
+    model?: string;
+  }): Promise<AdminAiSolverResponse> {
+    return fetchWithAuth('/api/admin/ai/solver', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: params.message,
+        currentPage: params.currentPage,
+        selectedTeamId: params.selectedTeamId,
+        selectedTripId: params.selectedTripId,
+        selectedDateRange: params.selectedDateRange,
+        uiState: params.uiState,
+        model: params.model,
+      }),
+    }) as Promise<AdminAiSolverResponse>;
+  },
+
+  async adminAiSolverConfirm(params: { pendingActionId: string }): Promise<{
+    ok?: boolean;
+    executed?: Record<string, unknown>;
+    intent?: string;
+    error?: string;
+  }> {
+    return fetchWithAuth('/api/admin/ai/solver/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ pendingActionId: params.pendingActionId, confirm: true }),
+    });
+  },
+
   async createTicket(params: {
     title: string;
     description: string;
@@ -645,6 +1025,33 @@ export const api = {
 
   async getTeam(teamId: string): Promise<TeamDetail> {
     return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}`);
+  },
+
+  async getTeamCalendarCoverage(teamId: string): Promise<TeamCalendarCoverage> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/calendar-coverage`);
+  },
+
+  async setMyTeamAvailability(
+    teamId: string,
+    windows: Array<{ startDate: string; endDate: string }>,
+    budget?: { min?: number | null; max?: number | null }
+  ): Promise<{
+    windows: Array<{ startDate: string; endDate: string }>;
+    budgetMin?: number | null;
+    budgetMax?: number | null;
+  }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/availability/me`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        windows,
+        ...(budget?.min != null ? { budgetMin: budget.min } : { budgetMin: null }),
+        ...(budget?.max != null ? { budgetMax: budget.max } : { budgetMax: null }),
+      }),
+    });
+  },
+
+  async getTeamAvailability(teamId: string): Promise<{ teamId: string; members: TeamMemberAvailability[] }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/availability`);
   },
 
   async setTeamCityPresets(teamId: string, cities: string[]): Promise<{ cities: string[] }> {

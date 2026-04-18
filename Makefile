@@ -1,4 +1,4 @@
-.PHONY: kill stack-up stack-down stack-restart run-flutter-mobile flutter-run run-travelbot docker-doctor dev-backend dev-frontend compose-reset
+.PHONY: kill kill-local stack-up stack-down stack-restart run-flutter-mobile flutter-run run-travelbot run-local docker-doctor dev-backend dev-frontend compose-reset
 
 COMPOSE_RUN := "$(CURDIR)/scripts/compose-with-desktop.sh"
 DOCKER_RUN := "$(CURDIR)/scripts/docker-with-desktop.sh"
@@ -50,6 +50,20 @@ dev-backend:
 
 dev-frontend:
 	cd frontend && npm ci && npm run dev
+
+# Sin Docker: un solo terminal — backend :5001 + frontend :3000 (venv + npm)
+run-local: kill-local
+	@bash "$(CURDIR)/scripts/run-local.sh"
+
+# Libera puertos 3000/5001 y procesos típicos de dev local (y baja compose si estaba activo)
+kill-local:
+	@$(COMPOSE_RUN) -f "$(CURDIR)/docker-compose.yml" -p $(COMPOSE_PROJECT_NAME) down --remove-orphans 2>/dev/null || true
+	@-lsof -ti :3000 | xargs kill -9 2>/dev/null || true
+	@-lsof -ti :5001 | xargs kill -9 2>/dev/null || true
+	@-pkill -f "next dev" 2>/dev/null || true
+	@-pkill -f "flask run" 2>/dev/null || true
+	@-pkill -f "python run.py" 2>/dev/null || true
+	@echo "kill-local: done"
 
 run-flutter-mobile:
 	@git fetch origin $(FLUTTER_BRANCH) 2>/dev/null || true

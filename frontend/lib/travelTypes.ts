@@ -1,29 +1,16 @@
+import type { TravelPricingEventResult } from '@/lib/api';
+
 export type TravelStageId = 'plan' | 'approve' | 'travel' | 'return';
 
-/** Team role hierarchy */
-export type TeamRole = 'leader' | 'co-leader' | 'member';
-
-/** Planning sub-stages unlocked progressively */
-export type PlanningStage = 'chat' | 'plan' | 'approve' | 'travel' | 'return';
-
-/** AI-generated team plan produced by Sage */
-export interface TeamPlan {
-  generatedAt: string;
-  destination: string;
-  startDate: string;
-  endDate: string;
-  highlights: string[];
-  budgetEstimateUSD: { low: number; high: number };
-  dayByDay: Array<{
-    day: number;
-    date: string;
-    morning: string;
-    afternoon: string;
-    evening: string;
-    hotel?: string;
-  }>;
-  notes: string;
-  rawSummary: string;
+/** Last live pricing row for this trip (MongoDB via `items.travel`). */
+export interface TravelPricingQuoteCache {
+  savedAt: string;
+  originIata: string;
+  outboundDate: string;
+  inboundDate: string;
+  /** Team window key when all trips share one scenario, e.g. `2026-04-18|2026-04-25`. */
+  scenarioKey?: string;
+  event: TravelPricingEventResult;
 }
 
 export type TravelOpportunityStatus =
@@ -120,6 +107,8 @@ export interface TravelItemPayload {
   ticket?: TravelTicket;
   /** Persisted pricing quote snapshot + outbound booking links */
   travelPricingSnapshot?: TravelPricingSnapshot;
+  /** Full last pricing API row for this trip (trimmed); written when quotes load in Approve */
+  travelPricingQuoteCache?: TravelPricingQuoteCache;
   tripRecord?: TravelTripRecord;
   /** Email → selected option key (pre-book team poll) */
   teamOptionVotes?: Record<string, string>;

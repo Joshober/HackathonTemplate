@@ -4,6 +4,7 @@ import type {
   TravelBookingEstimate,
   TravelItemPayload,
   TravelOpportunityStatus,
+  TravelPricingQuoteCache,
   TravelPricingSnapshot,
   TravelPricingSnapshotEvent,
   TravelTicket,
@@ -113,6 +114,21 @@ function pickPricingSnapshot(raw: Record<string, unknown>): TravelPricingSnapsho
   };
 }
 
+function pickQuoteCache(raw: Record<string, unknown>): TravelPricingQuoteCache | undefined {
+  const c = raw.travelPricingQuoteCache;
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return undefined;
+  const o = c as Record<string, unknown>;
+  if (typeof o.savedAt !== 'string' || !o.event || typeof o.event !== 'object') return undefined;
+  return {
+    savedAt: o.savedAt,
+    originIata: typeof o.originIata === 'string' ? o.originIata : '',
+    outboundDate: typeof o.outboundDate === 'string' ? o.outboundDate : '',
+    inboundDate: typeof o.inboundDate === 'string' ? o.inboundDate : '',
+    scenarioKey: typeof o.scenarioKey === 'string' ? o.scenarioKey : undefined,
+    event: o.event as TravelPricingQuoteCache['event'],
+  };
+}
+
 function pickTripRecord(raw: Record<string, unknown>): TravelTripRecord | undefined {
   const tr = raw.tripRecord;
   if (!tr || typeof tr !== 'object' || Array.isArray(tr)) return undefined;
@@ -189,6 +205,7 @@ function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null
     bookingEstimate: pickBookingEstimate(raw),
     ticket: pickTicket(raw),
     travelPricingSnapshot: pickPricingSnapshot(raw),
+    travelPricingQuoteCache: pickQuoteCache(raw),
     tripRecord: pickTripRecord(raw),
     teamOptionVotes: pickTeamOptionVotes(raw),
     instagramCaption: ig,

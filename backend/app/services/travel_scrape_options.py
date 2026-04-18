@@ -1,8 +1,8 @@
-"""Hackathon-only: DDG snippets + optional light HTML fetch. Set TRAVEL_SCRAPE_OPTIONS=1.
+"""DDG snippets + light HTML fetch for travel pricing (on by default).
 
-SerpAPI (optional): set TRAVEL_SERPAPI_SCRAPE=1 and SERPAPI_API_KEY to use
-  - engine=google_flights when destination_iata is known (passed from pricing preview)
-  - engine=duckduckgo for text queries instead of the local ddgs client
+Opt out: TRAVEL_SCRAPE_OPTIONS=0.
+
+When SERPAPI_API_KEY is set, SerpAPI is used for DuckDuckGo text + Google Flights snippets (opt out: TRAVEL_SERPAPI_SCRAPE=0).
 """
 
 from __future__ import annotations
@@ -14,21 +14,27 @@ import requests
 
 from app.services.web_search import _ddgs_text_query
 
-_SCRAPE_ON = frozenset({"1", "true", "yes"})
+_SCRAPE_OFF = frozenset({"0", "false", "no", "off"})
 
 
 def scrape_enabled() -> bool:
+    """Extra web scrape rows (DDG + optional SerpAPI). Default on; disable with TRAVEL_SCRAPE_OPTIONS=0."""
     v = (os.getenv("TRAVEL_SCRAPE_OPTIONS") or "").strip().lower()
-    return v in _SCRAPE_ON
+    if v in _SCRAPE_OFF:
+        return False
+    return True
 
 
 def serpapi_travel_scrape_enabled() -> bool:
-    """Use SerpAPI google_flights + duckduckgo engines for travel scrape (needs SERPAPI_API_KEY)."""
-    if (os.getenv("TRAVEL_SERPAPI_SCRAPE") or "").strip().lower() not in _SCRAPE_ON:
-        return False
+    """SerpAPI google_flights + engine=duckduckgo when API key is set. Default on; opt out: TRAVEL_SERPAPI_SCRAPE=0."""
     from app.services.serpapi_travel import get_serpapi_key
 
-    return bool(get_serpapi_key())
+    if not get_serpapi_key():
+        return False
+    v = (os.getenv("TRAVEL_SERPAPI_SCRAPE") or "").strip().lower()
+    if v in _SCRAPE_OFF:
+        return False
+    return True
 
 
 def _text_search_rows(query: str, max_results: int) -> tuple[list[dict[str, str]], str | None]:
