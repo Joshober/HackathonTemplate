@@ -2,9 +2,11 @@
 import hashlib
 
 from app.services.web_search import duckduckgo_text_results
+from app.services.link_preview import og_image_for_url
 
 MAX_CITIES = 5
 MAX_PER_CITY_CAP = 10
+MAX_IMAGE_PREVIEWS = 12
 
 
 def _opportunity_query(city: str) -> str:
@@ -63,4 +65,23 @@ def travel_opportunities_for_cities(cities: list[str], max_per_city: int = 8) ->
                     'city': city[:200],
                 }
             )
+
+    # Best-effort enrich with preview images (og:image). Keep it fast:
+    # - small timeout per URL
+    # - cap total lookups to avoid slowing down multi-city searches
+    looked_up = 0
+    for o in opportunities:
+        if looked_up >= MAX_IMAGE_PREVIEWS:
+            break
+        url = o.get('url')
+        if not isinstance(url, str) or not url.strip():
+            continue
+        try:
+            img = og_image_for_url(url, timeout=2.5)
+        except Exception:
+            img = None
+        if img:
+            o['imageUrl'] = img
+            looked_up += 1
+
     return opportunities

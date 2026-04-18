@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import OpportunityCard from '@/components/travel/OpportunityCard';
@@ -33,6 +34,7 @@ export default function ExplorerPage() {
   const { user, loading } = useTravelAuth();
   const [citiesInput, setCitiesInput] = useState('');
   const [maxBudget, setMaxBudget] = useState(5000);
+  const [showFilters, setShowFilters] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [panelItems, setPanelItems] = useState<Item[]>([]);
@@ -190,38 +192,60 @@ export default function ExplorerPage() {
             Web results are unvetted — confirm with policy before booking.
           </PolicyHint>
         </p>
-        <label className="text-xs text-travel-muted">
-          Cities (comma-separated)
-          <input
-            value={citiesInput}
-            onChange={(e) => setCitiesInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void runSearch();
-            }}
-            className="mt-1 w-full rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400"
-            placeholder="e.g. Chicago, Austin, Seattle"
+
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden />
+            <input
+              type="text"
+              value={citiesInput}
+              onChange={(e) => setCitiesInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void runSearch();
+              }}
+              placeholder="Search destinations (comma-separated cities)"
+              disabled={searchLoading}
+              className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-none rounded-2xl text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 transition-all placeholder:text-gray-400"
+              aria-label="Cities (comma-separated)"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            className="w-12 h-12 bg-gray-900 rounded-full flex items-center justify-center text-white hover:bg-gray-800 transition-all shadow-lg"
+            aria-pressed={showFilters}
+            aria-label="Toggle filters"
+          >
+            <SlidersHorizontal className="w-5 h-5" aria-hidden />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void runSearch()}
             disabled={searchLoading}
-          />
-        </label>
-        <label className="text-xs text-travel-muted">
-          Planning budget when adding (USD)
-          <input
-            type="number"
-            min={200}
-            step={50}
-            value={maxBudget}
-            onChange={(e) => setMaxBudget(Number(e.target.value) || 0)}
-            className="mt-1 w-full rounded-xl bg-white border border-gray-200 px-3 py-2 text-sm text-gray-900 shadow-sm"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => void runSearch()}
-          disabled={searchLoading}
-          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
-        >
-          {searchLoading ? 'Searching…' : 'Search'}
-        </button>
+            className="w-12 h-12 bg-gray-900 rounded-full flex items-center justify-center text-white hover:bg-gray-800 disabled:opacity-50 transition-all shadow-lg"
+            aria-label="Search"
+          >
+            <ArrowRight className="w-5 h-5" aria-hidden />
+          </button>
+        </div>
+
+        {showFilters ? (
+          <div className="rounded-2xl bg-white border border-gray-200 px-4 py-3 shadow-sm">
+            <label className="text-xs text-travel-muted">
+              Planning budget when adding (USD)
+              <input
+                type="number"
+                min={200}
+                step={50}
+                value={maxBudget}
+                onChange={(e) => setMaxBudget(Number(e.target.value) || 0)}
+                className="mt-2 w-full rounded-xl bg-gray-50 border-none px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900 transition-all"
+              />
+            </label>
+          </div>
+        ) : null}
       </div>
       {searchedLabel && !searchLoading ? (
         <p className="text-xs text-travel-muted">Last search: {searchedLabel}</p>
@@ -241,6 +265,7 @@ export default function ExplorerPage() {
             key={o.id}
             title={o.title}
             subtitle={`${o.city} · ${truncateSnippet(o.snippet)}`}
+            imageUrl={o.imageUrl}
             footer={
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-1.5">

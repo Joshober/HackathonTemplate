@@ -65,6 +65,7 @@ export interface ExplorerOpportunity {
   snippet: string;
   url: string;
   city: string;
+  imageUrl?: string;
 }
 
 export interface TravelPricingFlightOfferSummary {
