@@ -1,0 +1,106 @@
+@layer utilities {
+  /* Glass Button - Premium glassmorphism effect for white backgrounds */
+  .glass-button {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.08),
+                inset 0 1px 1px rgba(255, 255, 255, 0.9);
+    transition: all 0.3s ease;
+  }
+
+  .glass-button:hover {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.12),
+                inset 0 1px 1px rgba(255, 255, 255, 1);
+    transform: translateY(-2px);
+  }
+
+  .glass-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
+  }
+
+  /* Glass Card - for white backgrounds */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
+  }
+
+  /* Glass Panel - for white backgrounds */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.04);
+  }
+
+  /* Glass Panel Dark - for black glassmorphism header */
+  .glass-panel-dark {
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  }
+
+  /* Shine effect overlay */
+  .shine-overlay {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shine-overlay::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0.1) 45%,
+      rgba(255, 255, 255, 0.2) 50%,
+      rgba(255, 255, 255, 0.1) 55%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    animation: shine 3s infinite;
+    pointer-events: none;
+  }
+
+  @keyframes shine {
+    0% {
+      transform: translateX(-100%) translateY(-100%) rotate(45deg);
+    }
+    100% {
+      transform: translateX(100%) translateY(100%) rotate(45deg);
+    }
+  }
+
+  /* Gradient Button with glass effect */
+  .glass-gradient-button {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(168, 85, 247, 0.85));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(59, 130, 246, 0.3),
+                inset 0 1px 1px rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+  }
+
+  .glass-gradient-button:hover {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 1), rgba(168, 85, 247, 1));
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 12px 40px 0 rgba(59, 130, 246, 0.4),
+                0 12px 40px 0 rgba(168, 85, 247, 0.4),
+                inset 0 1px 1px rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+  }
+}
