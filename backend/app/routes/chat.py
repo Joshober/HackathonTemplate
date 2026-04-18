@@ -18,6 +18,14 @@ from app.services.web_search import search_web
 from app.services.weather import get_weather as fetch_weather
 from app.services.crypto import get_crypto_price as fetch_crypto_price, buy_crypto as do_buy_crypto, sell_crypto as do_sell_crypto, get_portfolio_summary as fetch_portfolio_summary
 from app.services.library import get_library_count as _get_library_count
+from app.routes.auth_backend import require_auth
+from app.prompts.travel_copilot import system_preamble_for_mode, validate_assistant_mode
+from app.services.travel_chat_context import (
+    build_travel_chat_context,
+    context_used_flags,
+    suggested_actions,
+)
+from app.config.openrouter_models import DEFAULT_CHAT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_VIDEO_MODEL
 
 bp = Blueprint('chat', __name__)
 
@@ -94,7 +102,12 @@ ASSISTANT_TOOLS = [
         'type': 'function',
         'function': {
             'name': 'search_web',
-            'description': 'Search the web for current information. Use for news, general facts, or when you need up-to-date information. Do NOT use for weather—use get_weather instead.',
+            'description': (
+                'Search the web using DuckDuckGo (ddgs) for live or general information. '
+                'Essential for travel: flight/hotel price ranges, destination costs, routes, visas, things to do, '
+                'comparisons, news, and facts not in the app context. '
+                'Pass a short, specific query string. Do NOT use for weather—use get_weather instead.'
+            ),
             'parameters': {
                 'type': 'object',
                 'properties': {
@@ -267,12 +280,23 @@ def _reverse_geocode(lat: float, lon: float) -> str | None:
         return None
 
 
-def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_override=None, user_location=None, library_count=None, system_prompt_base=None):
+def _chat_with_web_search(
+    messages,
+    model,
+    headers,
+    timeout_sec=60,
+    personality_override=None,
+    user_location=None,
+    library_count=None,
+    system_prompt_base=None,
+    travel_context_block=None,
+):
     """Run chat with web search tool; returns (assistant_message, usage).
     personality_override: optional string appended to the system prompt.
     user_location: optional place name string (e.g. from reverse geocode); when set, model knows user's location for 'near me' queries.
     library_count: optional int from page load (sensor count); when set, injected into prompt so model reports it for library questions.
     system_prompt_base: optional system prompt string; when 'voice_assistant' or the voice-assistant constant, use Voice Assistant prompt (for /voice-assistant page). Otherwise use ASSISTANT_WEB_SYSTEM.
+    travel_context_block: optional JSON string of app/user context (travel copilot).
     """
     if system_prompt_base is not None:
         system_content = system_prompt_base
@@ -282,6 +306,15 @@ def _chat_with_web_search(messages, model, headers, timeout_sec=60, personality_
         system_content = system_content + "\n\nThe user's current location is: " + str(user_location).strip() + ". When they ask for 'restaurants near me', 'nearby', or similar, use this location (e.g. search 'restaurants in [this area]')."
     if personality_override and str(personality_override).strip():
         system_content = system_content + "\n\nAdditional personality / instructions (follow these when replying):\n" + str(personality_override).strip()
+    if travel_context_block and str(travel_context_block).strip():
+        tc = str(travel_context_block).strip()
+        if len(tc) > 12000:
+            tc = tc[:12000] + "\n…(truncated)"
+        system_content = (
+            system_content
+            + "\n\n## App context (JSON — use for personalization; prefer over guesses)\n"
+            + tc
+        )
     # Library count: use value from page load if provided, else call API when user asks about library
     if library_count is not None and isinstance(library_count, int) and library_count >= 0:
         n = library_count
@@ -738,13 +771,13 @@ def tutor():
             {'role': 'user', 'content': user_content},
         ]
         if has_video:
-            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
+            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VIDEO_MODEL
             timeout_sec = 120
         elif has_images:
-            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
             timeout_sec = 60
         else:
-            model = os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-3.5-turbo'
+            model = os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL
             timeout_sec = 60
         api_key = os.getenv('OPENROUTER_API_KEY')
         if not api_key:
@@ -806,7 +839,7 @@ def chat():
             else:
                 user_text = user_text.strip() if isinstance(user_text, str) else None
             messages = _build_roast_messages_video(video_b64, video_mime, user_text)
-            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
+            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VIDEO_MODEL
         elif mode == 'roast' and has_images:
             last_user = next((m for m in reversed(messages) if m.get('role') == 'user'), None)
             user_text = last_user.get('content', '') if isinstance(last_user, dict) else ''
@@ -815,12 +848,12 @@ def chat():
             else:
                 user_text = user_text.strip() if isinstance(user_text, str) else None
             messages = _build_roast_messages(images_b64, user_text)
-            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
         elif has_images:
             messages = _build_messages_with_images(messages, images_b64)
-            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
         else:
-            model = data.get('model', 'openai/gpt-3.5-turbo')
+            model = data.get('model', DEFAULT_CHAT_MODEL)
 
         if mode == 'support':
             user_email = (data.get('user_email') or '').strip() or None
@@ -905,6 +938,95 @@ def chat():
         }), 500
 
 
+@bp.route('/chat/copilot', methods=['POST'])
+@require_auth
+def chat_copilot(user_id):
+    """
+    Context-aware travel copilot: loads MongoDB profile/items/teams, injects JSON context + OpenRouter (tools).
+    Body: message, sessionId?, currentPage?, uiState?, assistantMode?, messages?, personality?
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        message = (data.get('message') or '').strip()
+        if not message:
+            return jsonify({'error': 'message is required'}), 400
+
+        try:
+            assistant_mode = validate_assistant_mode(data.get('assistantMode') or data.get('mode'))
+        except ValueError as ve:
+            return jsonify({'error': str(ve)}), 400
+        session_id = (data.get('sessionId') or '').strip() or None
+        current_page = (data.get('currentPage') or '').strip() or None
+        ui_state = data.get('uiState') if isinstance(data.get('uiState'), dict) else None
+        personality = (data.get('personality') or '').strip() or None
+
+        history = data.get('messages')
+        if not isinstance(history, list):
+            history = []
+        history = history[-24:]
+        clean_hist = []
+        for m in history:
+            if not isinstance(m, dict):
+                continue
+            role = m.get('role')
+            content = m.get('content')
+            if role not in ('user', 'assistant') or not isinstance(content, str):
+                continue
+            clean_hist.append({'role': role, 'content': content[:12000]})
+
+        from app.db.mongodb import get_db
+
+        db = get_db()
+        ctx = build_travel_chat_context(
+            db,
+            user_id,
+            session_id=session_id,
+            current_page=current_page,
+            ui_state=ui_state,
+        )
+        ctx_json = json.dumps(ctx, ensure_ascii=False)
+
+        system_prompt_base = system_preamble_for_mode(assistant_mode) + "\n\n---\n\n" + ASSISTANT_WEB_SYSTEM
+        messages = clean_hist + [{'role': 'user', 'content': message}]
+
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'OPENROUTER_API_KEY is not configured'}), 500
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': request.headers.get('Origin', ''),
+            'X-Title': 'Travel Copilot',
+        }
+        model = (data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL).strip()
+
+        assistant_message, usage_merged = _chat_with_web_search(
+            messages,
+            model,
+            headers,
+            90,
+            personality_override=personality,
+            travel_context_block=ctx_json,
+            system_prompt_base=system_prompt_base,
+        )
+
+        return jsonify(
+            {
+                'reply': assistant_message,
+                'mode': assistant_mode,
+                'contextUsed': context_used_flags(ctx),
+                'suggestedActions': suggested_actions(ctx, assistant_mode),
+                'usage': usage_merged,
+            }
+        ), 200
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logging.getLogger(__name__).exception("chat_copilot failed")
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+
+
 def _run_bullshit_detect(messages, model, headers, timeout_sec=90):
     """Call OpenRouter with bullshit-detect system; return (data, usage).
     data has 'read_aloud' (short sarcastic summary for TTS) and 'analysis' (full written commentary).
@@ -970,7 +1092,7 @@ def bullshit_detect():
             {'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM},
             {'role': 'user', 'content': f'Analyze this document and respond with the required JSON.\n\n{document}'},
         ]
-        model = data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-4o-mini'
+        model = data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL
         headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {api_key}',
@@ -1060,21 +1182,21 @@ def bullshit_detect_pipeline():
                 {'type': 'video_url', 'video_url': {'url': _video_data_url(video_b64, video_mime)}},
             ]
             messages = [{'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM}, {'role': 'user', 'content': content}]
-            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
+            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VIDEO_MODEL
             timeout_sec = 120
         elif has_images:
             content = [{'type': 'text', 'text': f'Analyze this image for bullshit. Respond with JSON: {{"read_aloud": "...", "analysis": "..."}}\n\n{user_content}'}]
             for b64 in images_b64:
                 content.append({'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}'}})
             messages = [{'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM}, {'role': 'user', 'content': content}]
-            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
             timeout_sec = 60
         else:
             messages = [
                 {'role': 'system', 'content': BULLSHIT_DETECT_SYSTEM},
                 {'role': 'user', 'content': f'Analyze this document and respond with the required JSON.\n\n{user_content}'},
             ]
-            model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-4o-mini'
+            model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL
             timeout_sec = 90
 
         data, usage = _run_bullshit_detect(messages, model, headers, timeout_sec)
@@ -1240,16 +1362,16 @@ def chat_pipeline():
         if mode == 'roast' and has_video:
             user_text = text if text and text not in ('(See video)', '(Video attached)', '(See image)', '(Image attached)') else None
             messages = _build_roast_messages_video(video_b64, video_mime, user_text)
-            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'google/gemini-2.5-flash'
+            model = os.getenv('OPENROUTER_VIDEO_MODEL') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VIDEO_MODEL
         elif mode == 'roast' and has_images:
             user_text = text if text and text not in ('(See image)', '(Image attached)') else None
             messages = _build_roast_messages(images_b64, user_text)
-            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
         elif has_images:
             messages = _build_messages_with_images(messages, images_b64)
-            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or 'openai/gpt-4o-mini'
+            model = os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL
         else:
-            model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or 'openai/gpt-3.5-turbo'
+            model = request.form.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL
 
         personality = (request.form.get('personality') or request.form.get('custom_prompt') or '').strip()
         if mode == 'support':
