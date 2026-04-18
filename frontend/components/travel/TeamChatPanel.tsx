@@ -13,9 +13,11 @@ const QUICK = [
 export default function TeamChatPanel({
   teamId,
   user,
+  presetCities = [],
 }: {
   teamId: string | null;
   user: User;
+  presetCities?: string[];
 }) {
   const [messages, setMessages] = useState<TeamMessage[]>([]);
   const [input, setInput] = useState('');
@@ -95,6 +97,18 @@ export default function TeamChatPanel({
           Saved for your team. The assistant reads this thread (with speaker names) and can use web search, weather, and
           Explorer-style city event search (DuckDuckGo), like the AI page. Estimates only — not live prices.
         </p>
+        {presetCities.length ? (
+          <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2">
+            <p className="text-[11px] text-blue-900 font-medium">Preset cities for this team</p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {presetCities.map((city) => (
+                <span key={city} className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-blue-200 text-blue-800">
+                  {city}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       <label className="flex items-center gap-2 text-xs text-gray-800 cursor-pointer select-none">
         <input

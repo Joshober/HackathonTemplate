@@ -22,6 +22,7 @@ from app.services.team_items_access import format_item_document
 bp = Blueprint('teams', __name__)
 
 _indexes_ensured = False
+MAX_TEAM_CITY_PRESETS = 20
 
 
 def _ensure_indexes(db):
@@ -41,6 +42,24 @@ def _ensure_indexes(db):
 
 def _normalize_email(email: str) -> str:
     return (email or '').strip().lower()
+
+
+def _normalize_city_list(raw) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = " ".join(x.split()).strip()
+        if not s:
+            continue
+        if s.lower() in {c.lower() for c in out}:
+            continue
+        out.append(s[:80])
+        if len(out) >= MAX_TEAM_CITY_PRESETS:
+            break
+    return out
 
 
 def upsert_user_from_token(db, user_id: str) -> None:
@@ -213,7 +232,28 @@ def get_team(user_id, team_id):
         'description': team.get('description'),
         'createdBy': team.get('createdBy'),
         'members': members,
+        'cityPresets': _normalize_city_list(team.get('cityPresets') or []),
     }), 200
+
+
+@bp.route('/teams/<team_id>/city-presets', methods=['PUT'])
+@require_auth
+@with_user_sync
+def set_team_city_presets(user_id, team_id):
+    oid = _parse_oid(team_id)
+    if not oid:
+        return jsonify({'error': 'Invalid team id'}), 400
+    db = get_db()
+    team = _team_for_member(db, oid, user_id)
+    if not team:
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    cities = _normalize_city_list(data.get('cities') or [])
+    db.teams.update_one(
+        {'_id': oid},
+        {'$set': {'cityPresets': cities, 'updatedAt': datetime.utcnow()}},
+    )
+    return jsonify({'cities': cities}), 200
 
 
 @bp.route('/teams/<team_id>/members', methods=['POST'])

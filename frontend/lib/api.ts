@@ -48,6 +48,7 @@ export interface TeamDetail {
   description?: string | null;
   createdBy?: string;
   members: TeamMember[];
+  cityPresets?: string[];
 }
 
 export interface TeamMessage {
@@ -66,6 +67,25 @@ export interface ExplorerOpportunity {
   url: string;
   city: string;
   imageUrl?: string;
+  source?: 'ticketmaster' | 'duckduckgo' | 'openstreetmap';
+}
+
+export interface ExplorerSearchParams {
+  cities?: string[];
+  query?: string;
+  maxPerCity?: number;
+  startDate?: string;
+  endDate?: string;
+  sortBy?: 'date' | 'relevance';
+  sources?: Array<'ticketmaster' | 'duckduckgo' | 'openstreetmap'>;
+  eventTypes?: Array<'music' | 'sports' | 'arts' | 'film' | 'miscellaneous'>;
+  maxPrice?: number;
+}
+
+export interface CitySuggestion {
+  label: string;
+  city: string;
+  country?: string;
 }
 
 export interface TravelPricingFlightOfferSummary {
@@ -295,18 +315,28 @@ export const api = {
     return fetchWithAuth(`/api/items/${id}`);
   },
 
-  async searchExplorerOpportunities(params: {
-    cities: string[];
-    maxPerCity?: number;
-  }): Promise<{ opportunities: ExplorerOpportunity[] }> {
+  async searchExplorerOpportunities(params: ExplorerSearchParams): Promise<{ opportunities: ExplorerOpportunity[] }> {
     return fetchWithAuth('/api/explorer/opportunities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        cities: params.cities,
+        ...(params.cities != null ? { cities: params.cities } : {}),
+        ...(params.query ? { query: params.query } : {}),
         ...(params.maxPerCity != null ? { maxPerCity: params.maxPerCity } : {}),
+        ...(params.startDate ? { startDate: params.startDate } : {}),
+        ...(params.endDate ? { endDate: params.endDate } : {}),
+        ...(params.sortBy ? { sortBy: params.sortBy } : {}),
+        ...(params.sources?.length ? { sources: params.sources } : {}),
+        ...(params.eventTypes?.length ? { eventTypes: params.eventTypes } : {}),
+        ...(params.maxPrice != null ? { maxPrice: params.maxPrice } : {}),
       }),
     });
+  },
+
+  async suggestExplorerCities(query: string): Promise<{ suggestions: CitySuggestion[] }> {
+    const q = query.trim();
+    if (q.length < 2) return { suggestions: [] };
+    return fetchWithAuth(`/api/explorer/cities/suggest?q=${encodeURIComponent(q)}`);
   },
 
   async fetchTravelPricingPreview(body: {
@@ -615,6 +645,13 @@ export const api = {
 
   async getTeam(teamId: string): Promise<TeamDetail> {
     return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}`);
+  },
+
+  async setTeamCityPresets(teamId: string, cities: string[]): Promise<{ cities: string[] }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/city-presets`, {
+      method: 'PUT',
+      body: JSON.stringify({ cities }),
+    });
   },
 
   async addTeamMember(teamId: string, email: string): Promise<{ members: TeamMember[]; message?: string }> {

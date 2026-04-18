@@ -354,7 +354,7 @@ export default function TeamPage() {
         </aside>
 
         <section className="flex-1 min-w-0 flex flex-col rounded-2xl border border-gray-200 bg-white p-4 lg:p-5 shadow-sm">
-          <TeamChatPanel teamId={activeTeamId} user={user} />
+          <TeamChatPanel teamId={activeTeamId} user={user} presetCities={teamDetail?.cityPresets || []} />
         </section>
       </div>
     </div>
