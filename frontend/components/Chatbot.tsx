@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 
 const MAX_VIDEO_SECONDS = 20;
@@ -12,19 +12,19 @@ interface Message {
   imagePreviews?: string[];
   videoPreview?: string;
   videoDuration?: number;
+  ttsError?: string;
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64 || '');
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+function pickRecorderMime(): string | undefined {
+  const c = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+  ];
+  for (const t of c) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return undefined;
 }
 
 function getVideoDuration(file: File): Promise<number> {
@@ -73,8 +73,17 @@ export default function Chatbot() {
   const [attachedVideo, setAttachedVideo] = useState<{ file: File; preview: string; duration: number } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<BlobPart[]>([]);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const isRecordingRef = useRef(false);
+  const playbackRef = useRef<HTMLAudioElement | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,12 +93,134 @@ export default function Chatbot() {
     scrollToBottom();
   }, [messages]);
 
+  const stopPlayback = useCallback(() => {
+    const a = playbackRef.current;
+    if (a) {
+      a.pause();
+      const src = a.src;
+      if (src.startsWith('blob:')) URL.revokeObjectURL(src);
+      playbackRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopPlayback();
+      recordStreamRef.current?.getTracks().forEach((t) => t.stop());
+      mediaRecorderRef.current = null;
+      isRecordingRef.current = false;
+    };
+  }, [stopPlayback]);
+
+  const playPipelineAudio = useCallback(
+    (base64: string, format: 'mp3' | 'wav') => {
+      stopPlayback();
+      const mime = format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+      const audio = new Audio(`data:${mime};base64,${base64}`);
+      playbackRef.current = audio;
+      audio.onended = () => {
+        if (playbackRef.current === audio) playbackRef.current = null;
+      };
+      void audio.play().catch(() => {});
+    },
+    [stopPlayback]
+  );
+
+  const speakAssistantText = useCallback(
+    async (text: string, messageIndex: number) => {
+      const plain = text.trim().slice(0, 4096);
+      if (!plain) return;
+      setSpeakingIndex(messageIndex);
+      stopPlayback();
+      try {
+        const blob = await api.generateVoice({ text: plain, provider: 'openai', voice: 'coral' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        playbackRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          if (playbackRef.current === audio) playbackRef.current = null;
+          setSpeakingIndex(null);
+        };
+        try {
+          await audio.play();
+        } catch {
+          URL.revokeObjectURL(url);
+          setSpeakingIndex(null);
+        }
+      } catch {
+        setSpeakingIndex(null);
+      }
+    },
+    [stopPlayback]
+  );
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  const toggleMic = useCallback(async () => {
+    if (isLoading || isTranscribing) return;
+    if (isRecordingRef.current) {
+      stopRecording();
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordStreamRef.current = stream;
+      recordChunksRef.current = [];
+      const mime = pickRecorderMime();
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) recordChunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recordStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        const blob = new Blob(recordChunksRef.current, { type: mr.mimeType || 'audio/webm' });
+        recordChunksRef.current = [];
+        if (blob.size < 200) return;
+        const ext = (mr.mimeType || '').includes('mp4') ? 'm4a' : 'webm';
+        const file = new File([blob], `speech.${ext}`, { type: blob.type || `audio/${ext}` });
+        setIsTranscribing(true);
+        void (async () => {
+          try {
+            const { text } = await api.transcribeAudio(file);
+            const t = (text || '').trim();
+            if (t) setInput((prev) => (prev ? `${prev} ${t}` : t).trim());
+          } catch (err) {
+            console.error('Transcription failed:', err);
+          } finally {
+            setIsTranscribing(false);
+          }
+        })();
+      };
+      mr.start(250);
+      isRecordingRef.current = true;
+      setIsRecording(true);
+    } catch (e) {
+      console.error('Microphone access failed:', e);
+    }
+  }, [isLoading, isTranscribing, stopRecording]);
+
   const canSend = chatMode === 'roast'
     ? attachedImages.length > 0 || attachedVideo !== null
     : (input.trim() || attachedImages.length > 0 || attachedPdfs.length > 0);
 
   const sendMessage = async () => {
     if ((!input.trim() && attachedImages.length === 0 && attachedPdfs.length === 0 && !attachedVideo) || isLoading) return;
+
+    stopPlayback();
+    setSpeakingIndex(null);
 
     const userContent = input.trim() || (attachedVideo ? '(See video)' : attachedPdfs.length ? '(PDF attached)' : '(See image)');
     const userMessage: Message = {
@@ -113,42 +244,37 @@ export default function Chatbot() {
     setIsLoading(true);
 
     try {
-      const apiMessages = [
-        ...messages.map((msg) => ({ role: msg.role, content: msg.content })),
-        { role: 'user' as const, content: currentInput || (currentVideo ? '(See video)' : currentPdfs.length ? '(PDF attached)' : '(See image)') },
-      ];
+      const priorForPipeline = messages.map((msg) => ({ role: msg.role, content: msg.content }));
+      const textPayload =
+        currentInput.trim() ||
+        (currentVideo ? '(See video)' : currentPdfs.length ? '(PDF attached)' : '(See image)');
 
-      let imagesBase64: string[] | undefined;
-      let videoBase64: string | undefined;
-      let videoMime: string | undefined;
-      if (currentVideo) {
-        videoBase64 = await fileToBase64(currentVideo.file);
-        const f = currentVideo.file;
-        videoMime = f.type?.startsWith('video/') ? f.type : (f.name?.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4');
-      } else if (currentImages.length > 0) {
-        imagesBase64 = await Promise.all(currentImages.map(({ file }) => fileToBase64(file)));
-      }
-      if (currentPdfs.length > 0) {
-        const pdfsB64 = await Promise.all(currentPdfs.map((p) => fileToBase64(p.file)));
-        imagesBase64 = [...(imagesBase64 ?? []), ...pdfsB64];
-      }
+      const imageFiles = currentImages.map(({ file }) => file);
+      const pdfFiles = currentPdfs.map(({ file }) => file);
+      const allAttach = [...imageFiles, ...pdfFiles];
 
-      const response = await api.sendChatMessage(
-        apiMessages,
-        selectedModel,
-        imagesBase64,
-        chatMode,
-        videoBase64,
-        videoMime,
-        undefined,
-        undefined
-      );
+      const response = await api.chatPipeline({
+        text: textPayload,
+        messages: priorForPipeline,
+        images: allAttach.length > 0 ? allAttach : undefined,
+        video: currentVideo?.file,
+        model: selectedModel,
+        mode: chatMode,
+        tts: ttsEnabled,
+        voice: 'coral',
+        tts_provider: 'openai',
+      });
 
       const assistantMessage: Message = {
         role: 'assistant',
         content: response.message || 'Sorry, I could not process your request.',
+        ttsError: response.tts_error,
       };
       setMessages((prev) => [...prev, assistantMessage]);
+
+      if (ttsEnabled && response.audio_base64 && response.audio_format) {
+        playPipelineAudio(response.audio_base64, response.audio_format);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
@@ -333,6 +459,16 @@ export default function Chatbot() {
                 <span className="text-xs text-amber-400/90">Image or video (max {MAX_VIDEO_SECONDS}s)</span>
               )}
             </div>
+            <label className="mt-1 inline-flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded border-white/20 bg-white/10 text-orange-500 focus:ring-orange-500"
+                checked={ttsEnabled}
+                onChange={(e) => setTtsEnabled(e.target.checked)}
+                disabled={isLoading}
+              />
+              Read replies aloud (text-to-speech)
+            </label>
           </div>
 
           {/* Messages */}
@@ -366,19 +502,46 @@ export default function Chatbot() {
                     </div>
                   )}
                   {message.content && (message.content !== '(See image)' || !(message.imagePreviews?.length ?? message.imagePreview)) && (
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <div className="flex items-start gap-2">
+                      <p className="text-sm whitespace-pre-wrap flex-1 min-w-0">{message.content}</p>
+                      {message.role === 'assistant' && message.content.trim().length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => speakAssistantText(message.content, index)}
+                          disabled={speakingIndex === index || isLoading}
+                          className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-orange-400 hover:bg-white/10 disabled:opacity-40 transition-colors"
+                          aria-label="Play message as speech"
+                          title="Text-to-speech"
+                        >
+                          {speakingIndex === index ? (
+                            <span className="block h-5 w-5 border-2 border-orange-400 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                            </svg>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {message.role === 'assistant' && message.ttsError && (
+                    <p className="text-xs text-amber-400/90 mt-2">{message.ttsError}</p>
                   )}
                 </div>
               </div>
             ))}
-            {isLoading && (
+            {(isLoading || isTranscribing) && (
               <div className="flex justify-start">
                 <div className="bg-white/5 border border-white/10 text-gray-400 rounded-xl p-3">
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
-                  </div>
+                  {isTranscribing && !isLoading ? (
+                    <p className="text-xs">Transcribing speech…</p>
+                  ) : (
+                    <div className="flex space-x-2">
+                      <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                      <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -456,18 +619,38 @@ export default function Chatbot() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </button>
+              <button
+                type="button"
+                onClick={() => void toggleMic()}
+                className={`p-2 rounded-lg transition-colors shrink-0 ${
+                  isRecording
+                    ? 'text-red-300 bg-red-500/25 ring-2 ring-red-400/50 animate-pulse'
+                    : 'text-gray-400 hover:text-orange-400 hover:bg-white/5'
+                }`}
+                aria-label={isRecording ? 'Stop recording and transcribe' : 'Speech to text (microphone)'}
+                title={isRecording ? 'Stop — transcribe to text' : 'Speak — transcribe to text'}
+                disabled={isLoading || isTranscribing}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              </button>
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={chatMode === 'roast' ? 'Attach image or video ≤20s (optional caption)…' : 'Type your message or attach an image…'}
+                placeholder={
+                  chatMode === 'roast'
+                    ? 'Attach image or video ≤20s (optional caption)…'
+                    : 'Type, attach files, or use the mic for speech-to-text…'
+                }
                 className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                disabled={isLoading}
+                disabled={isLoading || isTranscribing}
               />
               <button
                 onClick={sendMessage}
-                disabled={isLoading || !canSend}
+                disabled={isLoading || isTranscribing || !canSend}
                 className="bg-orange-500 hover:bg-orange-400 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
               >
                 Send

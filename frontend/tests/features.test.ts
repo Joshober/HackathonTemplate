@@ -103,6 +103,15 @@ describe('Feature: API client exports', () => {
   });
 });
 
+describe('Feature: Travel day itinerary', () => {
+  it('TravelDayItinerary includes stable today copy', () => {
+    const p = path.join(__dirname, '../components/travel/TravelDayItinerary.tsx');
+    const content = fs.readFileSync(p, 'utf-8');
+    expect(content).toContain('Today');
+    expect(content).toContain('No ticket on file yet');
+  });
+});
+
 describe('Feature: Landing and travel app', () => {
   it('landing page exists', () => {
     const p = path.join(APP_DIR, 'page.tsx');

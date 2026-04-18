@@ -2,13 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { api, type Item } from '@/lib/api';
+import { api, type Item, type TravelMetadata } from '@/lib/api';
 import { useTravelStage } from '@/lib/travelContext';
 import OpportunityCard from '@/components/travel/OpportunityCard';
 import { getTravelPayload, humanDescriptionLine, isTravelItem } from '@/lib/travelItem';
 import { loadVotes, setVote } from '@/lib/travelVotes';
 import type { TravelApprovalRow, TravelOpportunityStatus } from '@/lib/travelTypes';
 import type { User } from '@/lib/auth';
+import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
+import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
+import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
+import { mergeBookedTravel } from '@/lib/travelTicketMock';
+import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
 
 const MOCK_SHARE = [
   { who: 'Alex R.', snippet: 'Highlights from the Chicago forum — great client energy.' },
@@ -41,8 +46,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
   const [err, setErr] = useState<string | null>(null);
   const [votes, setVotesState] = useState(() => loadVotes());
 
-  const travelItems = useMemo(() => items.filter(isTravelItem), [items]);
-
   const refresh = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -55,6 +58,9 @@ export default function TravelHomeBody({ user }: { user: User }) {
       setLoading(false);
     }
   }, []);
+
+  const travelItems = useMemo(() => items.filter(isTravelItem), [items]);
+  const approvePanel = useApproveBookingPanel(items, refresh);
 
   useEffect(() => {
     refresh();
@@ -82,9 +88,8 @@ export default function TravelHomeBody({ user }: { user: User }) {
   const markBooked = async (item: Item) => {
     const t = getTravelPayload(item);
     if (!t || !item._id) return;
-    await api.updateItem(item._id, {
-      travel: { ...t, opportunityStatus: 'booked' },
-    });
+    const merged = mergeBookedTravel(t, { bundleIndex: 0, tripTitle: item.title });
+    await api.updateItem(item._id, { travel: merged as unknown as TravelMetadata });
     await refresh();
   };
 
@@ -214,11 +219,30 @@ export default function TravelHomeBody({ user }: { user: User }) {
             );
           })
         )}
-        <Link
-          href="/explorer"
-          className="block w-full text-center py-3 rounded-xl border border-white/10 text-sm font-medium text-white/90 hover:bg-white/5"
-        >
-          Booking & cost optimization
+        <div className="pt-4 border-t border-white/10 space-y-6">
+          <div>
+            <h3 className="text-base font-semibold text-white mb-1">Booking & cost</h3>
+            <p className="text-xs text-travel-muted">Compare bundles and run totals while approvals are in flight.</p>
+          </div>
+          <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
+          <TravelCostCalculator
+            key={approvePanel.eligibleFinalizeItem?._id ?? 'calc'}
+            initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
+            initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
+            initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
+            initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
+            busy={approvePanel.calcBusy}
+            onApply={approvePanel.onApplyCalculator}
+            applyLabel="Save estimate to first in-approval trip"
+          />
+          {approvePanel.approveMsg ? (
+            <p className="text-xs text-center text-travel-muted border border-white/10 rounded-lg py-2 px-3">
+              {approvePanel.approveMsg}
+            </p>
+          ) : null}
+        </div>
+        <Link href="/explorer" className="block text-center text-xs text-blue-300 hover:underline pt-2">
+          Browse more opportunities on Explorer
         </Link>
       </div>
     );
@@ -229,71 +253,76 @@ export default function TravelHomeBody({ user }: { user: User }) {
       { key: 'a', label: 'Option A — morning departure' },
       { key: 'b', label: 'Option B — flexible afternoon' },
     ];
+    const hasNotBooked = travelItems.some((i) => getTravelPayload(i)?.opportunityStatus !== 'booked');
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div>
-          <h2 className="text-lg font-semibold text-white">Team selection</h2>
-          <p className="text-sm text-travel-muted mt-1">Vote on preferred logistics. Strongest consensus is highlighted.</p>
+          <h2 className="text-lg font-semibold text-white">Today & ticket</h2>
+          <p className="text-sm text-travel-muted mt-1">What you need to do today and your ticket details (demo).</p>
         </div>
-        {travelItems.length === 0 ? (
-          <p className="text-sm text-travel-muted">Add trips in Explorer first.</p>
-        ) : (
-          travelItems.map((item) => {
-            const t = getTravelPayload(item);
-            const img = t?.imageUrl || item.imageUrls?.[0];
-            const current = item._id ? votes[item._id] : '';
-            return (
-              <OpportunityCard
-                key={item._id}
-                title={item.title}
-                subtitle={t?.location}
-                imageUrl={img}
-                footer={
-                  <div className="space-y-2">
-                    <p className="text-[11px] text-travel-muted mb-1">Your vote (team totals would sync in production).</p>
-                    {options.map((o) => {
-                      const picked = current === o.key;
-                      return (
-                        <button
-                          key={o.key}
-                          type="button"
-                          onClick={() => item._id && voteOption(item._id, o.key)}
-                          className={`w-full text-left px-3 py-2 rounded-xl border text-sm transition-colors ${
-                            picked
-                              ? 'border-emerald-400/50 bg-emerald-500/10 text-white'
-                              : 'border-white/10 text-travel-muted hover:border-white/20'
-                          }`}
-                        >
-                          {o.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                }
-                action={
-                  <button
-                    type="button"
-                    onClick={() => markBooked(item)}
-                    className="w-full py-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-sm font-medium"
-                  >
-                    Lock this option (demo)
-                  </button>
-                }
-              />
-            );
-          })
-        )}
-        <div className="rounded-2xl border border-white/10 p-4 bg-white/[0.02]">
-          <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted mb-2">Calendar + availability</p>
-          <p className="text-sm text-white/80 mb-3">
-            Side-by-side view is mocked for this build. Suggested slots: <strong>Tue 10:00</strong> or{' '}
-            <strong>Wed 15:30</strong> (cheapest overlap for the team).
-          </p>
-          <Link href="/team" className="text-sm text-blue-300 hover:underline">
-            Open Team tab
-          </Link>
-        </div>
+        <TravelDayItinerary items={items} />
+
+        {hasNotBooked && travelItems.length > 0 ? (
+          <details className="rounded-2xl border border-white/10 bg-white/[0.02] group">
+            <summary className="px-4 py-3 cursor-pointer text-sm font-medium text-white/90 list-none flex items-center justify-between">
+              <span>Team option voting (pre-book)</span>
+              <span className="material-symbols-outlined text-travel-muted group-open:rotate-180 transition-transform">
+                expand_more
+              </span>
+            </summary>
+            <div className="px-4 pb-4 space-y-4 border-t border-white/10 pt-3">
+              {travelItems.map((item) => {
+                const t = getTravelPayload(item);
+                if (t?.opportunityStatus === 'booked') return null;
+                const img = t?.imageUrl || item.imageUrls?.[0];
+                const current = item._id ? votes[item._id] : '';
+                return (
+                  <OpportunityCard
+                    key={item._id}
+                    title={item.title}
+                    subtitle={t?.location}
+                    imageUrl={img}
+                    footer={
+                      <div className="space-y-2">
+                        {options.map((o) => {
+                          const picked = current === o.key;
+                          return (
+                            <button
+                              key={o.key}
+                              type="button"
+                              onClick={() => item._id && voteOption(item._id, o.key)}
+                              className={`w-full text-left px-3 py-2 rounded-xl border text-sm transition-colors ${
+                                picked
+                                  ? 'border-emerald-400/50 bg-emerald-500/10 text-white'
+                                  : 'border-white/10 text-travel-muted hover:border-white/20'
+                              }`}
+                            >
+                              {o.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    }
+                    action={
+                      <button
+                        type="button"
+                        onClick={() => markBooked(item)}
+                        className="w-full py-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white text-sm font-medium"
+                      >
+                        Lock trip & ticket (demo)
+                      </button>
+                    }
+                  />
+                );
+              })}
+            </div>
+          </details>
+        ) : null}
+
+        <Link href="/team" className="block text-center text-xs text-blue-300 hover:underline">
+          Team tab
+        </Link>
       </div>
     );
   }

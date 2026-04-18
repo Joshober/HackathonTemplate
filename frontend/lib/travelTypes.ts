@@ -16,6 +16,34 @@ export interface TravelApprovalRow {
   status: 'pending' | 'approved' | 'needs_changes';
 }
 
+/** Calculator-style totals persisted on the item (demo). */
+export interface TravelBookingEstimate {
+  flightLow: number;
+  flightHigh: number;
+  hotelPerNight: number;
+  nights: number;
+  totalLow: number;
+  totalHigh: number;
+  selectedBundle?: string;
+  lastCalculatedTotal?: number;
+}
+
+/** Demo itinerary / ticket display for Travel stage. */
+export interface TravelTicket {
+  recordLocator: string;
+  airline: string;
+  flightNumber: string;
+  origin: string;
+  destination: string;
+  departDate: string;
+  departTime: string;
+  seat?: string;
+  gate?: string;
+  terminal?: string;
+  tripTitle?: string;
+  cityLabel?: string;
+}
+
 export interface TravelItemPayload {
   location: string;
   costEstimate: number;
@@ -27,6 +55,8 @@ export interface TravelItemPayload {
   opportunityStatus?: TravelOpportunityStatus;
   approvals?: TravelApprovalRow[];
   notes?: string;
+  bookingEstimate?: TravelBookingEstimate;
+  ticket?: TravelTicket;
 }
 
 export const TRAVEL_STAGES: { id: TravelStageId; label: string }[] = [

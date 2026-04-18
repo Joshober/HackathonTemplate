@@ -1,5 +1,10 @@
 import type { Item } from '@/lib/api';
-import type { TravelItemPayload, TravelOpportunityStatus } from '@/lib/travelTypes';
+import type {
+  TravelBookingEstimate,
+  TravelItemPayload,
+  TravelOpportunityStatus,
+  TravelTicket,
+} from '@/lib/travelTypes';
 
 const SENTINEL = '__TRAVEL_JSON__';
 
@@ -26,6 +31,70 @@ export function getTravelPayload(item: Item): TravelItemPayload | null {
   return null;
 }
 
+function pickBookingEstimate(raw: Record<string, unknown>): TravelBookingEstimate | undefined {
+  const be = raw.bookingEstimate;
+  if (!be || typeof be !== 'object' || Array.isArray(be)) return undefined;
+  const o = be as Record<string, unknown>;
+  const num = (k: string): number | undefined => {
+    const v = typeof o[k] === 'number' ? o[k] : Number(o[k]);
+    return Number.isFinite(v) ? v : undefined;
+  };
+  const flightLow = num('flightLow');
+  const flightHigh = num('flightHigh');
+  const hotelPerNight = num('hotelPerNight');
+  const nights = num('nights');
+  const totalLow = num('totalLow');
+  const totalHigh = num('totalHigh');
+  if (
+    flightLow == null ||
+    flightHigh == null ||
+    hotelPerNight == null ||
+    nights == null ||
+    totalLow == null ||
+    totalHigh == null
+  ) {
+    return undefined;
+  }
+  const last =
+    typeof o.lastCalculatedTotal === 'number'
+      ? o.lastCalculatedTotal
+      : o.lastCalculatedTotal != null
+        ? Number(o.lastCalculatedTotal)
+        : undefined;
+  return {
+    flightLow,
+    flightHigh,
+    hotelPerNight,
+    nights,
+    totalLow,
+    totalHigh,
+    selectedBundle: typeof o.selectedBundle === 'string' ? o.selectedBundle : undefined,
+    lastCalculatedTotal: Number.isFinite(last) ? last : undefined,
+  };
+}
+
+function pickTicket(raw: Record<string, unknown>): TravelTicket | undefined {
+  const t = raw.ticket;
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return undefined;
+  const o = t as Record<string, unknown>;
+  const str = (k: string) => (typeof o[k] === 'string' ? o[k] : undefined);
+  if (!str('recordLocator') || !str('flightNumber')) return undefined;
+  return {
+    recordLocator: str('recordLocator')!,
+    airline: str('airline') || 'Airline',
+    flightNumber: str('flightNumber')!,
+    origin: str('origin') || '',
+    destination: str('destination') || '',
+    departDate: str('departDate') || '',
+    departTime: str('departTime') || '',
+    seat: str('seat'),
+    gate: str('gate'),
+    terminal: str('terminal'),
+    tripTitle: str('tripTitle'),
+    cityLabel: str('cityLabel'),
+  };
+}
+
 function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null {
   const location = typeof raw.location === 'string' ? raw.location : '';
   if (!location) return null;
@@ -39,6 +108,8 @@ function normalizeTravel(raw: Record<string, unknown>): TravelItemPayload | null
     opportunityStatus: raw.opportunityStatus as TravelOpportunityStatus | undefined,
     approvals: Array.isArray(raw.approvals) ? (raw.approvals as TravelItemPayload['approvals']) : undefined,
     notes: typeof raw.notes === 'string' ? raw.notes : undefined,
+    bookingEstimate: pickBookingEstimate(raw),
+    ticket: pickTicket(raw),
   };
 }
 

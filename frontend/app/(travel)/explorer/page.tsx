@@ -1,12 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TRAVEL_OPPORTUNITY_SEED } from '@/lib/travelSeed';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import OpportunityCard from '@/components/travel/OpportunityCard';
-import { api } from '@/lib/api';
+import { api, type Item } from '@/lib/api';
 import PolicyHint from '@/components/travel/PolicyHint';
+import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
+import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
+import { useApproveBookingPanel } from '@/components/travel/approve/useApproveBookingPanel';
+import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 
 export default function ExplorerPage() {
   const { stage } = useTravelStage();
@@ -15,6 +19,23 @@ export default function ExplorerPage() {
   const [maxBudget, setMaxBudget] = useState(5000);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [panelItems, setPanelItems] = useState<Item[]>([]);
+
+  const refreshPanelItems = useCallback(async () => {
+    try {
+      setPanelItems(await api.getItems());
+    } catch {
+      setPanelItems([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (stage === 'approve' || stage === 'travel') {
+      void refreshPanelItems();
+    }
+  }, [stage, refreshPanelItems]);
+
+  const approvePanel = useApproveBookingPanel(panelItems, refreshPanelItems);
 
   const filtered = useMemo(() => {
     return TRAVEL_OPPORTUNITY_SEED.filter((o) => {
@@ -58,34 +79,29 @@ export default function ExplorerPage() {
 
   if (stage === 'approve') {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div>
           <h2 className="text-lg font-semibold text-white">Booking & cost optimization</h2>
           <p className="text-sm text-travel-muted mt-1">
-            Assistant-style recommendations (not live fares). Compare bundles before you finalize.
+            Same tools as Home — compare flight bundles and run the calculator while approvals are in progress.
           </p>
         </div>
-        {['Economy mix', 'Flexible fare'].map((label, i) => (
-          <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-white">{label}</span>
-              <span className="text-xs text-emerald-300/90">{i === 0 ? 'Lowest total' : 'Fewer changes'}</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs text-travel-muted">
-              <div className="rounded-lg bg-black/20 p-2">Flight · $420–$510</div>
-              <div className="rounded-lg bg-black/20 p-2">Hotel · $180/night</div>
-            </div>
-            <p className="text-sm text-white/80">Total est. ${(1180 + i * 140).toLocaleString()} · within typical policy band</p>
-          </div>
-        ))}
-        <button
-          type="button"
-          className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold"
-          onClick={() => setToast('Demo: booking handoff would open your TMC or OBT here.')}
-        >
-          Finalize booking
-        </button>
-        {toast ? <p className="text-xs text-center text-travel-muted">{toast}</p> : null}
+        <ApproveFlightBundles busy={approvePanel.finalizeBusy} onFinalize={approvePanel.onFinalize} />
+        <TravelCostCalculator
+          key={approvePanel.eligibleFinalizeItem?._id ?? 'calc-ex'}
+          initialFlightLow={approvePanel.eligiblePayload?.bookingEstimate?.flightLow ?? 420}
+          initialFlightHigh={approvePanel.eligiblePayload?.bookingEstimate?.flightHigh ?? 510}
+          initialHotelPerNight={approvePanel.eligiblePayload?.bookingEstimate?.hotelPerNight ?? 180}
+          initialNights={approvePanel.eligiblePayload?.bookingEstimate?.nights ?? 2}
+          busy={approvePanel.calcBusy}
+          onApply={approvePanel.onApplyCalculator}
+          applyLabel="Save estimate to first in-approval trip"
+        />
+        {approvePanel.approveMsg ? (
+          <p className="text-xs text-center text-travel-muted border border-white/10 rounded-lg py-2 px-3">
+            {approvePanel.approveMsg}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -93,23 +109,11 @@ export default function ExplorerPage() {
   if (stage === 'travel') {
     return (
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">Availability overlay</h2>
-        <p className="text-sm text-travel-muted">
-          Flight pricing overlays and smart suggestions are mocked. Use Home to vote on options.
-        </p>
-        <div className="rounded-2xl border border-white/10 overflow-hidden">
-          <div className="grid grid-cols-3 text-[10px] uppercase tracking-wider text-travel-muted border-b border-white/10">
-            {['Mon', 'Tue', 'Wed'].map((d) => (
-              <div key={d} className="p-2 text-center border-r border-white/5 last:border-0">
-                {d}
-              </div>
-            ))}
-          </div>
-          <div className="p-4 text-sm text-white/85 space-y-2">
-            <p>Best time for all: <strong>Tue 13:00–17:00</strong></p>
-            <p>Cheapest overlap: <strong>Wed morning</strong></p>
-          </div>
+        <div>
+          <h2 className="text-lg font-semibold text-white">Today & ticket</h2>
+          <p className="text-sm text-travel-muted mt-1">Mirror of Home — your day-of agenda and ticket (demo).</p>
         </div>
+        <TravelDayItinerary items={panelItems} compact />
       </div>
     );
   }
@@ -130,7 +134,6 @@ export default function ExplorerPage() {
     );
   }
 
-  /* Plan — explorer feed */
   return (
     <div className="space-y-4">
       <div>
