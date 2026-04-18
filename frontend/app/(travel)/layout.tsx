@@ -1,12 +1,15 @@
 'use client';
 
 import { TravelStageProvider } from '@/lib/travelContext';
-import TravelShell from '@/components/travel/TravelShell';
+import { PlanningProvider } from '@/components/context/PlanningContext';
+import { RootLayout } from '@/components/RootLayout';
 
 export default function TravelLayout({ children }: { children: React.ReactNode }) {
   return (
     <TravelStageProvider>
-      <TravelShell>{children}</TravelShell>
+      <PlanningProvider>
+        <RootLayout>{children}</RootLayout>
+      </PlanningProvider>
     </TravelStageProvider>
   );
 }

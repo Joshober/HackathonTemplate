@@ -63,9 +63,7 @@ export default function TeamPage() {
         if (!cancelled) setBootLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [user, pickActiveTeamId]);
 
   useEffect(() => {
@@ -78,44 +76,27 @@ export default function TeamPage() {
   }, [activeTeamId]);
 
   useEffect(() => {
-    if (!activeTeamId) {
-      setTeamDetail(null);
-      return;
-    }
+    if (!activeTeamId) { setTeamDetail(null); return; }
     let cancelled = false;
     setDetailLoading(true);
     api
       .getTeam(activeTeamId)
-      .then((d) => {
-        if (!cancelled) setTeamDetail(d);
-      })
-      .catch((e) => {
-        if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load team');
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then((d) => { if (!cancelled) setTeamDetail(d); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load team'); })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
   }, [activeTeamId]);
 
   const refreshTeamDetail = useCallback(async () => {
     if (!activeTeamId) return;
-    try {
-      const d = await api.getTeam(activeTeamId);
-      setTeamDetail(d);
-    } catch {
-      /* ignore */
-    }
+    try { setTeamDetail(await api.getTeam(activeTeamId)); } catch { /* ignore */ }
   }, [activeTeamId]);
 
   const onCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = createName.trim();
     if (!name || busy) return;
-    setBusy(true);
-    setErr(null);
+    setBusy(true); setErr(null);
     try {
       const created = await api.createTeam({ name });
       setCreateName('');
@@ -123,9 +104,7 @@ export default function TeamPage() {
       setActiveTeamId(created.id);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not create team');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
   const onAddMember = async (e: React.FormEvent) => {
@@ -133,8 +112,7 @@ export default function TeamPage() {
     if (!activeTeamId || busy) return;
     const email = addEmail.trim().toLowerCase();
     if (!email) return;
-    setBusy(true);
-    setErr(null);
+    setBusy(true); setErr(null);
     try {
       await api.addTeamMember(activeTeamId, email);
       setAddEmail('');
@@ -142,23 +120,18 @@ export default function TeamPage() {
       await loadTeams();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not add member');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
   const onLeaveTeam = async () => {
     if (!activeTeamId || busy) return;
-    setBusy(true);
-    setErr(null);
+    setBusy(true); setErr(null);
     try {
       await api.leaveTeam(activeTeamId);
       await loadTeams();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not leave team');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
   if (loading || !user) {
@@ -174,8 +147,7 @@ export default function TeamPage() {
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Team</h2>
         <p className="text-sm text-travel-muted mt-1">
-          Create a team, invite colleagues by email (they must sign in once), and chat with a shared travel assistant. Your profile
-          still syncs from the server.
+          Create a team, invite colleagues by email, and chat with a shared travel assistant.
         </p>
       </div>
 
@@ -183,14 +155,13 @@ export default function TeamPage() {
         <div className="min-w-0">
           <p className="text-sm font-medium text-gray-900">Trip approvals</p>
           <p className="text-xs text-travel-muted mt-0.5">
-            Open Home in the Approve stage to track reviewers, pricing, and sign-off. Reviewer names come from your active team
-            here.
+            Open Home in the Approve stage to track reviewers and sign-off.
           </p>
         </div>
         <Link
           href="/home"
           onClick={() => setStage('approve')}
-          className="shrink-0 inline-flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-4 py-2.5 text-center transition-colors"
+          className="shrink-0 inline-flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-4 py-2.5 transition-colors"
         >
           Approve a trip
         </Link>
@@ -219,9 +190,7 @@ export default function TeamPage() {
         </form>
       ) : (
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 max-w-xl">
-          <label className="text-xs text-travel-muted shrink-0" htmlFor="team-select">
-            Active team
-          </label>
+          <label className="text-xs text-travel-muted shrink-0" htmlFor="team-select">Active team</label>
           <select
             id="team-select"
             value={activeTeamId ?? ''}
@@ -240,17 +209,14 @@ export default function TeamPage() {
               const name = window.prompt('New team name');
               if (name?.trim()) {
                 void (async () => {
-                  setBusy(true);
-                  setErr(null);
+                  setBusy(true); setErr(null);
                   try {
                     const created = await api.createTeam({ name: name.trim() });
                     await loadTeams();
                     setActiveTeamId(created.id);
                   } catch (e) {
                     setErr(e instanceof Error ? e.message : 'Could not create team');
-                  } finally {
-                    setBusy(false);
-                  }
+                  } finally { setBusy(false); }
                 })();
               }
             }}
@@ -292,10 +258,7 @@ export default function TeamPage() {
                 ) : (
                   <ul className="space-y-2 max-h-[min(52vh,480px)] lg:max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
                     {teamDetail.members.map((m) => (
-                      <li
-                        key={m.userId}
-                        className="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-3 bg-gray-50"
-                      >
+                      <li key={m.userId} className="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-3 bg-gray-50">
                         {m.profileImageUrl ? (
                           <div className="relative w-10 h-10 shrink-0 rounded-full overflow-hidden border border-gray-200">
                             <Image src={m.profileImageUrl} alt="" fill className="object-cover" unoptimized />
@@ -350,7 +313,7 @@ export default function TeamPage() {
             </>
           ) : null}
 
-          <p className="text-xs text-travel-muted text-center px-1">Team data is stored in MongoDB for this app.</p>
+          <p className="text-xs text-travel-muted text-center px-1">Team data is stored in MongoDB.</p>
         </aside>
 
         <section className="flex-1 min-w-0 flex flex-col rounded-2xl border border-gray-200 bg-white p-4 lg:p-5 shadow-sm">
