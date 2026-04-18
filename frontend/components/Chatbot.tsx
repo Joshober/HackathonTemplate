@@ -119,7 +119,6 @@ export default function Chatbot() {
       ];
 
       let imagesBase64: string[] | undefined;
-      let pdfsBase64: string[] | undefined;
       let videoBase64: string | undefined;
       let videoMime: string | undefined;
       if (currentVideo) {
@@ -130,7 +129,8 @@ export default function Chatbot() {
         imagesBase64 = await Promise.all(currentImages.map(({ file }) => fileToBase64(file)));
       }
       if (currentPdfs.length > 0) {
-        pdfsBase64 = await Promise.all(currentPdfs.map((p) => fileToBase64(p.file)));
+        const pdfsB64 = await Promise.all(currentPdfs.map((p) => fileToBase64(p.file)));
+        imagesBase64 = [...(imagesBase64 ?? []), ...pdfsB64];
       }
 
       const response = await api.sendChatMessage(
@@ -141,8 +141,7 @@ export default function Chatbot() {
         videoBase64,
         videoMime,
         undefined,
-        undefined,
-        pdfsBase64
+        undefined
       );
 
       const assistantMessage: Message = {

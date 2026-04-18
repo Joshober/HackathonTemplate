@@ -1,3 +1,4 @@
+import json
 from flask import Blueprint, request, jsonify
 from werkzeug.utils import secure_filename
 from app.db.mongodb import get_db
@@ -18,6 +19,28 @@ def allowed_image_file(filename):
 
 def allowed_video_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
+
+
+MAX_TRAVEL_JSON_BYTES = 12000
+
+
+def _sanitize_travel(raw):
+    """Allow a small JSON-serializable dict for travel metadata (client-defined shape)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    try:
+        s = json.dumps(raw, default=str)
+    except (TypeError, ValueError):
+        return None
+    if len(s) > MAX_TRAVEL_JSON_BYTES:
+        return None
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        return None
+
 
 @bp.route('/items', methods=['GET'])
 @require_auth
@@ -132,6 +155,20 @@ def create_item(user_id):
             'createdAt': now,
             'updatedAt': now
         }
+        if request.is_json:
+            data = request.get_json() or {}
+            travel = _sanitize_travel(data.get('travel'))
+            if travel is not None:
+                new_item['travel'] = travel
+        else:
+            raw_travel = request.form.get('travel')
+            if raw_travel:
+                try:
+                    travel = _sanitize_travel(json.loads(raw_travel))
+                    if travel is not None:
+                        new_item['travel'] = travel
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
         
         result = items_collection.insert_one(new_item)
         new_item['_id'] = str(result.inserted_id)
@@ -208,6 +245,18 @@ def update_item(item_id, user_id):
             # Allow setting videoUrls directly from JSON
             videoUrls = data.get('videoUrls', [])
         update_data['videoUrls'] = videoUrls
+
+        if request.is_json and isinstance(data, dict) and 'travel' in data:
+            travel = _sanitize_travel(data.get('travel'))
+            if travel is not None:
+                update_data['travel'] = travel
+        elif not request.is_json and request.form.get('travel'):
+            try:
+                travel = _sanitize_travel(json.loads(request.form.get('travel')))
+                if travel is not None:
+                    update_data['travel'] = travel
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
         
         # Update item
         items_collection.update_one(

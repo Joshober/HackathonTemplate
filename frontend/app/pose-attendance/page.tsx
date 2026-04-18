@@ -1,7 +1,7 @@
 'use client';
 
 import '@/lib/patchTfConsole';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import DashboardShell from '@/components/DashboardShell';
 import { motion } from 'motion/react';
@@ -111,7 +111,7 @@ function encodePosesForUrl(poses: PoseWithImage[]): string {
   return btoa(encodeURIComponent(JSON.stringify({ poses }))).replace(/\+/g, '-').replace(/\//g, '_');
 }
 
-export default function PoseAttendancePage() {
+function PoseAttendancePageInner() {
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>('professor');
   const [referencePoses, setReferencePoses] = useState<PoseWithImage[]>([]);
@@ -957,5 +957,19 @@ export default function PoseAttendancePage() {
         </motion.div>
       )}
     </DashboardShell>
+  );
+}
+
+export default function PoseAttendancePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background-dark text-slate-400 text-sm">
+          Loading pose attendance…
+        </div>
+      }
+    >
+      <PoseAttendancePageInner />
+    </Suspense>
   );
 }

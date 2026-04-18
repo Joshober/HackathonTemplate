@@ -5,14 +5,14 @@ import { getCurrentUser, login, User } from '@/lib/auth';
 import Link from 'next/link';
 import DashboardShell from '@/components/DashboardShell';
 
-const shortcuts = [
-  { href: '/chat', label: 'Chat Pipeline', icon: 'forum', desc: 'Voice, text, images → AI' },
-  { href: '/tutor', label: 'AI Tutor', icon: 'school', desc: 'Learn with voice or text' },
-  { href: '/support', label: 'Tech Support', icon: 'support_agent', desc: 'Chat, email, tickets' },
-  { href: '/voice-assistant', label: 'Voice Assistant', icon: 'mic', desc: 'Hands-free assistant' },
-  { href: '/bullshit-detect', label: 'Reality Check', icon: 'fact_check', desc: 'Detect unreliable content' },
-  { href: '/pose-attendance', label: 'Pose Attendance', icon: 'videocam', desc: 'Attendance by pose' },
-  { href: '/profile', label: 'Profile', icon: 'person', desc: 'Edit your profile' },
+const legacyTools = [
+  { href: '/chat', label: 'Chat pipeline', icon: 'forum', desc: 'Voice, text, images → AI' },
+  { href: '/tutor', label: 'AI Tutor', icon: 'school', desc: 'Weekend energy tutor' },
+  { href: '/support', label: 'Support', icon: 'support_agent', desc: 'Tickets & email' },
+  { href: '/voice-assistant', label: 'Voice assistant', icon: 'mic', desc: 'Hands-free' },
+  { href: '/bullshit-detect', label: 'Reality check', icon: 'fact_check', desc: 'Content analysis' },
+  { href: '/pose-attendance', label: 'Pose attendance', icon: 'videocam', desc: 'Pose-based check-in' },
+  { href: '/profile/edit', label: 'Profile editor', icon: 'person', desc: 'Photo & bio' },
 ];
 
 export default function Dashboard() {
@@ -55,27 +55,41 @@ export default function Dashboard() {
 
   return (
     <DashboardShell>
-      <div className="w-full max-w-5xl">
-        <h1 className="text-2xl font-bold text-slate-100 mb-1">
-          Welcome back{user.name ? `, ${user.name.split(' ')[0]}` : ''}
-        </h1>
-        <p className="text-slate-500 text-sm mb-8">{user.email}</p>
+      <div className="w-full max-w-3xl space-y-8">
+        <div className="rounded-2xl border border-primary/15 bg-primary/5 p-6">
+          <h1 className="text-2xl font-bold text-slate-100 mb-2">Travel Companion</h1>
+          <p className="text-slate-500 text-sm mb-4">
+            Primary app experience: planning, approvals, travel coordination, and return — mobile-first with AI and
+            your existing APIs.
+          </p>
+          <Link
+            href="/home"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-3 rounded-xl text-sm transition-colors"
+          >
+            <span className="material-symbols-outlined text-lg">flight_takeoff</span>
+            Open Travel Companion
+          </Link>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          {shortcuts.map((s) => (
-            <Link
-              key={s.href}
-              href={s.href}
-              className="flex items-center gap-6 p-7 rounded-2xl border border-primary/10 bg-background-dark hover:border-primary/30 hover:bg-primary/5 transition-colors min-h-[120px]"
-            >
-              <span className="material-symbols-outlined text-primary text-4xl">{s.icon}</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-slate-100 text-lg">{s.label}</p>
-                <p className="text-slate-500 mt-1">{s.desc}</p>
-              </div>
-              <span className="material-symbols-outlined text-slate-500 text-2xl ml-auto">arrow_forward</span>
-            </Link>
-          ))}
+        <div>
+          <h2 className="text-lg font-semibold text-slate-200 mb-1">Legacy &amp; developer tools</h2>
+          <p className="text-slate-500 text-sm mb-4">Original hackathon demos still available here.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {legacyTools.map((s) => (
+              <Link
+                key={s.href}
+                href={s.href}
+                className="flex items-center gap-4 p-5 rounded-2xl border border-primary/10 bg-background-dark hover:border-primary/25 hover:bg-primary/5 transition-colors"
+              >
+                <span className="material-symbols-outlined text-primary text-3xl">{s.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-100">{s.label}</p>
+                  <p className="text-slate-500 text-sm mt-0.5">{s.desc}</p>
+                </div>
+                <span className="material-symbols-outlined text-slate-500">chevron_right</span>
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </DashboardShell>

@@ -4,6 +4,19 @@
 
 :root {
   --font-size: 16px;
+  /* Travel Companion — stage accents (Lockton enterprise) */
+  --stage-plan: #3b82f6;
+  --stage-plan-soft: rgba(59, 130, 246, 0.12);
+  --stage-approve: #8b5cf6;
+  --stage-approve-soft: rgba(139, 92, 246, 0.12);
+  --stage-travel: #22c55e;
+  --stage-travel-soft: rgba(34, 197, 94, 0.12);
+  --stage-return: #f97316;
+  --stage-return-soft: rgba(249, 115, 22, 0.12);
+  --travel-surface: #12141a;
+  --travel-surface-elevated: #1a1d26;
+  --travel-border: rgba(255, 255, 255, 0.06);
+  --travel-muted: #8b92a8;
   --background: #0a0a0a;
   --background-alt: #0f2317;
   --background-dark: #0a0a0a;
@@ -30,6 +43,12 @@
   --color-surface-dark: var(--surface-dark);
   --color-border-dark: var(--border-dark);
   --color-border: var(--border);
+  --color-stage-plan: var(--stage-plan);
+  --color-stage-approve: var(--stage-approve);
+  --color-stage-travel: var(--stage-travel);
+  --color-stage-return: var(--stage-return);
+  --color-travel-surface: var(--travel-surface);
+  --color-travel-muted: var(--travel-muted);
 }
 
 body {

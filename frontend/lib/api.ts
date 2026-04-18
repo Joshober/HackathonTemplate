@@ -1,5 +1,8 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
+/** Optional travel metadata persisted by `/api/items` (JSON body). */
+export type TravelMetadata = Record<string, unknown>;
+
 export interface Item {
   _id?: string;
   userId?: string;
@@ -7,6 +10,7 @@ export interface Item {
   description: string;
   imageUrls?: string[];
   videoUrls?: string[];
+  travel?: TravelMetadata;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -177,48 +181,65 @@ export const api = {
     return fetchWithAuth(`/api/items/${id}`);
   },
 
-  async createItem(item: { title: string; description: string; images?: File[]; videos?: File[] }): Promise<Item> {
+  async createItem(item: {
+    title: string;
+    description: string;
+    images?: File[];
+    videos?: File[];
+    travel?: TravelMetadata;
+  }): Promise<Item> {
+    const hasFiles = (item.images?.length ?? 0) > 0 || (item.videos?.length ?? 0) > 0;
+    if (!hasFiles) {
+      return fetchWithAuth('/api/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: item.title,
+          description: item.description,
+          travel: item.travel,
+        }),
+      });
+    }
+
     const formData = new FormData();
     formData.append('title', item.title);
     formData.append('description', item.description);
-    
+    if (item.travel) {
+      formData.append('travel', JSON.stringify(item.travel));
+    }
+
     if (item.images) {
       item.images.forEach((file) => {
         formData.append('images', file);
       });
     }
-    
+
     if (item.videos) {
       item.videos.forEach((file) => {
         formData.append('videos', file);
       });
     }
-    
+
     return fetchWithAuth('/api/items', {
       method: 'POST',
       body: formData,
     });
   },
 
-  async updateItem(id: string, item: { title?: string; description?: string; images?: File[]; videos?: File[]; imageUrls?: string[]; videoUrls?: string[] }): Promise<Item> {
-    const formData = new FormData();
-    if (item.title) formData.append('title', item.title);
-    if (item.description) formData.append('description', item.description);
-    
-    if (item.images) {
-      item.images.forEach((file) => {
-        formData.append('images', file);
-      });
+  async updateItem(
+    id: string,
+    item: {
+      title?: string;
+      description?: string;
+      images?: File[];
+      videos?: File[];
+      imageUrls?: string[];
+      videoUrls?: string[];
+      travel?: TravelMetadata;
     }
-    
-    if (item.videos) {
-      item.videos.forEach((file) => {
-        formData.append('videos', file);
-      });
-    }
-    
-    // If no files but URLs provided, use JSON
-    if (!item.images?.length && !item.videos?.length && (item.imageUrls || item.videoUrls)) {
+  ): Promise<Item> {
+    const hasFiles = (item.images?.length ?? 0) > 0 || (item.videos?.length ?? 0) > 0;
+    if (!hasFiles && (item.imageUrls != null || item.videoUrls != null || item.travel != null)) {
       return fetchWithAuth(`/api/items/${id}`, {
         method: 'PUT',
         headers: {
@@ -229,10 +250,30 @@ export const api = {
           description: item.description,
           imageUrls: item.imageUrls,
           videoUrls: item.videoUrls,
+          travel: item.travel,
         }),
       });
     }
-    
+
+    const formData = new FormData();
+    if (item.title) formData.append('title', item.title);
+    if (item.description) formData.append('description', item.description);
+    if (item.travel) {
+      formData.append('travel', JSON.stringify(item.travel));
+    }
+
+    if (item.images) {
+      item.images.forEach((file) => {
+        formData.append('images', file);
+      });
+    }
+
+    if (item.videos) {
+      item.videos.forEach((file) => {
+        formData.append('videos', file);
+      });
+    }
+
     return fetchWithAuth(`/api/items/${id}`, {
       method: 'PUT',
       body: formData,

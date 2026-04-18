@@ -9,8 +9,9 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Claude Home™ | Smart enough to run your life.",
-  description: "When automation goes just a little too far. The first AI home assistant that judges your screen time and forgets your birthdays on purpose.",
+  title: "Travel Companion | Lockton",
+  description:
+    "Enterprise travel made calmer: plan, approve, travel, and return with clear progress, AI assistance, and a mobile-first experience.",
 };
 
 export default function RootLayout({

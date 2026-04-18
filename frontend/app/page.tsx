@@ -56,7 +56,7 @@ export default function Home() {
     setLoading(true);
     try {
       await loginEmailPassword(email, password);
-      if (typeof window !== 'undefined') window.location.href = '/dashboard';
+      if (typeof window !== 'undefined') window.location.href = '/home';
     } catch (error: unknown) {
       const err = error as { message?: string };
       setError(err?.message || 'Login failed');
@@ -71,7 +71,7 @@ export default function Home() {
     setLoading(true);
     try {
       await register(email, password, name);
-      if (typeof window !== 'undefined') window.location.href = '/dashboard';
+      if (typeof window !== 'undefined') window.location.href = '/home';
     } catch (error: unknown) {
       const err = error as { message?: string };
       setError(err?.message || 'Registration failed');
@@ -84,16 +84,16 @@ export default function Home() {
     <div className="flex items-center gap-4">
       {!isLoading && user ? (
         <>
-          <Link href="/dashboard" className="bg-primary text-background-dark px-6 py-2.5 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(112,255,169,0.3)]">
-            Let&apos;s Get Weird
+          <Link href="/home" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-semibold text-sm transition-colors">
+            Open Travel Companion
           </Link>
-          <Link href="/profile" className="text-sm text-slate-400 hover:text-primary transition-colors">
+          <Link href="/profile" className="text-sm text-slate-400 hover:text-white transition-colors">
             Profile
           </Link>
         </>
       ) : (
-        <Link href="/dashboard" className="bg-primary text-background-dark px-6 py-2.5 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all shadow-[0_0_20px_rgba(112,255,169,0.3)]">
-          Let&apos;s Get Weird
+        <Link href="/home" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg font-semibold text-sm transition-colors">
+          Open Travel Companion
         </Link>
       )}
     </div>

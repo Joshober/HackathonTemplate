@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { getCurrentUser, login, clearUserCache } from '@/lib/auth';
+import { getCurrentUser, login, clearUserCache, type User } from '@/lib/auth';
 import { api } from '@/lib/api';
 import DashboardShell from '@/components/DashboardShell';
 import { Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
@@ -65,7 +65,7 @@ interface Message {
 }
 
 export default function SupportPage() {
-  const [user, setUser] = useState<{ name?: string; email?: string } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: "Hi! I'm your AI tech support. Describe your issue (type, speak, or attach a screenshot). When helpful, I can send you an email summary or create a support ticket—just ask." },
   ]);

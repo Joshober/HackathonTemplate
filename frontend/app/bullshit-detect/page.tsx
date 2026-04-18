@@ -4,8 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import DashboardShell from '@/components/DashboardShell';
 import { api } from '@/lib/api';
 import { FileWarning, Mic, MicOff, ImagePlus, Volume2, Send, Video } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
-import mammoth from 'mammoth';
 
 const ACCEPTED_DOC_TYPES = '.pdf,.doc,.docx';
 const isPdfOrWord = (f: File) => {
@@ -14,6 +12,8 @@ const isPdfOrWord = (f: File) => {
 };
 
 async function extractPdfText(file: File): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs';
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const parts: string[] = [];
@@ -27,6 +27,7 @@ async function extractPdfText(file: File): Promise<string> {
 }
 
 async function extractWordText(file: File): Promise<string> {
+  const mammoth = await import('mammoth');
   const arrayBuffer = await file.arrayBuffer();
   const result = await mammoth.extractRawText({ arrayBuffer });
   return result.value;
@@ -126,10 +127,6 @@ export default function BullshitDetectPage() {
 
   useEffect(() => () => {
     if (lastTtsUrlRef.current) URL.revokeObjectURL(lastTtsUrlRef.current);
-  }, []);
-
-  useEffect(() => {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@5.4.624/build/pdf.worker.min.mjs';
   }, []);
 
   const startRecording = async () => {

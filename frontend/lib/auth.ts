@@ -29,10 +29,10 @@ export async function login(): Promise<void> {
 export async function loginEmailPassword(email: string, password: string): Promise<User> {
   try {
     const response = await api.loginEmailPassword(email, password);
-    // Clear cache and set new user
-    currentUser = response.user;
+    const u = response.user as unknown as User;
+    currentUser = u;
     userPromise = null;
-    return response.user;
+    return u;
   } catch (error) {
     console.error('Email/password login error:', error);
     throw error;
@@ -42,10 +42,10 @@ export async function loginEmailPassword(email: string, password: string): Promi
 export async function register(email: string, password: string, name?: string): Promise<User> {
   try {
     const response = await api.register(email, password, name);
-    // Clear cache and set new user
-    currentUser = response.user;
+    const u = response.user as unknown as User;
+    currentUser = u;
     userPromise = null;
-    return response.user;
+    return u;
   } catch (error) {
     console.error('Registration error:', error);
     throw error;
@@ -93,7 +93,7 @@ export async function getCurrentUser(): Promise<User | null> {
   // Create new request
   userPromise = (async () => {
     try {
-      const user = await api.getCurrentUser();
+      const user = (await api.getCurrentUser()) as unknown as User;
       currentUser = user;
       return user;
     } catch {

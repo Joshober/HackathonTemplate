@@ -8,7 +8,8 @@ import { logout } from '@/lib/auth';
 import { api } from '@/lib/api';
 
 const navItems: { icon: string; label: string; href: string }[] = [
-  { icon: 'dashboard', label: 'Overview', href: '/dashboard' },
+  { icon: 'flight_takeoff', label: 'Travel Companion', href: '/home' },
+  { icon: 'dashboard', label: 'Legacy hub', href: '/dashboard' },
   { icon: 'list_alt', label: 'Chaos Logs', href: '/chat' },
   { icon: 'history', label: 'AI Tutor', href: '/tutor' },
   { icon: 'warning', label: 'Existential Threats', href: '/bullshit-detect' },
@@ -45,13 +46,16 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           </Link>
 
           <div className="mb-10">
-            <h1 className="text-lg font-bold leading-none">Claude Home™</h1>
-            <p className="text-xs text-primary font-medium tracking-tight mt-1">Chaos Control Center</p>
+            <h1 className="text-lg font-bold leading-none">Hackathon tools</h1>
+            <p className="text-xs text-primary font-medium tracking-tight mt-1">Travel Companion lives under /home</p>
           </div>
 
           <nav className="flex-1 space-y-2">
             {navItems.map((item) => {
-              const active = pathname === item.href || (item.href !== '/dashboard' && pathname?.startsWith(item.href));
+              const active =
+                pathname === item.href ||
+                (item.href !== '/dashboard' && item.href !== '/home' && pathname?.startsWith(item.href)) ||
+                (item.href === '/home' && (pathname === '/home' || pathname?.startsWith('/explorer') || pathname?.startsWith('/assistant') || pathname?.startsWith('/team') || pathname === '/profile'));
               return (
                 <Link key={item.href} href={item.href}>
                   <motion.span

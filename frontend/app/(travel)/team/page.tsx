@@ -1,0 +1,81 @@
+'use client';
+
+import Image from 'next/image';
+import { useEffect, useState } from 'react';
+import { api, type Profile } from '@/lib/api';
+import { useTravelAuth } from '@/components/travel/useTravelAuth';
+
+const MOCK_TEAM = [
+  { name: 'Alex Rivera', role: 'Manager', participating: true, avatar: null as string | null },
+  { name: 'Jordan Lee', role: 'Finance partner', participating: true, avatar: null },
+  { name: 'Sam Okonkwo', role: 'Travel desk', participating: false, avatar: null },
+  { name: 'Riley Chen', role: 'Peer', participating: true, avatar: null },
+];
+
+export default function TeamPage() {
+  const { user, loading } = useTravelAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    api
+      .getProfile()
+      .then(setProfile)
+      .catch(() => setProfile(null));
+  }, [user]);
+
+  if (loading || !user) {
+    return <div className="py-24 text-center text-travel-muted text-sm">Signing you in…</div>;
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-white">Team</h2>
+        <p className="text-sm text-travel-muted mt-1">
+          Shared planning visibility (demo roster). Your profile syncs from the server; teammates are illustrative.
+        </p>
+      </div>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-travel-muted mb-3">You</p>
+        <div className="flex items-center gap-3">
+          {profile?.profileImageUrl ? (
+            <div className="relative w-12 h-12 rounded-full overflow-hidden border border-white/10">
+              <Image src={profile.profileImageUrl} alt="" fill className="object-cover" unoptimized />
+            </div>
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-blue-500/30 flex items-center justify-center text-sm font-bold">
+              {(profile?.displayName || user.name || user.email || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div>
+            <p className="font-medium text-white">{profile?.displayName || user.name || 'Traveler'}</p>
+            <p className="text-xs text-travel-muted">{user.email}</p>
+          </div>
+          <span className="ml-auto text-[10px] font-semibold uppercase text-emerald-300/90">Participating</span>
+        </div>
+      </div>
+      <ul className="space-y-2">
+        {MOCK_TEAM.map((m) => (
+          <li key={m.name} className="flex items-center gap-3 rounded-xl border border-white/10 px-3 py-3 bg-black/20">
+            <div className="w-10 h-10 rounded-full bg-violet-500/25 flex items-center justify-center text-sm font-semibold text-violet-100">
+              {m.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{m.name}</p>
+              <p className="text-xs text-travel-muted">{m.role}</p>
+            </div>
+            <span
+              className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md ${
+                m.participating ? 'bg-emerald-500/15 text-emerald-200' : 'bg-white/10 text-travel-muted'
+              }`}
+            >
+              {m.participating ? 'In loop' : 'Optional'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-travel-muted text-center">Add/remove flows would connect to HR or directory APIs in production.</p>
+    </div>
+  );
+}
