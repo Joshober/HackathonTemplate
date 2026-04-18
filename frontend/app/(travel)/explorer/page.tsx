@@ -5,7 +5,17 @@ import { ArrowRight, Search, SlidersHorizontal } from 'lucide-react';
 import { useTravelStage } from '@/lib/travelContext';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import OpportunityCard from '@/components/travel/OpportunityCard';
-import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type CitySuggestion, type ExplorerOpportunity, type Item } from '@/lib/api';
+import {
+  api,
+  TRAVEL_ACTIVE_TEAM_STORAGE_KEY,
+  type CitySuggestion,
+  type ExplorerAvailabilityCoverage,
+  type ExplorerEventOption,
+  type ExplorerOpportunity,
+  type ExplorerItineraryPackage,
+  type Item,
+  type TeamCalendarCoverage,
+} from '@/lib/api';
 import PolicyHint from '@/components/travel/PolicyHint';
 import ApproveFlightBundles from '@/components/travel/approve/ApproveFlightBundles';
 import TravelCostCalculator from '@/components/travel/approve/TravelCostCalculator';
@@ -66,6 +76,20 @@ export default function ExplorerPage() {
   const [sourceOpenstreetmap, setSourceOpenstreetmap] = useState(true);
   const [eventTypes, setEventTypes] = useState<Array<'music' | 'sports' | 'arts' | 'film' | 'miscellaneous'>>([]);
   const [maxPrice, setMaxPrice] = useState('');
+  const [expandedOpportunityIds, setExpandedOpportunityIds] = useState<Record<string, boolean>>({});
+  const [requireAllMembersFree, setRequireAllMembersFree] = useState(false);
+  const [availabilityStartDate, setAvailabilityStartDate] = useState('');
+  const [availabilityEndDate, setAvailabilityEndDate] = useState('');
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarCoverage, setCalendarCoverage] = useState<TeamCalendarCoverage | null>(null);
+  const [availabilityCoverage, setAvailabilityCoverage] = useState<ExplorerAvailabilityCoverage | null>(null);
+  const [eventOptions, setEventOptions] = useState<ExplorerEventOption[]>([]);
+  const [itineraryPackages, setItineraryPackages] = useState<ExplorerItineraryPackage[]>([]);
+  const [resultsView, setResultsView] = useState<'events' | 'packages'>('events');
+  const [manualStartDate, setManualStartDate] = useState('');
+  const [manualEndDate, setManualEndDate] = useState('');
+  const [manualAvailabilitySaving, setManualAvailabilitySaving] = useState(false);
+  const [manualAvailabilityCount, setManualAvailabilityCount] = useState(0);
 
   const refreshPanelItems = useCallback(async () => {
     try {
@@ -120,6 +144,32 @@ export default function ExplorerPage() {
       mounted = false;
     };
   }, [stage, user?.email]);
+
+  useEffect(() => {
+    if (!teamId) {
+      setCalendarCoverage(null);
+      setCalendarConnected(false);
+      setManualAvailabilityCount(0);
+      return;
+    }
+    void (async () => {
+      try {
+        const [status, coverage, availability] = await Promise.all([
+          api.getGoogleCalendarStatus(),
+          api.getTeamCalendarCoverage(teamId),
+          api.getTeamAvailability(teamId),
+        ]);
+        setCalendarConnected(Boolean(status.connected));
+        setCalendarCoverage(coverage);
+        const mine = availability.members.find((m) => (m.email || '').toLowerCase() === (user?.email || '').toLowerCase());
+        setManualAvailabilityCount(mine?.windows?.length || 0);
+      } catch {
+        setCalendarCoverage(null);
+        setCalendarConnected(false);
+        setManualAvailabilityCount(0);
+      }
+    })();
+  }, [teamId, user?.email]);
 
   const savePresetCities = async (nextCities: string[]) => {
     if (!teamId) return;
@@ -229,6 +279,20 @@ export default function ExplorerPage() {
       setSearchError('Max ticket price must be a valid positive number.');
       return;
     }
+    if (requireAllMembersFree) {
+      if (!teamId) {
+        setSearchError('Select an active team to use calendar availability filtering.');
+        return;
+      }
+      if (!availabilityStartDate || !availabilityEndDate) {
+        setSearchError('Pick availability window dates to filter by team calendar.');
+        return;
+      }
+      if (availabilityStartDate > availabilityEndDate) {
+        setSearchError('Availability window start must be before end.');
+        return;
+      }
+    }
     if (!query && !cities.length) {
       setSearchError('Enter a keyword or select at least one city.');
       setOpportunities([]);
@@ -244,12 +308,20 @@ export default function ExplorerPage() {
         `Sort: ${sortBy}`,
         eventTypes.length ? `Types: ${eventTypes.join(', ')}` : null,
         parsedMaxPrice != null ? `Max price: $${parsedMaxPrice}` : null,
+        requireAllMembersFree && availabilityStartDate && availabilityEndDate
+          ? `Team free: ${availabilityStartDate} to ${availabilityEndDate}`
+          : null,
       ]
         .filter(Boolean)
         .join(' · ')
     );
     try {
-      const { opportunities: rows } = await api.searchExplorerOpportunities({
+      const {
+        opportunities: rows,
+        availabilityCoverage: coverage,
+        eventOptions: optionRows,
+        itineraryPackages: packageRows,
+      } = await api.searchExplorerOpportunities({
         ...(query ? { query } : {}),
         ...(cities.length ? { cities } : {}),
         maxPerCity,
@@ -259,13 +331,27 @@ export default function ExplorerPage() {
         sources,
         ...(eventTypes.length ? { eventTypes } : {}),
         ...(parsedMaxPrice != null ? { maxPrice: parsedMaxPrice } : {}),
+        ...(requireAllMembersFree && teamId ? { teamId } : {}),
+        ...(requireAllMembersFree ? { requireAllMembersFree: true } : {}),
+        ...(requireAllMembersFree && availabilityStartDate
+          ? { availabilityWindowStart: `${availabilityStartDate}T00:00:00Z` }
+          : {}),
+        ...(requireAllMembersFree && availabilityEndDate
+          ? { availabilityWindowEnd: `${availabilityEndDate}T23:59:59Z` }
+          : {}),
       });
       setOpportunities(rows);
+      setAvailabilityCoverage(coverage || null);
+      setEventOptions(optionRows || []);
+      setItineraryPackages(packageRows || []);
       if (!rows.length) {
         setSearchError('No matching events found. Try a broader keyword or fewer city filters.');
       }
     } catch (e) {
       setOpportunities([]);
+      setAvailabilityCoverage(null);
+      setEventOptions([]);
+      setItineraryPackages([]);
       setSearchError(e instanceof Error ? e.message : 'Search failed');
     } finally {
       setSearchLoading(false);
@@ -282,19 +368,38 @@ export default function ExplorerPage() {
       o.url ? `Source: ${o.url}` : null,
     ].filter(Boolean) as string[];
     try {
-      await api.createItem({
+      const created = await api.createItem({
         title: o.title.slice(0, 200),
         description: descLines.join('\n\n'),
+        imageUrls: o.imageUrl ? [o.imageUrl] : undefined,
         travel: {
           location: o.city,
           costEstimate: maxBudget,
           tags: ['events', sourceLabel(o.source), o.city],
           tripType: 'research',
+          ...(o.imageUrl ? { imageUrl: o.imageUrl } : {}),
           sourceUrl: o.url,
           addedBy: user.email || 'You',
           opportunityStatus: 'draft',
         },
+        ...(teamId ? { teamId } : {}),
       });
+      if (teamId) {
+        const voteMessage = `[SYSTEM_EVENT]${JSON.stringify({
+          type: 'event_vote',
+          itemId: created._id || null,
+          title: o.title,
+          city: o.city,
+          description: o.snippet || '',
+          imageUrl: o.imageUrl || '',
+          sourceUrl: o.url || '',
+        })}`;
+        try {
+          await api.sendTeamMessage(teamId, voteMessage, { invokeAssistant: false });
+        } catch {
+          // Do not fail item creation if chat post fails.
+        }
+      }
       setToast(`Added “${o.title}” to your plan.`);
     } catch (e) {
       setToast(e instanceof Error ? e.message : 'Could not add');
@@ -317,6 +422,52 @@ export default function ExplorerPage() {
 
   const toggleEventType = (type: 'music' | 'sports' | 'arts' | 'film' | 'miscellaneous') => {
     setEventTypes((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]));
+  };
+
+  const toggleOpportunityExpanded = (id: string) => {
+    setExpandedOpportunityIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const addEventOptionToPlan = async (opt: ExplorerEventOption) => {
+    if (!user?.email) return;
+    const title = `${opt.title}${opt.startAt ? ` (${opt.startAt})` : ''}`;
+    const lines = [
+      opt.snippet || null,
+      opt.url ? `Source: ${opt.url}` : null,
+      opt.cost?.totalEstimated != null ? `Estimated total: $${Math.round(opt.cost.totalEstimated)}` : null,
+      opt.availability ? `Availability: ${opt.availability.availableCount}/${opt.availability.totalMembers}` : null,
+    ].filter(Boolean) as string[];
+    setBusyId(opt.optionId);
+    try {
+      await api.createItem({
+        title: title.slice(0, 200),
+        description: lines.join('\n\n') || 'Explorer option',
+        imageUrls: opt.imageUrl ? [opt.imageUrl] : undefined,
+        travel: {
+          location: opt.city,
+          costEstimate: Math.round(opt.cost?.totalEstimated || maxBudget),
+          tags: ['events', opt.source || 'explorer', opt.city],
+          tripType: 'research',
+          sourceUrl: opt.url,
+          startDate: opt.startAt ? opt.startAt.slice(0, 10) : undefined,
+          ...(opt.imageUrl ? { imageUrl: opt.imageUrl } : {}),
+          addedBy: user.email || 'You',
+          opportunityStatus: 'draft',
+        },
+        ...(teamId ? { teamId } : {}),
+      });
+      setToast(`Added option for “${opt.title}” to your plan.`);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Could not add');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const addPackageToPlan = async (pkg: ExplorerItineraryPackage) => {
+    const first = pkg.options?.[0];
+    if (!first) return;
+    await addEventOptionToPlan(first);
   };
 
   const grouped = opportunities.reduce<Record<string, ExplorerOpportunity[]>>((acc, row) => {
@@ -655,6 +806,145 @@ export default function ExplorerPage() {
                 </label>
               </div>
             </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-gray-700 font-medium">Team calendar availability</p>
+                <label className="inline-flex items-center gap-2 text-xs text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={requireAllMembersFree}
+                    onChange={(e) => setRequireAllMembersFree(e.target.checked)}
+                    disabled={!teamId}
+                  />
+                  Require everyone free
+                </label>
+              </div>
+              {!teamId ? (
+                <p className="text-[11px] text-amber-800">Pick an active team on the Team tab first.</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-travel-muted">
+                    Connected calendars: {calendarCoverage?.connectedMembers || 0}/{calendarCoverage?.totalMembers || 0}
+                  </p>
+                  <p className="text-[11px] text-travel-muted">
+                    Manual availability submitted: {calendarCoverage?.manualAvailabilityMembers || 0}/{calendarCoverage?.totalMembers || 0}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void (async () => {
+                          const { auth_url } = await api.getGoogleCalendarAuthUrl();
+                          window.location.href = auth_url;
+                        })()
+                      }
+                      className="text-[11px] px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white"
+                    >
+                      {calendarConnected ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
+                    </button>
+                    {calendarConnected ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (async () => {
+                            await api.disconnectGoogleCalendar();
+                            setCalendarConnected(false);
+                            if (teamId) {
+                              const coverage = await api.getTeamCalendarCoverage(teamId);
+                              setCalendarCoverage(coverage);
+                            }
+                          })()
+                        }
+                        className="text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+                      >
+                        Disconnect
+                      </button>
+                    ) : null}
+                  </div>
+                  {requireAllMembersFree ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] text-travel-muted">
+                        Free window start
+                        <input
+                          type="date"
+                          value={availabilityStartDate}
+                          onChange={(e) => setAvailabilityStartDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                      <label className="text-[11px] text-travel-muted">
+                        Free window end
+                        <input
+                          type="date"
+                          value={availabilityEndDate}
+                          onChange={(e) => setAvailabilityEndDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+                  <div className="rounded-lg border border-gray-200 bg-white p-2 space-y-2">
+                    <p className="text-[11px] text-gray-700 font-medium">
+                      Manual availability for you ({manualAvailabilityCount} window{manualAvailabilityCount === 1 ? '' : 's'})
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px] text-travel-muted">
+                        Start
+                        <input
+                          type="date"
+                          value={manualStartDate}
+                          onChange={(e) => setManualStartDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                      <label className="text-[11px] text-travel-muted">
+                        End
+                        <input
+                          type="date"
+                          value={manualEndDate}
+                          onChange={(e) => setManualEndDate(e.target.value)}
+                          className="mt-1 w-full rounded-lg bg-white border border-gray-200 px-2 py-1.5 text-xs text-gray-900"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={manualAvailabilitySaving || !manualStartDate || !manualEndDate || manualStartDate > manualEndDate}
+                      onClick={() =>
+                        void (async () => {
+                          if (!teamId) return;
+                          setManualAvailabilitySaving(true);
+                          try {
+                            const existing = await api.getTeamAvailability(teamId);
+                            const mine = existing.members.find(
+                              (m) => (m.email || '').toLowerCase() === (user?.email || '').toLowerCase()
+                            );
+                            const windows = [...(mine?.windows || []), { startDate: manualStartDate, endDate: manualEndDate }];
+                            await api.setMyTeamAvailability(teamId, windows);
+                            const [coverage, updated] = await Promise.all([
+                              api.getTeamCalendarCoverage(teamId),
+                              api.getTeamAvailability(teamId),
+                            ]);
+                            setCalendarCoverage(coverage);
+                            const me = updated.members.find(
+                              (m) => (m.email || '').toLowerCase() === (user?.email || '').toLowerCase()
+                            );
+                            setManualAvailabilityCount(me?.windows?.length || 0);
+                            setManualStartDate('');
+                            setManualEndDate('');
+                          } finally {
+                            setManualAvailabilitySaving(false);
+                          }
+                        })()
+                      }
+                      className="text-[11px] px-2.5 py-1.5 rounded-lg bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white"
+                    >
+                      {manualAvailabilitySaving ? 'Saving…' : 'Add my manual availability'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <label className="text-xs text-travel-muted block">
               Planning budget when adding (USD)
               <input
@@ -672,6 +962,34 @@ export default function ExplorerPage() {
       {searchedLabel && !searchLoading ? (
         <p className="text-xs text-travel-muted">Last search: {searchedLabel}</p>
       ) : null}
+      {availabilityCoverage ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+          Team calendars connected: {availabilityCoverage.connectedMembers}/{availabilityCoverage.totalMembers}
+          {availabilityCoverage.removedByAvailability != null
+            ? ` · Removed by availability: ${availabilityCoverage.removedByAvailability}`
+            : ''}
+        </div>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setResultsView('events')}
+          className={`px-3 py-1.5 rounded-full text-xs border ${
+            resultsView === 'events' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          Event options
+        </button>
+        <button
+          type="button"
+          onClick={() => setResultsView('packages')}
+          className={`px-3 py-1.5 rounded-full text-xs border ${
+            resultsView === 'packages' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-200'
+          }`}
+        >
+          Package options
+        </button>
+      </div>
       {searchError ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{searchError}</div>
       ) : null}
@@ -679,6 +997,74 @@ export default function ExplorerPage() {
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{toast}</div>
       ) : null}
       <div className="space-y-4 pb-4">
+        {resultsView === 'events' && eventOptions.length ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Ranked event options</h3>
+            {eventOptions.map((opt) => (
+              <OpportunityCard
+                key={opt.optionId}
+                title={opt.title}
+                subtitle={opt.startAt ? new Date(opt.startAt).toLocaleString() : opt.snippet}
+                imageUrl={opt.imageUrl}
+                footer={
+                  <div className="space-y-1 text-xs text-travel-muted">
+                    <p>
+                      Availability: {opt.availability?.availableCount ?? 0}/{opt.availability?.totalMembers ?? 0}
+                    </p>
+                    <p>Estimated total: ${Math.round(opt.cost?.totalEstimated || 0)}</p>
+                  </div>
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void addEventOptionToPlan(opt);
+                    }}
+                    disabled={busyId === opt.optionId}
+                    className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
+                  >
+                    {busyId === opt.optionId ? 'Adding…' : 'Add option to plan'}
+                  </button>
+                }
+              />
+            ))}
+          </section>
+        ) : null}
+        {resultsView === 'packages' && itineraryPackages.length ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900">Ranked itinerary packages</h3>
+            {itineraryPackages.map((pkg) => (
+              <OpportunityCard
+                key={pkg.packageId}
+                title={pkg.title}
+                subtitle={`${pkg.city} · score ${pkg.score ?? 0}`}
+                imageUrl={pkg.options?.[0]?.imageUrl}
+                footer={
+                  <div className="space-y-1 text-xs text-travel-muted">
+                    <p>
+                      Availability: {pkg.availability?.availableCount ?? 0}/{pkg.availability?.totalMembers ?? 0}
+                    </p>
+                    <p>Estimated total: ${Math.round(pkg.cost?.totalEstimated || 0)}</p>
+                  </div>
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void addPackageToPlan(pkg);
+                    }}
+                    disabled={busyId === pkg.packageId}
+                    className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-semibold"
+                  >
+                    {busyId === pkg.packageId ? 'Adding…' : 'Add package to plan'}
+                  </button>
+                }
+              />
+            ))}
+          </section>
+        ) : null}
         {!searchLoading && !opportunities.length && !searchError ? (
           <p className="text-sm text-travel-muted">Enter an event keyword and optionally choose city filters, then press Search.</p>
         ) : null}
@@ -689,43 +1075,48 @@ export default function ExplorerPage() {
               <span className="text-xs text-travel-muted">{grouped[city].length} results</span>
             </div>
             {grouped[city].map((o) => (
-              <OpportunityCard
-                key={o.id}
-                title={o.title}
-                subtitle={truncateSnippet(o.snippet)}
-                imageUrl={o.imageUrl}
-                footer={
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {['events', sourceLabel(o.source), city].map((t) => (
-                        <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                    {o.url ? (
-                      <a
-                        href={o.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline inline-block font-medium"
-                      >
-                        Open link
-                      </a>
-                    ) : null}
-                  </div>
-                }
-                action={
-                  <button
-                    type="button"
-                    disabled={busyId === o.id}
-                    onClick={() => void addToPlan(o)}
-                    className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
-                  >
-                    {busyId === o.id ? 'Adding…' : 'Add to plan'}
-                  </button>
-                }
-              />
+              (() => {
+                const expanded = Boolean(expandedOpportunityIds[o.id]);
+                return (
+                  <OpportunityCard
+                    key={o.id}
+                    title={o.title}
+                    subtitle={expanded ? truncateSnippet(o.snippet) : undefined}
+                    imageUrl={o.imageUrl}
+                    onClick={() => toggleOpportunityExpanded(o.id)}
+                    footer={
+                      expanded ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {['events', sourceLabel(o.source), city].map((t) => (
+                              <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                {t}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-travel-muted">Tap to view details</p>
+                      )
+                    }
+                    action={
+                      expanded ? (
+                        <button
+                          type="button"
+                          disabled={busyId === o.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void addToPlan(o);
+                          }}
+                          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold"
+                        >
+                          {busyId === o.id ? 'Adding…' : 'Add to plan'}
+                        </button>
+                      ) : null
+                    }
+                  />
+                );
+              })()
             ))}
           </section>
         ))}

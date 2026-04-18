@@ -236,6 +236,10 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
           const dr = datesById[stableId] || { outbound: defaultIsoDate(14), inbound: defaultIsoDate(16) };
           const ev = result?.events[idx];
           const img = t?.imageUrl || item.imageUrls?.[0];
+          const approvedBy = (t?.approvals || [])
+            .filter((a) => a.status === 'approved')
+            .map((a) => a.name?.trim())
+            .filter((name): name is string => Boolean(name));
           return (
             <div key={stableId} className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 shadow-sm">
               <OpportunityCard
@@ -243,16 +247,21 @@ export default function ApprovedEventsLivePricing({ items }: { items: Item[] }) 
                 subtitle={t?.location ? t.location : 'Trip'}
                 imageUrl={img}
                 footer={
-                  t?.sourceUrl ? (
-                    <a
-                      href={t.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:underline font-medium"
-                    >
-                      Source link
-                    </a>
-                  ) : null
+                  <div className="space-y-2">
+                    {t?.sourceUrl ? (
+                      <a
+                        href={t.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-600 hover:underline font-medium"
+                      >
+                        Source link
+                      </a>
+                    ) : null}
+                    <p className="text-xs text-travel-muted">
+                      {approvedBy.length ? `Approved by: ${approvedBy.join(', ')}` : 'No team approvals recorded yet.'}
+                    </p>
+                  </div>
                 }
               />
               <div className="grid grid-cols-2 gap-2">

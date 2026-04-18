@@ -38,8 +38,16 @@ function statusBadge(status: TravelOpportunityStatus | undefined) {
 export default function TravelHomeBody({ user }: { user: User }) {
   const { stage } = useTravelStage();
   const [items, setItems] = useState<Item[]>([]);
+  const [teamApprovedItems, setTeamApprovedItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+  const [availStart, setAvailStart] = useState('');
+  const [availEnd, setAvailEnd] = useState('');
+  const [budgetMin, setBudgetMin] = useState('');
+  const [budgetMax, setBudgetMax] = useState('');
+  const [prefSaving, setPrefSaving] = useState(false);
+  const [prefMsg, setPrefMsg] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -47,12 +55,18 @@ export default function TravelHomeBody({ user }: { user: User }) {
     try {
       const list = await api.getItems();
       setItems(list);
+      if (activeTeamId) {
+        const shared = await api.getTeamReturnFeed(activeTeamId);
+        setTeamApprovedItems(shared);
+      } else {
+        setTeamApprovedItems([]);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not load plan');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeTeamId]);
 
   const travelItems = useMemo(() => items.filter(isTravelItem), [items]);
   const approvePanel = useApproveBookingPanel(items, refresh);
@@ -61,6 +75,91 @@ export default function TravelHomeBody({ user }: { user: User }) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const readActiveTeam = () => {
+      const tid = typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY)?.trim() : '';
+      setActiveTeamId(tid || null);
+    };
+    readActiveTeam();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', readActiveTeam);
+      window.addEventListener('focus', readActiveTeam);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', readActiveTeam);
+        window.removeEventListener('focus', readActiveTeam);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeTeamId) {
+      setAvailStart('');
+      setAvailEnd('');
+      setBudgetMin('');
+      setBudgetMax('');
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await api.getTeamAvailability(activeTeamId);
+        const mine =
+          res.members.find((m) => m.userId === user.sub) ||
+          res.members.find((m) => (m.email || '').trim().toLowerCase() === (user.email || '').trim().toLowerCase()) ||
+          null;
+        const first = mine?.windows?.[0];
+        setAvailStart(first?.startDate || '');
+        setAvailEnd(first?.endDate || '');
+        setBudgetMin(mine?.budgetMin != null ? String(mine.budgetMin) : '');
+        setBudgetMax(mine?.budgetMax != null ? String(mine.budgetMax) : '');
+      } catch {
+        // ignore
+      }
+    })();
+  }, [activeTeamId, user.sub, user.email]);
+
+  const saveMyApprovalPrefs = async () => {
+    if (!activeTeamId || prefSaving) return;
+    if (availStart && availEnd && availStart > availEnd) {
+      setPrefMsg('Availability start date must be before end date.');
+      return;
+    }
+    const minNum = budgetMin.trim() ? Number(budgetMin) : null;
+    const maxNum = budgetMax.trim() ? Number(budgetMax) : null;
+    if ((minNum != null && (!Number.isFinite(minNum) || minNum < 0)) || (maxNum != null && (!Number.isFinite(maxNum) || maxNum < 0))) {
+      setPrefMsg('Budget range must be valid positive numbers.');
+      return;
+    }
+    if (minNum != null && maxNum != null && minNum > maxNum) {
+      setPrefMsg('Budget min must be less than or equal to budget max.');
+      return;
+    }
+    setPrefSaving(true);
+    setPrefMsg(null);
+    try {
+      const windows = availStart && availEnd ? [{ startDate: availStart, endDate: availEnd }] : [];
+      await api.setMyTeamAvailability(activeTeamId, windows, { min: minNum, max: maxNum });
+      setPrefMsg('Saved your availability and budget preferences for team approvals.');
+    } catch (e) {
+      setPrefMsg(e instanceof Error ? e.message : 'Could not save preferences');
+    } finally {
+      setPrefSaving(false);
+    }
+  };
+
+  const sendAvailabilityRequestMessage = async (teamIdToAttach: string, item: Item, location: string) => {
+    const availabilityRequest = `[SYSTEM_EVENT]${JSON.stringify({
+      type: 'availability_request',
+      itemId: item._id || null,
+      title: item.title,
+      city: location,
+      message:
+        'We are now looking into booking times. Please send your availability by connecting Google Calendar for a date range or entering it manually.',
+    })}`;
+    await api.sendTeamMessage(teamIdToAttach, availabilityRequest, { invokeAssistant: false });
+  };
 
   const submitApproval = async (item: Item) => {
     const t = getTravelPayload(item);
@@ -73,10 +172,14 @@ export default function TravelHomeBody({ user }: { user: User }) {
       try {
         const detail = await api.getTeam(teamId);
         if (detail.members?.length) {
+          const meEmail = user.email?.trim().toLowerCase() || '';
           approvals = detail.members.map((m) => ({
             name: (m.displayName || m.email || 'Team member').trim(),
             role: 'Reviewer',
-            status: 'pending' as const,
+            status:
+              m.userId === user.sub || (m.email || '').trim().toLowerCase() === meEmail
+                ? ('approved' as const)
+                : ('pending' as const),
           }));
           approvalSetup = 'team_linked';
         }
@@ -84,25 +187,42 @@ export default function TravelHomeBody({ user }: { user: User }) {
         /* keep needs_team */
       }
     }
+    const teamIdToAttach = teamId || item.teamId || undefined;
     await api.updateItem(item._id, {
+      ...(teamIdToAttach ? { teamId: teamIdToAttach } : {}),
       travel: {
         ...t,
-        opportunityStatus: 'submitted',
+        opportunityStatus: 'approved',
         approvals,
         approvalSetup,
         addedBy: t.addedBy || user.email,
       } as unknown as TravelMetadata,
     });
+    if (teamIdToAttach) {
+      const actor = user.name || user.email || 'A teammate';
+      const location = t.location || 'Unknown location';
+      const msg = `[SYSTEM] ${actor} approved "${item.title}" in ${location} from Home swipe.`;
+      try {
+        await api.sendTeamMessage(teamIdToAttach, msg, { invokeAssistant: false });
+        await sendAvailabilityRequestMessage(teamIdToAttach, item, location);
+      } catch {
+        // Keep approval state even if chat notice fails.
+      }
+    }
     await refresh();
   };
 
   const markAllReviewersApproved = async (item: Item) => {
     const t = getTravelPayload(item);
     if (!item._id || !t) return;
+    const teamId =
+      typeof window !== 'undefined' ? localStorage.getItem(TRAVEL_ACTIVE_TEAM_STORAGE_KEY)?.trim() : '';
+    const teamIdToAttach = teamId || item.teamId || undefined;
     const base = t.approvals?.length ? t.approvals : [];
     if (base.length) {
       const approvals = base.map((a) => ({ ...a, status: 'approved' as const }));
       await api.updateItem(item._id, {
+        ...(teamIdToAttach ? { teamId: teamIdToAttach } : {}),
         travel: {
           ...t,
           approvals,
@@ -111,11 +231,26 @@ export default function TravelHomeBody({ user }: { user: User }) {
       });
     } else {
       await api.updateItem(item._id, {
+        ...(teamIdToAttach ? { teamId: teamIdToAttach } : {}),
         travel: {
           ...t,
           opportunityStatus: 'approved',
         } as unknown as TravelMetadata,
       });
+    }
+    if (teamIdToAttach) {
+      const actor = user.name || user.email || 'A teammate';
+      const location = t.location || 'Unknown location';
+      try {
+        await api.sendTeamMessage(
+          teamIdToAttach,
+          `[SYSTEM] ${actor} approved "${item.title}" in ${location} from offline approval.`,
+          { invokeAssistant: false }
+        );
+        await sendAvailabilityRequestMessage(teamIdToAttach, item, location);
+      } catch {
+        // Keep approval state even if chat notice fails.
+      }
     }
     await refresh();
   };
@@ -163,9 +298,9 @@ export default function TravelHomeBody({ user }: { user: User }) {
   }
 
   if (stage === 'approve') {
-    const inReview = travelItems.filter((i) => {
+    const teamApproved = teamApprovedItems.filter((i) => {
       const st = getTravelPayload(i)?.opportunityStatus;
-      return st === 'submitted' || st === 'pending' || st === 'approved' || st === 'needs_changes';
+      return st === 'submitted' || st === 'pending' || st === 'approved' || st === 'booked' || st === 'completed' || st === 'needs_changes';
     });
 
     return (
@@ -174,7 +309,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
           <h2 className="text-lg font-semibold text-gray-900">Approval status</h2>
           <p className="text-sm text-travel-muted mt-1">Reviewers come from your active team on the Team tab.</p>
         </div>
-        {inReview.some((i) => getTravelPayload(i)?.approvalSetup === 'needs_team') ? (
+        {!activeTeamId ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-medium text-gray-900">No active team selected</p>
             <p className="text-xs text-amber-800/90 mt-1">
@@ -186,54 +321,117 @@ export default function TravelHomeBody({ user }: { user: User }) {
             </Link>
           </div>
         ) : null}
-        {inReview.length === 0 ? (
-          <p className="text-sm text-travel-muted">No items in approval. Submit a plan from the Plan stage.</p>
-        ) : (
-          inReview.map((item) => {
-            const t = getTravelPayload(item);
-            const approvals = t?.approvals || [];
-            const img = t?.imageUrl || item.imageUrls?.[0];
-            const allPending = approvals.length > 0 && approvals.every((a) => a.status === 'pending');
-            const showOfflineApprove =
-              t?.opportunityStatus === 'submitted' && (approvals.length === 0 || allPending);
-            return (
-              <OpportunityCard
-                key={item._id}
-                title={item.title}
-                subtitle={humanDescriptionLine(item, t)}
-                imageUrl={img}
-                footer={
-                  <div className="space-y-3">
-                    <ul className="space-y-2">
-                      {approvals.map((a, idx) => (
-                        <li key={idx} className="flex items-center justify-between text-sm gap-2">
-                          <span className="text-gray-900">
-                            {a.name} <span className="text-travel-muted text-xs">({a.role})</span>
-                          </span>
-                          {statusBadge(a.status as TravelOpportunityStatus)}
-                        </li>
-                      ))}
-                      {approvals.length === 0 ? (
-                        <li className="text-travel-muted text-sm">No reviewers listed — select a team and re-submit from Plan.</li>
-                      ) : null}
-                    </ul>
-                    {showOfflineApprove ? (
-                      <button
-                        type="button"
-                        onClick={() => void markAllReviewersApproved(item)}
-                        className="w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold"
-                      >
-                        {approvals.length
-                          ? 'Record offline approvals (mark all approved)'
-                          : 'Approve trip (no team reviewers on file)'}
-                      </button>
-                    ) : null}
-                  </div>
-                }
-              />
-            );
-          })
-        )}
+        {activeTeamId ? (
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Your availability & budget for this team</p>
+              <p className="text-xs text-travel-muted mt-0.5">
+                Teammates can set their own preferred booking window and budget range here.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="text-xs text-travel-muted">
+                Availability start
+                <input
+                  type="date"
+                  value={availStart}
+                  onChange={(e) => setAvailStart(e.target.value)}
+                  className="mt-1 w-full rounded-xl bg-gray-50 border-none px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </label>
+              <label className="text-xs text-travel-muted">
+                Availability end
+                <input
+                  type="date"
+                  value={availEnd}
+                  onChange={(e) => setAvailEnd(e.target.value)}
+                  className="mt-1 w-full rounded-xl bg-gray-50 border-none px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="text-xs text-travel-muted">
+                Budget min (USD)
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={budgetMin}
+                  onChange={(e) => setBudgetMin(e.target.value)}
+                  className="mt-1 w-full rounded-xl bg-gray-50 border-none px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </label>
+              <label className="text-xs text-travel-muted">
+                Budget max (USD)
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={budgetMax}
+                  onChange={(e) => setBudgetMax(e.target.value)}
+                  className="mt-1 w-full rounded-xl bg-gray-50 border-none px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => void saveMyApprovalPrefs()}
+              disabled={prefSaving}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-xs font-medium"
+            >
+              {prefSaving ? 'Saving…' : 'Save my preferences'}
+            </button>
+            {prefMsg ? <p className="text-xs text-travel-muted">{prefMsg}</p> : null}
+          </div>
+        ) : null}
+        {activeTeamId ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900">Active team trips</h3>
+              <span className="text-xs text-travel-muted">{teamApproved.length}</span>
+            </div>
+            {teamApproved.length === 0 ? (
+              <p className="text-sm text-travel-muted">No team trips in approval or approved yet.</p>
+            ) : (
+              teamApproved.map((item) => {
+                const t = getTravelPayload(item);
+                const img = t?.imageUrl || item.imageUrls?.[0];
+                const approvals = t?.approvals || [];
+                const allPending = approvals.length > 0 && approvals.every((a) => a.status === 'pending');
+                const showOfflineApprove = t?.opportunityStatus === 'submitted' && (approvals.length === 0 || allPending);
+                const approvedBy = approvals.filter((a) => a.status === 'approved').map((a) => a.name.trim()).filter(Boolean);
+                return (
+                  <OpportunityCard
+                    key={`team-approved-${item._id}`}
+                    title={item.title}
+                    subtitle={undefined}
+                    imageUrl={img}
+                    footer={
+                      <div className="space-y-3">
+                        <p className="text-sm text-travel-muted">
+                          {approvedBy.length
+                            ? `Approved by: ${approvedBy.join(', ')}`
+                            : 'No team members have approved this yet.'}
+                        </p>
+                        {showOfflineApprove ? (
+                          <button
+                            type="button"
+                            onClick={() => void markAllReviewersApproved(item)}
+                            className="w-full py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold"
+                          >
+                            {approvals.length
+                              ? 'Record offline approvals (mark all approved)'
+                              : 'Approve trip (no team reviewers on file)'}
+                          </button>
+                        ) : null}
+                      </div>
+                    }
+                  />
+                );
+              })
+            )}
+          </div>
+        ) : null}
         <div className="pt-4 border-t border-gray-200 space-y-6">
           <div>
             <h3 className="text-base font-semibold text-gray-900 mb-1">Booking & cost</h3>

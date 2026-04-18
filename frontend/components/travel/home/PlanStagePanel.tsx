@@ -55,7 +55,12 @@ function ApprovedEventsSlider({ items }: { items: Item[] }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Approved & booked</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Approved & booked</p>
+        <Link href="/home/approved" className="text-[11px] text-blue-600 hover:underline font-medium">
+          Manage
+        </Link>
+      </div>
       <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory custom-scrollbar">
         {items.map((item) => {
           const t = getTravelPayload(item);

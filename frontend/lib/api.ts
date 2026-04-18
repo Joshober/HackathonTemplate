@@ -51,6 +51,31 @@ export interface TeamDetail {
   cityPresets?: string[];
 }
 
+export interface TeamCalendarCoverageMember {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+  connected: boolean;
+  manualAvailability?: boolean;
+}
+
+export interface TeamCalendarCoverage {
+  teamId: string;
+  totalMembers: number;
+  connectedMembers: number;
+  manualAvailabilityMembers?: number;
+  members: TeamCalendarCoverageMember[];
+}
+
+export interface TeamMemberAvailability {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+  windows: Array<{ startDate: string; endDate: string }>;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+}
+
 export interface TeamMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -80,6 +105,59 @@ export interface ExplorerSearchParams {
   sources?: Array<'ticketmaster' | 'duckduckgo' | 'openstreetmap'>;
   eventTypes?: Array<'music' | 'sports' | 'arts' | 'film' | 'miscellaneous'>;
   maxPrice?: number;
+  teamId?: string;
+  requireAllMembersFree?: boolean;
+  availabilityWindowStart?: string;
+  availabilityWindowEnd?: string;
+}
+
+export interface ExplorerAvailabilityCoverage {
+  teamId: string;
+  totalMembers: number;
+  connectedMembers: number;
+  manualAvailabilityMembers?: number;
+  requireAllMembersFree: boolean;
+  total?: number;
+  withEventTime?: number;
+  removedByAvailability?: number;
+}
+
+export interface ExplorerEventOption {
+  eventKey: string;
+  optionId: string;
+  sourceEventId?: string;
+  title: string;
+  city: string;
+  source?: string;
+  url?: string;
+  imageUrl?: string;
+  snippet?: string;
+  startAt?: string;
+  endAt?: string;
+  availability?: {
+    availableCount: number;
+    totalMembers: number;
+    conflictMemberIds: string[];
+    availabilityScore: number;
+    meetsMajority: boolean;
+  };
+  cost?: {
+    mode?: string;
+    flightTotal?: number;
+    hotelTotal?: number;
+    ticketEstimate?: number;
+    totalEstimated?: number;
+  };
+}
+
+export interface ExplorerItineraryPackage {
+  packageId: string;
+  title: string;
+  city: string;
+  options: ExplorerEventOption[];
+  availability?: ExplorerEventOption['availability'];
+  cost?: ExplorerEventOption['cost'];
+  score?: number;
 }
 
 export interface CitySuggestion {
@@ -315,7 +393,12 @@ export const api = {
     return fetchWithAuth(`/api/items/${id}`);
   },
 
-  async searchExplorerOpportunities(params: ExplorerSearchParams): Promise<{ opportunities: ExplorerOpportunity[] }> {
+  async searchExplorerOpportunities(params: ExplorerSearchParams): Promise<{
+    opportunities: ExplorerOpportunity[];
+    availabilityCoverage?: ExplorerAvailabilityCoverage | null;
+    eventOptions?: ExplorerEventOption[];
+    itineraryPackages?: ExplorerItineraryPackage[];
+  }> {
     return fetchWithAuth('/api/explorer/opportunities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -329,7 +412,26 @@ export const api = {
         ...(params.sources?.length ? { sources: params.sources } : {}),
         ...(params.eventTypes?.length ? { eventTypes: params.eventTypes } : {}),
         ...(params.maxPrice != null ? { maxPrice: params.maxPrice } : {}),
+        ...(params.teamId ? { teamId: params.teamId } : {}),
+        ...(params.requireAllMembersFree ? { requireAllMembersFree: params.requireAllMembersFree } : {}),
+        ...(params.availabilityWindowStart ? { availabilityWindowStart: params.availabilityWindowStart } : {}),
+        ...(params.availabilityWindowEnd ? { availabilityWindowEnd: params.availabilityWindowEnd } : {}),
       }),
+    });
+  },
+
+  async getGoogleCalendarAuthUrl(): Promise<{ auth_url: string }> {
+    return fetchWithAuth('/api/auth/google/calendar/login');
+  },
+
+  async getGoogleCalendarStatus(): Promise<{ connected: boolean }> {
+    return fetchWithAuth('/api/auth/google/calendar/status');
+  },
+
+  async disconnectGoogleCalendar(): Promise<{ ok: boolean }> {
+    return fetchWithAuth('/api/auth/google/calendar/disconnect', {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
 
@@ -363,6 +465,8 @@ export const api = {
   async createItem(item: {
     title: string;
     description: string;
+    imageUrls?: string[];
+    videoUrls?: string[];
     images?: File[];
     videos?: File[];
     travel?: TravelMetadata;
@@ -376,6 +480,8 @@ export const api = {
         body: JSON.stringify({
           title: item.title,
           description: item.description,
+          imageUrls: item.imageUrls,
+          videoUrls: item.videoUrls,
           travel: item.travel,
           ...(item.teamId ? { teamId: item.teamId } : {}),
         }),
@@ -645,6 +751,33 @@ export const api = {
 
   async getTeam(teamId: string): Promise<TeamDetail> {
     return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}`);
+  },
+
+  async getTeamCalendarCoverage(teamId: string): Promise<TeamCalendarCoverage> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/calendar-coverage`);
+  },
+
+  async setMyTeamAvailability(
+    teamId: string,
+    windows: Array<{ startDate: string; endDate: string }>,
+    budget?: { min?: number | null; max?: number | null }
+  ): Promise<{
+    windows: Array<{ startDate: string; endDate: string }>;
+    budgetMin?: number | null;
+    budgetMax?: number | null;
+  }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/availability/me`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        windows,
+        ...(budget?.min != null ? { budgetMin: budget.min } : { budgetMin: null }),
+        ...(budget?.max != null ? { budgetMax: budget.max } : { budgetMax: null }),
+      }),
+    });
+  },
+
+  async getTeamAvailability(teamId: string): Promise<{ teamId: string; members: TeamMemberAvailability[] }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/availability`);
   },
 
   async setTeamCityPresets(teamId: string, cities: string[]): Promise<{ cities: string[] }> {
