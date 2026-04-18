@@ -89,6 +89,44 @@ def _trip_summary(item: dict[str, Any], travel: dict[str, Any]) -> dict[str, Any
     }
 
 
+def _find_trip_item(db, user_id: str, trip_id: str) -> dict[str, Any] | None:
+    try:
+        oid = ObjectId(trip_id)
+    except Exception:
+        return None
+    try:
+        return db.items.find_one({"_id": oid, "userId": user_id})
+    except Exception:
+        return None
+
+
+def _item_to_trip_context(item: dict[str, Any]) -> dict[str, Any]:
+    travel = _travel_from_item(item) or {}
+    summary = _trip_summary(item, travel)
+    return {
+        "itemRef": summary.get("itemRef"),
+        "title": summary.get("title"),
+        "location": summary.get("location"),
+        "opportunityStatus": summary.get("opportunityStatus"),
+        "tripType": summary.get("tripType"),
+        "tags": summary.get("tags"),
+        "costEstimate": summary.get("costEstimate"),
+        "startDate": summary.get("startDate"),
+        "endDate": summary.get("endDate"),
+        "bookingEstimate": summary.get("bookingEstimate"),
+        "topFlightLine": summary.get("topFlightLine"),
+        "topHotelLine": summary.get("topHotelLine"),
+        "destinationQuery": summary.get("destinationQuery"),
+        "resolvedIata": summary.get("resolvedIata"),
+        "approval": _sanitize_value(travel.get("approval")) if isinstance(travel.get("approval"), dict) else None,
+        "checklist": _sanitize_value(travel.get("checklist")) if isinstance(travel.get("checklist"), list) else [],
+        "followUps": _sanitize_value(travel.get("followUps")) if isinstance(travel.get("followUps"), list) else [],
+        "incidents": _sanitize_value(travel.get("incidents")) if isinstance(travel.get("incidents"), list) else [],
+        "privacy": _sanitize_value(travel.get("privacy")) if isinstance(travel.get("privacy"), dict) else None,
+        "updatedAt": summary.get("updatedAt"),
+    }
+
+
 def build_travel_chat_context(
     db,
     user_id: str,
@@ -96,6 +134,7 @@ def build_travel_chat_context(
     session_id: str | None = None,
     current_page: str | None = None,
     ui_state: dict[str, Any] | None = None,
+    focused_trip_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Load profile, items (travel), teams. Returns a JSON-serializable dict safe to embed in prompts.
@@ -170,6 +209,7 @@ def build_travel_chat_context(
 
     trips: list[dict[str, Any]] = []
     active: dict[str, Any] | None = None
+    wanted_trip_id = (focused_trip_id or "").strip()
     try:
         cur = db.items.find({"userId": user_id}).sort("updatedAt", -1).limit(25)
         for item in cur:
@@ -178,6 +218,9 @@ def build_travel_chat_context(
                 continue
             summ = _trip_summary(item, tr)
             trips.append(summ)
+            if wanted_trip_id and str(item.get("_id")) == wanted_trip_id:
+                active = summ
+                continue
             st = (tr.get("opportunityStatus") or "").strip().lower()
             if st in ("approved", "submitted", "pending", "booked", "ready_for_approval") and active is None:
                 active = summ
@@ -240,6 +283,39 @@ def build_travel_chat_context(
             ctx["savedTrips"] = ctx["savedTrips"][:5]
             ctx["teams"] = []
     return ctx
+
+
+def build_trip_context(
+    db,
+    user_id: str,
+    trip_id: str,
+    *,
+    session_id: str | None = None,
+    current_page: str | None = None,
+    ui_state: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    item = _find_trip_item(db, user_id, trip_id)
+    if not item:
+        return None
+
+    base = build_travel_chat_context(
+        db,
+        user_id,
+        session_id=session_id,
+        current_page=current_page,
+        ui_state=ui_state,
+        focused_trip_id=trip_id,
+    )
+    trip = _item_to_trip_context(item)
+    base["savedTrips"] = [trip]
+    base["activeTrip"] = trip
+    base["primaryTrip"] = trip
+    if trip.get("topFlightLine"):
+        base["selectedFlight"] = {"summary": trip["topFlightLine"], "tripRef": trip.get("itemRef")}
+    if trip.get("topHotelLine"):
+        base["selectedHotel"] = {"summary": trip["topHotelLine"], "tripRef": trip.get("itemRef")}
+    base["contextQuality"] = _compute_context_quality(base)
+    return base
 
 
 def _compute_context_quality(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -371,6 +447,133 @@ def get_document_context(db, user_id: str) -> dict[str, Any] | None:
             entry.pop("layovers", None)
 
     return result
+
+
+def get_trip_contacts(db, user_id: str, trip_id: str) -> dict[str, Any] | None:
+    item = _find_trip_item(db, user_id, trip_id)
+    if not item:
+        return None
+    travel = _travel_from_item(item) or {}
+    destination = _clip(travel.get("location"), 120)
+    contacts = [
+        {
+            "type": "travel_desk",
+            "label": "Travel Desk",
+            "value": "travel-support@lockton-demo.local",
+            "availability": "24/7 for disruption support",
+        },
+        {
+            "type": "manager",
+            "label": "Manager Approval Channel",
+            "value": "manager@lockton-demo.local",
+            "availability": "Business hours",
+        },
+        {
+            "type": "emergency",
+            "label": "Emergency Assistance",
+            "value": "+1-800-555-0110",
+            "availability": "24/7 emergency only",
+        },
+    ]
+    if destination:
+        contacts.append(
+            {
+                "type": "destination",
+                "label": "Destination Support Note",
+                "value": f"Keep hotel and airline support numbers handy for {destination}.",
+                "availability": "Trip-specific guidance",
+            }
+        )
+    return {"tripId": trip_id, "contacts": contacts}
+
+
+def get_trip_reminders(db, user_id: str, trip_id: str) -> dict[str, Any] | None:
+    item = _find_trip_item(db, user_id, trip_id)
+    if not item:
+        return None
+    travel = _travel_from_item(item) or {}
+    reminders: list[dict[str, Any]] = []
+    for task in (travel.get("checklist") or [])[:10]:
+        if isinstance(task, dict) and str(task.get("status") or "").lower() != "done":
+            reminders.append(
+                {
+                    "id": str(task.get("id") or f"checklist-{len(reminders)+1}"),
+                    "label": _clip(task.get("label"), 160),
+                    "type": "pre_trip",
+                    "status": "open",
+                }
+            )
+    for task in (travel.get("followUps") or [])[:10]:
+        if isinstance(task, dict) and str(task.get("status") or "").lower() == "open":
+            reminders.append(
+                {
+                    "id": str(task.get("id") or f"followup-{len(reminders)+1}"),
+                    "label": _clip(task.get("label"), 160),
+                    "type": "post_trip",
+                    "status": "open",
+                    "dueDate": _clip(task.get("dueDate"), 32),
+                }
+            )
+    if not reminders:
+        reminders.append(
+            {
+                "id": "review-trip-context",
+                "label": "Review trip details and confirm nothing critical is missing.",
+                "type": "general",
+                "status": "open",
+            }
+        )
+    return {"tripId": trip_id, "reminders": reminders[:12]}
+
+
+def get_trip_ai_sources(db, user_id: str, trip_id: str) -> dict[str, Any] | None:
+    item = _find_trip_item(db, user_id, trip_id)
+    if not item:
+        return None
+    travel = _travel_from_item(item) or {}
+    sources: list[dict[str, Any]] = [
+        {
+            "sourceType": "trip_item",
+            "label": _clip(item.get("title"), 160) or "Saved trip",
+            "fields": [
+                x
+                for x, ok in (
+                    ("destination", bool(travel.get("location"))),
+                    ("dates", bool(travel.get("startDate") and travel.get("endDate"))),
+                    ("costEstimate", isinstance(travel.get("costEstimate"), (int, float))),
+                    ("approval", isinstance(travel.get("approval"), dict)),
+                    ("checklist", isinstance(travel.get("checklist"), list) and bool(travel.get("checklist"))),
+                    ("followUps", isinstance(travel.get("followUps"), list) and bool(travel.get("followUps"))),
+                    ("incidents", isinstance(travel.get("incidents"), list) and bool(travel.get("incidents"))),
+                )
+                if ok
+            ],
+        }
+    ]
+    doc_ctx = get_document_context(db, user_id)
+    for doc in (doc_ctx or {}).get("documents", []):
+        if not isinstance(doc, dict):
+            continue
+        sources.append(
+            {
+                "sourceType": "parsed_document",
+                "label": _clip(doc.get("documentName") or doc.get("documentType"), 160),
+                "documentType": _clip(doc.get("documentType"), 40),
+                "fields": [
+                    x
+                    for x, ok in (
+                        ("tripSummary", bool(doc.get("tripSummary"))),
+                        ("destinations", bool(doc.get("destinations"))),
+                        ("travelDates", isinstance(doc.get("travelDates"), dict)),
+                        ("visaRequirements", bool(doc.get("visaRequirements"))),
+                        ("policyHighlights", bool(doc.get("policyHighlights"))),
+                        ("risks", bool(doc.get("risks"))),
+                    )
+                    if ok
+                ],
+            }
+        )
+    return {"tripId": trip_id, "sources": sources}
 
 
 def context_used_flags(ctx: dict[str, Any]) -> dict[str, bool]:
