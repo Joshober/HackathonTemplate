@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { MessageSquare } from 'lucide-react';
-import type { Item, ParsedTripDocument } from '@/lib/api';
+import type { Item } from '@/lib/api';
 import { getTravelPayload } from '@/lib/travelItem';
 import type { TravelStageId } from '@/lib/travelTypes';
 import { TRAVEL_STAGES } from '@/lib/travelTypes';
@@ -40,15 +40,14 @@ function timelineActiveIndex(stage: TravelStageId, issuesOpen: boolean): number 
 type Props = {
   travelItems: Item[];
   activeTeamId: string | null;
-  parsedDoc: ParsedTripDocument | null;
   stage: TravelStageId;
 };
 
-export default function HomeCommandCenter({ travelItems, activeTeamId, parsedDoc, stage }: Props) {
+export default function HomeCommandCenter({ travelItems, activeTeamId, stage }: Props) {
   const primary = derivePrimaryTripItem(travelItems);
   const t = primary ? getTravelPayload(primary) : null;
   const readiness = deriveReadinessPercent(travelItems);
-  const nextSteps = deriveNextSteps(travelItems, activeTeamId, { hasLocalParsedDoc: Boolean(parsedDoc) });
+  const nextSteps = deriveNextSteps(travelItems, activeTeamId);
   const alerts = deriveAlerts(travelItems, activeTeamId);
   const issuesOpen = hasOpenIncidents(travelItems);
   const activeIdx = timelineActiveIndex(stage, issuesOpen);
@@ -69,10 +68,6 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, parsedDoc
         : stageLabel(stage);
 
   const tripPurpose = (() => {
-    if (parsedDoc?.tripSummary?.trim()) {
-      const s = parsedDoc.tripSummary.trim();
-      return s.length > 160 ? `${s.slice(0, 157)}…` : s;
-    }
     if (primary?.title?.trim()) return primary.title.trim();
     const tt = t?.tripType;
     if (tt && tt !== 'business') return `${tt.replace(/_/g, ' ')} trip`;
@@ -92,14 +87,12 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, parsedDoc
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Trip summary</p>
             <h2 className="text-lg font-semibold text-gray-900 mt-0.5">
-              {t?.location || parsedDoc?.destinations?.[0] || 'No destination yet'}
+              {t?.location || 'No destination yet'}
             </h2>
             <p className="text-xs text-travel-muted mt-1">
               {t?.startDate && t?.endDate
                 ? `${t.startDate} → ${t.endDate}`
-                : parsedDoc?.travelDates?.departureDate && parsedDoc?.travelDates?.returnDate
-                  ? `${parsedDoc.travelDates.departureDate} → ${parsedDoc.travelDates.returnDate}`
-                  : 'Add dates from a document or trip card'}
+                : 'Add dates on your trip card'}
             </p>
             {tripPurpose ? (
               <p className="text-xs text-gray-700 mt-2 leading-snug border-t border-gray-100 pt-2">{tripPurpose}</p>
@@ -127,7 +120,7 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, parsedDoc
         </Link>
       </section>
 
-      <TravelProactiveBanner parsedDoc={parsedDoc} travelItems={travelItems} />
+      <TravelProactiveBanner parsedDoc={null} travelItems={travelItems} />
 
       <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">

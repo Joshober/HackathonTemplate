@@ -52,8 +52,8 @@ export default function ExploreRequirementsTab() {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-900">
         {err}{' '}
-        <Link href="/home?focus=upload" className="font-medium text-red-800 underline">
-          Try uploading on Home
+        <Link href="/home" className="font-medium text-red-800 underline">
+          Open Home
         </Link>
         .
       </div>
@@ -65,11 +65,11 @@ export default function ExploreRequirementsTab() {
       <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2 text-sm text-gray-700">
         <h2 className="text-lg font-semibold text-gray-900">Requirements</h2>
         <p className="text-travel-muted">
-          No parsed itinerary yet. Upload a PDF or image on{' '}
-          <Link href="/home?focus=upload#trip-doc-upload" className="text-blue-600 font-medium hover:underline">
+          No parsed itinerary in your saved documents yet. Add trip details in{' '}
+          <Link href="/home" className="text-blue-600 font-medium hover:underline">
             Home
           </Link>{' '}
-          so we can extract visa rules, dates, and risks automatically.
+          or sync documents from your team workflow so we can show visa rules, dates, and risks here.
         </p>
         <Link
           href="/assistant?prefill=What%20documents%20and%20visas%20do%20I%20need%20for%20my%20saved%20trip%3F"

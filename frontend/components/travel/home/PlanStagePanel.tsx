@@ -5,20 +5,101 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Sparkles } from 'lucide-react';
 import { animate, motion, useMotionValue, useTransform } from 'motion/react';
-import type { Item } from '@/lib/api';
+import { api, type Item } from '@/lib/api';
+import { derivePrimaryTripItem } from '@/lib/travelDashboardDerive';
 import { getTravelPayload } from '@/lib/travelItem';
 import type { TravelOpportunityStatus } from '@/lib/travelTypes';
 
 const SWIPE_THRESHOLD = 88;
 const EXIT_X = 480;
 
-function stripStatuses(st: TravelOpportunityStatus | undefined) {
-  return st === 'approved' || st === 'booked' || st === 'completed';
-}
-
 function waitingStatuses(st: TravelOpportunityStatus | undefined) {
   const s = st || 'draft';
   return s === 'draft' || s === 'ready_for_approval';
+}
+
+function PreTripCopilotBrief({ travelItems }: { travelItems: Item[] }) {
+  const primaryId = useMemo(() => derivePrimaryTripItem(travelItems)?._id, [travelItems]);
+  const fingerprint = useMemo(
+    () =>
+      travelItems
+        .map((i) => {
+          const t = getTravelPayload(i);
+          return `${i._id ?? ''}|${t?.opportunityStatus ?? ''}|${t?.location ?? ''}|${t?.startDate ?? ''}|${t?.endDate ?? ''}`;
+        })
+        .join(';'),
+    [travelItems],
+  );
+
+  const [brief, setBrief] = useState<{
+    companyPolicy: string;
+    requirements: string;
+    actionItems: string;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setErr(null);
+    void (async () => {
+      try {
+        const res = await api.generatePreTripBrief(primaryId ? { itemId: primaryId } : {});
+        if (cancelled) return;
+        setBrief({
+          companyPolicy: res.companyPolicy,
+          requirements: res.requirements,
+          actionItems: res.actionItems,
+        });
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : 'Brief unavailable');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fingerprint, primaryId, tick]);
+
+  return (
+    <div className="rounded-xl border border-blue-400/30 bg-blue-900/40 p-4 relative overflow-hidden backdrop-blur-sm">
+      <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
+          <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">Copilot Pre-Trip Brief</span>
+        </div>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => setTick((n) => n + 1)}
+          className="text-[11px] text-blue-200 hover:text-white disabled:opacity-50 font-medium"
+        >
+          {loading ? 'Generating…' : 'Refresh'}
+        </button>
+      </div>
+      {err ? <p className="text-sm text-amber-200/95 pl-0.5">{err}</p> : null}
+      {loading && !brief ? (
+        <p className="text-sm text-blue-100/90 pl-0.5">Generating your brief from saved trips…</p>
+      ) : null}
+      {brief ? (
+        <ul className="text-sm text-blue-100 flex flex-col gap-1.5 list-disc pl-4">
+          <li>
+            <strong className="text-blue-200">Company Policy:</strong> {brief.companyPolicy}
+          </li>
+          <li>
+            <strong className="text-blue-200">Requirements:</strong> {brief.requirements}
+          </li>
+          <li>
+            <strong className="text-blue-200">Action Items:</strong> {brief.actionItems}
+          </li>
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 function statusBadge(st: TravelOpportunityStatus | undefined) {
@@ -39,56 +120,6 @@ function statusBadge(st: TravelOpportunityStatus | undefined) {
     >
       {s.replace(/_/g, ' ')}
     </span>
-  );
-}
-
-function ApprovedEventsSlider({ items }: { items: Item[] }) {
-  if (items.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center shadow-sm">
-        <p className="text-sm text-travel-muted">No approved trips yet.</p>
-        <p className="text-xs text-gray-500 mt-1">
-          Swipe right on a suggestion below to send it to the team for sign-off on the Approve stage.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Approved & booked</p>
-        <Link href="/home/approved" className="text-[11px] text-blue-600 hover:underline font-medium">
-          Manage
-        </Link>
-      </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory custom-scrollbar">
-        {items.map((item) => {
-          const t = getTravelPayload(item);
-          const st = (t?.opportunityStatus || 'draft') as TravelOpportunityStatus;
-          const img = t?.imageUrl || item.imageUrls?.[0];
-          return (
-            <div
-              key={item._id}
-              className="snap-center shrink-0 w-[min(220px,72vw)] rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm"
-            >
-              <div className="relative h-24 w-full bg-gray-100">
-                {img ? (
-                  <Image src={img} alt={item.title} fill className="object-cover" sizes="220px" unoptimized />
-                ) : (
-                  <div className="h-full w-full bg-gradient-to-br from-emerald-100 to-gray-50" />
-                )}
-              </div>
-              <div className="p-3 space-y-2">
-                <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{item.title}</p>
-                <div className="flex flex-wrap gap-1">{statusBadge(st)}</div>
-                {t?.location ? <p className="text-[11px] text-travel-muted truncate">{t.location}</p> : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -203,10 +234,6 @@ export default function PlanStagePanel({
     });
   }, [travelItems]);
 
-  const approvedStrip = useMemo(() => {
-    return travelItems.filter((i) => stripStatuses(getTravelPayload(i)?.opportunityStatus));
-  }, [travelItems]);
-
   const [skipped, setSkipped] = useState<Set<string>>(() => new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -253,26 +280,12 @@ export default function PlanStagePanel({
   if (waiting.length === 0) {
     return (
       <div className="space-y-6">
+        <PreTripCopilotBrief travelItems={travelItems} />
         <div>
           <h2 className="text-lg font-semibold text-white">Copilot Dashboard</h2>
-          <p className="text-sm text-travel-muted mt-1">Review suggestions and track trips that are already approved.</p>
+          <p className="text-sm text-travel-muted mt-1">Review suggestions for your trip.</p>
         </div>
 
-        {/* Pre-Trip Copilot Policy Brief */}
-        <div className="rounded-xl border border-blue-400/30 bg-blue-900/40 p-4 relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-blue-400" />
-            <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">Copilot Pre-Trip Brief</span>
-          </div>
-          <ul className="text-sm text-blue-100 flex flex-col gap-1.5 list-disc pl-4">
-            <li><strong>Company Policy:</strong> Flights max $500, Hotels max $200/night.</li>
-            <li><strong>Requirements:</strong> Director approval needed for international destinations.</li>
-            <li><strong>Action Items:</strong> Ensure passport is valid for 6+ months for London travel.</li>
-          </ul>
-        </div>
-
-        <ApprovedEventsSlider items={approvedStrip} />
         <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-travel-muted text-sm">
           Nothing new to review.{' '}
           <Link href="/explorer" className="text-blue-300 hover:underline">
@@ -298,26 +311,12 @@ export default function PlanStagePanel({
         </div>
       ) : null}
 
+      <PreTripCopilotBrief travelItems={travelItems} />
+
       <div>
         <h2 className="text-lg font-semibold text-white">Copilot Dashboard</h2>
-        <p className="text-sm text-travel-muted mt-1">Scroll approved trips, then swipe through new suggestions.</p>
+        <p className="text-sm text-travel-muted mt-1">Swipe through new suggestions below.</p>
       </div>
-
-      {/* Pre-Trip Copilot Policy Brief */}
-      <div className="rounded-xl border border-blue-400/30 bg-blue-900/40 p-4 relative overflow-hidden backdrop-blur-sm">
-        <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-blue-400" />
-          <span className="text-xs font-bold text-blue-300 uppercase tracking-wide">Copilot Pre-Trip Brief</span>
-        </div>
-        <ul className="text-sm text-blue-100 flex flex-col gap-1.5 list-disc pl-4">
-          <li><strong>Company Policy:</strong> Flights max $500, Hotels max $200/night.</li>
-          <li><strong>Requirements:</strong> Director approval needed for international destinations.</li>
-          <li><strong>Action Items:</strong> Ensure passport is valid for 6+ months for London travel.</li>
-        </ul>
-      </div>
-
-      <ApprovedEventsSlider items={approvedStrip} />
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-wide text-travel-muted">Suggested for your plan</p>

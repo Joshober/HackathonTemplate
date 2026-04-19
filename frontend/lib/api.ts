@@ -1090,6 +1090,21 @@ export const api = {
     });
   },
 
+  async generatePreTripBrief(body?: {
+    itemId?: string;
+  }): Promise<{
+    companyPolicy: string;
+    requirements: string;
+    actionItems: string;
+    privacy: TravelPrivacyMeta;
+    source?: string;
+  }> {
+    return fetchWithAuth('/api/travel/pretrip-brief/generate', {
+      method: 'POST',
+      body: JSON.stringify(body || {}),
+    });
+  },
+
   async classifyCopilotIntent(body: {
     message: string;
     journeyStage?: string;

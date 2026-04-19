@@ -17,11 +17,8 @@ export default function TeamSupportPathsCard() {
         <li>Escalate when self-service rebooking is exhausted or safety is involved.</li>
       </ul>
       <div className="flex flex-col gap-2 text-xs font-semibold">
-        <Link href="/home?focus=upload" className="text-blue-600 hover:underline">
-          Home (Plan) — documents &amp; context
-        </Link>
         <Link href="/home" className="text-blue-600 hover:underline">
-          Home — switch to Travel for incidents
+          Home — Plan, approvals, travel &amp; return
         </Link>
         <Link
           href="/assistant?prefill=Draft%20a%20short%20escalation%20message%20for%20my%20travel%20desk%20including%20impact%2C%20urgency%2C%20and%20what%20I%20already%20tried."

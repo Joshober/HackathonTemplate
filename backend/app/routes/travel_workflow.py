@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
 import uuid
 from datetime import datetime
 from typing import Any
 
+import requests
 from bson import ObjectId
 from flask import Blueprint, jsonify, request
+
+from app.config.openrouter_models import DEFAULT_CHAT_MODEL
 
 from app.db.mongodb import get_db
 from app.routes.auth_backend import require_auth
@@ -19,6 +25,9 @@ from app.services.travel_chat_context import (
 )
 
 bp = Blueprint("travel_workflow", __name__)
+logger = logging.getLogger(__name__)
+
+_TRAVEL_SENTINEL = "__TRAVEL_JSON__"
 
 
 def _now_iso() -> str:
@@ -223,6 +232,54 @@ def _load_item_for_user(db, user_id: str, item_id: str) -> dict[str, Any] | None
     return db.items.find_one({"_id": oid, "userId": user_id})
 
 
+def _item_is_travel_candidate(doc: dict[str, Any]) -> bool:
+    t = doc.get("travel")
+    if isinstance(t, dict) and str(t.get("location") or "").strip():
+        return True
+    desc = doc.get("description")
+    return isinstance(desc, str) and desc.startswith(_TRAVEL_SENTINEL)
+
+
+def _compact_trip_for_brief(doc: dict[str, Any]) -> dict[str, Any]:
+    t = doc.get("travel") if isinstance(doc.get("travel"), dict) else {}
+    return {
+        "title": str(doc.get("title") or "")[:160],
+        "location": str(t.get("location") or "")[:160],
+        "startDate": str(t.get("startDate") or "")[:14],
+        "endDate": str(t.get("endDate") or "")[:14],
+        "costEstimate": t.get("costEstimate"),
+        "opportunityStatus": str(t.get("opportunityStatus") or "")[:40],
+        "tripType": str(t.get("tripType") or "")[:40],
+    }
+
+
+def _pretrip_brief_static() -> dict[str, str]:
+    return {
+        "companyPolicy": "Flights max $500, Hotels max $200/night.",
+        "requirements": "Director approval needed for international destinations.",
+        "actionItems": "Ensure passport is valid for 6+ months for London travel.",
+    }
+
+
+def _parse_pretrip_brief_json(raw: str) -> dict[str, str] | None:
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    cp = str(data.get("companyPolicy") or "").strip()
+    rq = str(data.get("requirements") or "").strip()
+    ai = str(data.get("actionItems") or "").strip()
+    if not cp or not rq or not ai:
+        return None
+    return {
+        "companyPolicy": cp[:400],
+        "requirements": rq[:400],
+        "actionItems": ai[:400],
+    }
+
+
 def _base_trip_fields(data: dict[str, Any], item: dict[str, Any] | None) -> dict[str, Any]:
     travel = item.get("travel") if item and isinstance(item.get("travel"), dict) else {}
     travel = travel if isinstance(travel, dict) else {}
@@ -395,6 +452,90 @@ def generate_checklist(user_id):
             "privacy": _privacy_meta(),
         }
     ), 200
+
+
+@bp.route("/travel/pretrip-brief/generate", methods=["POST"])
+@require_auth
+def generate_pretrip_brief(user_id):
+    """LLM-generated Pre-Trip Brief (policy, requirements, action items) from the user's saved trips."""
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    trips: list[dict[str, Any]] = []
+    item_id = str(data.get("itemId") or "").strip()
+    if item_id:
+        doc = _load_item_for_user(db, user_id, item_id)
+        if doc and _item_is_travel_candidate(doc):
+            trips.append(_compact_trip_for_brief(doc))
+    else:
+        for doc in db.items.find({"userId": user_id}).sort("updatedAt", -1).limit(48):
+            if _item_is_travel_candidate(doc):
+                trips.append(_compact_trip_for_brief(doc))
+            if len(trips) >= 14:
+                break
+
+    payload = {"trips": trips}
+    ctx = json.dumps(payload, default=str)[:12000]
+
+    api_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    if not api_key:
+        out = _pretrip_brief_static()
+        return jsonify({**out, "privacy": _privacy_meta(), "source": "static"}), 200
+
+    model = os.getenv("OPENROUTER_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+    system = (
+        "You write concise corporate travel briefs. Output must be valid JSON only, no markdown. "
+        "Each string is one sentence or two very short sentences, plain language, actionable."
+    )
+    user_msg = (
+        "Using the user's trips JSON, produce a Pre-Trip Brief with exactly these keys:\n"
+        'companyPolicy — realistic caps/guardrails (flights/hotel/per-diem style) informed by destinations and cost hints;\n'
+        "requirements — approvals, international rules, duty of care, documentation;\n"
+        "actionItems — concrete next steps (passport/visa/ETA, bookings, meetings).\n"
+        "If trips is empty, still output sensible defaults for a business traveler.\n"
+        "Trips JSON:\n"
+        f"{ctx}"
+    )
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": (request.headers.get("Origin") or "")[:512],
+                "X-Title": "Travel Copilot Pre-Trip Brief",
+            },
+            json={
+                "model": model,
+                "temperature": 0.35,
+                "max_tokens": 500,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_msg},
+                ],
+            },
+            timeout=55,
+        )
+        body = resp.json() if resp.content else {}
+        if not resp.ok:
+            logger.warning("pretrip-brief OpenRouter status=%s", resp.status_code)
+            out = _pretrip_brief_static()
+            return jsonify({**out, "privacy": _privacy_meta(), "source": "static"}), 200
+        choices = body.get("choices") if isinstance(body, dict) else None
+        if not isinstance(choices, list) or not choices:
+            out = _pretrip_brief_static()
+            return jsonify({**out, "privacy": _privacy_meta(), "source": "static"}), 200
+        msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+        raw_content = (msg or {}).get("content") if isinstance(msg, dict) else None
+        parsed = _parse_pretrip_brief_json(str(raw_content or ""))
+        if not parsed:
+            out = _pretrip_brief_static()
+            return jsonify({**out, "privacy": _privacy_meta(), "source": "static"}), 200
+        return jsonify({**parsed, "privacy": _privacy_meta(), "source": "model"}), 200
+    except (requests.RequestException, KeyError, TypeError, ValueError) as e:
+        logger.warning("pretrip-brief failed: %s", e)
+        out = _pretrip_brief_static()
+        return jsonify({**out, "privacy": _privacy_meta(), "source": "static"}), 200
 
 
 @bp.route("/copilot/classify-intent", methods=["POST"])

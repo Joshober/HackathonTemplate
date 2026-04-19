@@ -55,11 +55,6 @@ export interface HomeNextStep {
   href?: string;
 }
 
-export type DeriveNextStepsOpts = {
-  /** True when the user has parsed a document in this session (Home Plan upload). */
-  hasLocalParsedDoc?: boolean;
-};
-
 export function hasOpenFollowUps(travelItems: Item[]): boolean {
   for (const i of travelItems) {
     const fus = getTravelPayload(i)?.followUps;
@@ -68,13 +63,8 @@ export function hasOpenFollowUps(travelItems: Item[]): boolean {
   return false;
 }
 
-export function deriveNextSteps(
-  travelItems: Item[],
-  activeTeamId: string | null,
-  opts: DeriveNextStepsOpts = {},
-): HomeNextStep[] {
+export function deriveNextSteps(travelItems: Item[], activeTeamId: string | null): HomeNextStep[] {
   const steps: HomeNextStep[] = [];
-  const { hasLocalParsedDoc = false } = opts;
 
   if (hasOpenFollowUps(travelItems)) {
     steps.push({
@@ -155,14 +145,6 @@ export function deriveNextSteps(
       id: 'team',
       label: 'Pick who’s involved — select an active team',
       href: '/team',
-    });
-  }
-
-  if (travelItems.length && !hasLocalParsedDoc) {
-    steps.push({
-      id: 'upload-itinerary',
-      label: 'Upload an itinerary so we can parse visa and date requirements',
-      href: '/home?focus=upload#trip-doc-upload',
     });
   }
 
