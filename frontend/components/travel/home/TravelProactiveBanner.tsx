@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import type { ParsedTripDocument, Item } from '@/lib/api';
 import { getTravelPayload } from '@/lib/travelItem';
-import { Plane, AlertTriangle, MessageSquare, Clock, ArrowRight } from 'lucide-react';
+import { Plane, Clock, ArrowRight } from 'lucide-react';
 
 interface Props {
   parsedDoc: ParsedTripDocument | null;
@@ -63,90 +63,39 @@ export default function TravelProactiveBanner({ parsedDoc, travelItems }: Props)
     return null;
   })();
 
-  return (
-    <div className="space-y-3">
-      {/* What's next card */}
-      {whatNext && (
-        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
-                <Plane className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Next up</p>
-                </div>
-                <p className="text-sm font-semibold text-gray-900 mt-0.5">{whatNext}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {nextFlight?.date
-                    ? new Date(nextFlight.date).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        month: 'short',
-                        day: 'numeric',
-                      })
-                    : 'Check your itinerary for departure details'}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push('/assistant')}
-              className="flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 font-medium shrink-0"
-            >
-              Ask Copilot <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
+  if (!whatNext) return null;
 
-      {/* Issue reporter */}
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-4 h-4 text-white" />
+  return (
+    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
+            <Plane className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-emerald-600" />
+              <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Next up</p>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-900">Something going wrong?</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Flight delayed, hotel issue, or missed connection — I&apos;ll give you 3 options immediately.
-              </p>
-            </div>
+            <p className="text-sm font-semibold text-gray-900 mt-0.5">{whatNext}</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {nextFlight?.date
+                ? new Date(nextFlight.date).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : 'Check your itinerary for departure details'}
+            </p>
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => router.push('/assistant?q=My+flight+is+delayed')}
-            className="py-2 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-xs font-medium text-amber-900 text-left transition-colors"
-          >
-            Flight delayed / canceled
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/assistant?q=I+missed+my+connection')}
-            className="py-2 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-xs font-medium text-amber-900 text-left transition-colors"
-          >
-            Missed connection
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/assistant?q=I+have+a+hotel+issue')}
-            className="py-2 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-xs font-medium text-amber-900 text-left transition-colors"
-          >
-            Hotel issue
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/assistant')}
-            className="py-2 px-3 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 text-xs font-medium text-amber-900 flex items-center gap-1 transition-colors"
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            Ask Copilot
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => router.push('/assistant')}
+          className="flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-900 font-medium shrink-0"
+        >
+          Ask Copilot <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   );

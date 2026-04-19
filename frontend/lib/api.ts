@@ -59,10 +59,20 @@ export interface Profile {
   updatedAt?: string;
 }
 
+/** Resolved team trip (stored, inferred from linked items, or doc demo defaults). */
+export interface TeamTripContext {
+  focusTripItemId?: string | null;
+  tripDestination?: string | null;
+  tripStartDate?: string | null;
+  tripEndDate?: string | null;
+  tripContextSource?: 'user' | 'inferred' | 'demo_docs' | 'mixed' | string;
+}
+
 export interface TeamSummary {
   id: string;
   name: string;
   memberCount: number;
+  tripContext?: TeamTripContext;
 }
 
 export interface TeamMember {
@@ -79,6 +89,7 @@ export interface TeamDetail {
   createdBy?: string;
   members: TeamMember[];
   cityPresets?: string[];
+  tripContext?: TeamTripContext;
 }
 
 export interface TeamCalendarCoverageMember {
@@ -1290,7 +1301,14 @@ export const api = {
     return fetchWithAuth('/api/teams');
   },
 
-  async createTeam(body: { name: string; description?: string }): Promise<{
+  async createTeam(body: {
+    name: string;
+    description?: string;
+    focusTripItemId?: string | null;
+    tripDestination?: string;
+    tripStartDate?: string;
+    tripEndDate?: string;
+  }): Promise<{
     id: string;
     name: string;
     memberCount: number;
@@ -1304,6 +1322,21 @@ export const api = {
 
   async getTeam(teamId: string): Promise<TeamDetail> {
     return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}`);
+  },
+
+  async updateTeamTripPlan(
+    teamId: string,
+    body: Partial<{
+      focusTripItemId: string | null;
+      tripDestination: string | null;
+      tripStartDate: string | null;
+      tripEndDate: string | null;
+    }>
+  ): Promise<{ tripContext: TeamTripContext }> {
+    return fetchWithAuth(`/api/teams/${encodeURIComponent(teamId)}/trip-plan`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
   },
 
   async getTeamCalendarCoverage(teamId: string): Promise<TeamCalendarCoverage> {
