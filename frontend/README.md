@@ -6,10 +6,11 @@ Next.js app for the HackKU Travel Companion Copilot.
 
 - `/` product intro
 - `/home` journey stages (Plan/Approve/Travel/Return)
-- `/explorer` event discovery and trip options
 - `/assistant` stage-aware AI copilot
 - `/team` collaboration and approvals context
 - `/profile` traveler settings and escalation entry
+
+Legacy `/explorer` and `/explore/*` paths redirect to `/home`.
 
 ## Required Env
 

@@ -23,12 +23,11 @@ Primary routes:
 
 - `/` product intro + entry points
 - `/home` stage journey (Plan, Approve, Travel, Return)
-- `/explorer` team/event discovery + pricing helpers
 - `/assistant` stage-aware travel copilot
 - `/team` team collaboration and approvals context
 - `/profile` settings + support escalation
 
-Legacy non-travel branding/features are no longer the primary UX path.
+Legacy non-travel and explorer routes redirect to `/home`.
 
 ## Key Features Mapped to Brief
 

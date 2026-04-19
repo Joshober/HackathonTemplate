@@ -70,7 +70,7 @@ export function deriveNextSteps(travelItems: Item[], activeTeamId: string | null
     steps.push({
       id: 'followups',
       label: 'Submit expenses and close post-trip follow-ups',
-      href: '/explore/post',
+      href: '/home',
     });
   }
 
@@ -106,7 +106,7 @@ export function deriveNextSteps(travelItems: Item[], activeTeamId: string | null
     steps.push({
       id: 'await-approval',
       label: 'Track approval status or nudge reviewers',
-      href: '/team/approvals',
+      href: '/team',
     });
   }
 
@@ -115,7 +115,7 @@ export function deriveNextSteps(travelItems: Item[], activeTeamId: string | null
     steps.push({
       id: 'book',
       label: 'Compare flight and hotel options, then finalize booking',
-      href: '/explore/flights',
+      href: '/home',
     });
   }
 
@@ -124,7 +124,7 @@ export function deriveNextSteps(travelItems: Item[], activeTeamId: string | null
     steps.push({
       id: 'check-in',
       label: 'Check in and review your day-of trip record',
-      href: '/explore/trip',
+      href: '/home',
     });
   }
 
@@ -150,17 +150,17 @@ export function deriveNextSteps(travelItems: Item[], activeTeamId: string | null
 
   if (!steps.length && travelItems.length) {
     steps.push({
-      id: 'explore',
-      label: 'Compare options and policy fit in Explore',
-      href: '/explore/flights',
+      id: 'copilot-options',
+      label: 'Ask Copilot for options and policy fit',
+      href: '/assistant',
     });
   }
 
   if (!travelItems.length) {
     steps.push({
       id: 'start',
-      label: 'Add a trip or open Requirements in Explore to get started',
-      href: '/explore/requirements',
+      label: 'Add a trip in Plan or ask Copilot to build a checklist',
+      href: '/home',
     });
   }
 
@@ -191,7 +191,7 @@ export function deriveAlerts(travelItems: Item[], activeTeamId: string | null): 
         id: `changes-${i._id}`,
         tone: 'red',
         message: `Policy or approval: "${(i.title || 'Trip').slice(0, 48)}" needs changes.`,
-        href: '/team/approvals',
+        href: '/team',
       });
     }
     const inc = t?.incidents;

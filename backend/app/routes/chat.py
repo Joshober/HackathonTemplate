@@ -34,6 +34,20 @@ from app.config.openrouter_models import DEFAULT_CHAT_MODEL, DEFAULT_VISION_MODE
 bp = Blueprint('chat', __name__)
 
 
+def _copilot_fallback_reply(stage: str) -> str:
+    base = (
+        "Copilot is temporarily unavailable right now. "
+        "You can continue using checklist, approvals, incident triage, and follow-up panels while service recovers."
+    )
+    stage_map = {
+        'plan': "Next step: Open Plan checklist and confirm destination, dates, and cost estimate.",
+        'approve': "Next step: Open Approval guidance and review required approvers plus fixes.",
+        'travel': "Next step: Open Issue & Escalation and triage the disruption now.",
+        'return': "Next step: Open Follow-ups and close expenses/compliance tasks.",
+    }
+    return f"{base}\n\n{stage_map.get(stage, 'Next step: continue from Home stage panels.')}"
+
+
 def _pdf_first_page_to_base64(pdf_bytes: bytes):
     """Convert first page of PDF to JPEG base64 for vision API. Returns None on failure."""
     try:
@@ -942,6 +956,22 @@ def chat():
         }), 500
 
 
+@bp.route('/chat/copilot/health', methods=['GET'])
+def chat_copilot_health():
+    api_key = (os.getenv('OPENROUTER_API_KEY') or '').strip()
+    if not api_key:
+        return jsonify(
+            {
+                'ok': False,
+                'status': 'degraded',
+                'provider': 'openrouter',
+                'code': 'AI_CONFIG_MISSING',
+                'message': 'Copilot is unavailable: OPENROUTER_API_KEY is not configured.',
+            }
+        ), 503
+    return jsonify({'ok': True, 'status': 'ready', 'provider': 'openrouter'}), 200
+
+
 @bp.route('/chat/copilot', methods=['POST'])
 @require_auth
 def chat_copilot(user_id):
@@ -1072,7 +1102,14 @@ def chat_copilot(user_id):
 
         api_key = os.getenv('OPENROUTER_API_KEY')
         if not api_key:
-            return jsonify({'error': 'OPENROUTER_API_KEY is not configured'}), 500
+            return jsonify(
+                {
+                    'error': 'Copilot is temporarily unavailable.',
+                    'code': 'AI_CONFIG_MISSING',
+                    'diagnostic': 'OPENROUTER_API_KEY is not configured',
+                    'fallbackReply': _copilot_fallback_reply(journey_stage),
+                }
+            ), 503
 
         headers = {
             'Content-Type': 'application/json',
@@ -1085,15 +1122,34 @@ def chat_copilot(user_id):
         else:
             model = (data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL).strip()
 
-        assistant_message, usage_merged = _chat_with_web_search(
-            messages,
-            model,
-            headers,
-            90,
-            personality_override=personality,
-            travel_context_block=ctx_json,
-            system_prompt_base=system_prompt_base,
-        )
+        try:
+            assistant_message, usage_merged = _chat_with_web_search(
+                messages,
+                model,
+                headers,
+                90,
+                personality_override=personality,
+                travel_context_block=ctx_json,
+                system_prompt_base=system_prompt_base,
+            )
+        except requests.exceptions.RequestException:
+            return jsonify(
+                {
+                    'error': 'Copilot is temporarily unavailable.',
+                    'code': 'AI_UPSTREAM_NETWORK_ERROR',
+                    'diagnostic': 'Could not reach upstream AI provider',
+                    'fallbackReply': _copilot_fallback_reply(journey_stage),
+                }
+            ), 503
+        except ValueError as ve:
+            return jsonify(
+                {
+                    'error': 'Copilot is temporarily unavailable.',
+                    'code': 'AI_UPSTREAM_ERROR',
+                    'diagnostic': str(ve),
+                    'fallbackReply': _copilot_fallback_reply(journey_stage),
+                }
+            ), 503
 
         cq = ctx.get('contextQuality') if isinstance(ctx.get('contextQuality'), dict) else {}
         privacy = ctx.get('privacy') if isinstance(ctx.get('privacy'), dict) else {}
@@ -1154,9 +1210,16 @@ def chat_copilot(user_id):
         ), 200
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    except Exception as e:
+    except Exception:
         logging.getLogger(__name__).exception("chat_copilot failed")
-        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+        return jsonify(
+            {
+                'error': 'Copilot is temporarily unavailable.',
+                'code': 'AI_INTERNAL_ERROR',
+                'diagnostic': 'Unexpected backend error in /api/chat/copilot',
+                'fallbackReply': _copilot_fallback_reply('plan'),
+            }
+        ), 503
 
 
 def _run_bullshit_detect(messages, model, headers, timeout_sec=90):

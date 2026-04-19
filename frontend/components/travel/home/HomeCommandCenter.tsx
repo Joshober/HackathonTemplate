@@ -79,8 +79,7 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, stage }: 
   return (
     <div className="space-y-4">
       <p className="text-[11px] text-travel-muted -mb-2">
-        What matters now — your command center for this trip. Use Explore for options, Team for people, Copilot for
-        stage-aware help.
+        What matters now — your command center for this trip. Use Team for people and Copilot for stage-aware help.
       </p>
       <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -125,8 +124,8 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, stage }: 
       <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-900">Next action</h3>
-          <Link href="/explore" className="text-[11px] font-medium text-blue-600 hover:underline">
-            Help me decide (Explore)
+          <Link href="/assistant" className="text-[11px] font-medium text-blue-600 hover:underline">
+            Help me decide (Copilot)
           </Link>
         </div>
         <ul className="mt-2 space-y-2">
@@ -151,8 +150,8 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, stage }: 
             You still have open tasks after travel (for example expenses or feedback). Close them out so your record is
             complete.
           </p>
-          <Link href="/explore/post" className="inline-block text-xs font-semibold text-blue-800 hover:underline">
-            Open post-trip workspace
+          <Link href="/home" className="inline-block text-xs font-semibold text-blue-800 hover:underline">
+            Open follow-up workspace
           </Link>
         </section>
       ) : null}
@@ -251,3 +250,4 @@ export default function HomeCommandCenter({ travelItems, activeTeamId, stage }: 
     </div>
   );
 }
+

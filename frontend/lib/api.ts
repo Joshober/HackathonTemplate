@@ -544,6 +544,36 @@ export interface AdminMeResponse {
   isProfessor: boolean;
 }
 
+export type ApiError = Error & {
+  status?: number;
+  code?: string;
+  diagnostic?: string;
+  fallbackReply?: string;
+};
+
+export interface CopilotHealthResponse {
+  ok: boolean;
+  status: 'ready' | 'degraded' | string;
+  provider?: string;
+  code?: string;
+  message?: string;
+}
+
+function buildApiError(response: Response, payload: unknown): ApiError {
+  const asObj = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const message =
+    (typeof asObj.message === 'string' && asObj.message) ||
+    (typeof asObj.error === 'string' && asObj.error) ||
+    `HTTP error! status: ${response.status}`;
+
+  const err = new Error(message) as ApiError;
+  err.status = response.status;
+  if (typeof asObj.code === 'string') err.code = asObj.code;
+  if (typeof asObj.diagnostic === 'string') err.diagnostic = asObj.diagnostic;
+  if (typeof asObj.fallbackReply === 'string') err.fallbackReply = asObj.fallbackReply;
+  return err;
+}
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const response = await fetch(`${API_URL}/api/auth/token`, {
@@ -600,10 +630,8 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'An error occurred' }));
-    const errorMessage = error.message || error.error || `HTTP error! status: ${response.status}`;
-    
-    throw new Error(errorMessage);
+    const payload = await response.json().catch(() => ({ message: 'An error occurred' }));
+    throw buildApiError(response, payload);
   }
 
   return response.json();
@@ -624,14 +652,15 @@ async function fetchPublic(url: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const text = await response.text();
-    let msg = `Error ${response.status}`;
+    let payload: unknown = { message: `Error ${response.status}` };
     try {
-      const error = JSON.parse(text);
-      msg = error.error || error.message || msg;
+      payload = JSON.parse(text);
     } catch {
-      if (text.length < 200) msg = text || msg;
+      if (text.length < 200 && text) {
+        payload = { message: text };
+      }
     }
-    throw new Error(msg);
+    throw buildApiError(response, payload);
   }
 
   return response.json();
@@ -651,8 +680,8 @@ async function fetchPublicBlob(url: string, options: RequestInit = {}) {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'An error occurred' }));
-    throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    const payload = await response.json().catch(() => ({ message: 'An error occurred' }));
+    throw buildApiError(response, payload);
   }
 
   return response.blob();
@@ -1054,6 +1083,10 @@ export const api = {
       method: 'POST',
       body: formData,
     });
+  },
+
+  async getCopilotHealth(): Promise<CopilotHealthResponse> {
+    return fetchPublic('/api/chat/copilot/health') as Promise<CopilotHealthResponse>;
   },
 
   /** Context-aware travel copilot (MongoDB + OpenRouter tools). Requires auth. */

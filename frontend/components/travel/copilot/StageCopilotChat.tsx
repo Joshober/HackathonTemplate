@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, type ApiError } from '@/lib/api';
 import { useTravelStage } from '@/lib/travelContext';
 import type { TravelStageId } from '@/lib/travelTypes';
 import {
@@ -163,6 +163,7 @@ export default function StageCopilotChat() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [voiceErr, setVoiceErr] = useState<string | null>(null);
+  const [serviceNotice, setServiceNotice] = useState<string | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -384,6 +385,24 @@ export default function StageCopilotChat() {
     if (pre) setInput(pre);
   }, [searchParams]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getCopilotHealth()
+      .then((res) => {
+        if (cancelled) return;
+        setServiceNotice(res.ok ? null : res.message || 'Copilot service is currently degraded.');
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const err = e as ApiError;
+        setServiceNotice(err.diagnostic || err.message || 'Copilot service is currently degraded.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stage]);
+
   // Reset chat when stage changes
   useEffect(() => {
     voiceEpochRef.current += 1;
@@ -525,12 +544,29 @@ export default function StageCopilotChat() {
           }
         }
       } catch (err) {
+        const apiErr = err as ApiError;
+        const fallbackReply =
+          typeof apiErr.fallbackReply === 'string' ? apiErr.fallbackReply.trim() : '';
+        if (fallbackReply) {
+          setServiceNotice(apiErr.diagnostic || 'Copilot temporarily unavailable; fallback guidance shown.');
+          const fallbackMsg: Message = {
+            id: newId(),
+            role: 'assistant',
+            content: fallbackReply,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, fallbackMsg]);
+          return;
+        }
+
         setPendingAttachments(atts);
         setInput(userMsg);
         const errMsg: Message = {
           id: newId(),
           role: 'assistant',
-          content: `I'm having trouble connecting right now. Please check your connection and try again.\n\n${err instanceof Error ? err.message : ''}`,
+          content: `I'm having trouble connecting right now. Please check your connection and try again.\n\n${
+            err instanceof Error ? err.message : ''
+          }`,
           timestamp: new Date(),
         };
         setMessages((prev) => {
@@ -583,6 +619,11 @@ export default function StageCopilotChat() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {serviceNotice ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Copilot status: {serviceNotice}
+          </div>
+        ) : null}
         {messages.length === 0 && (
           <div className="space-y-4">
             <div className={`rounded-2xl ${config.bgColor} border ${config.borderColor} p-4`}>

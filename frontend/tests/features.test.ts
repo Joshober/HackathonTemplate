@@ -34,15 +34,21 @@ describe('Feature: Legacy paths redirect in next.config', () => {
     expect(content).toContain('redirects');
     expect(content).toContain("destination: '/home'");
     expect(content).toContain("'/chat'");
+    expect(content).toContain("'/explorer'");
+    expect(content).toContain("'/explore/:path*'");
   });
 });
 
 describe('Feature: Travel bottom navigation', () => {
   const navPath = path.join(__dirname, '../components/travel/BottomNav.tsx');
   const content = fs.readFileSync(navPath, 'utf-8');
-  const tabs = ['/home', '/explorer', '/assistant', '/team', '/profile'];
+  const tabs = ['/home', '/assistant', '/team', '/profile'];
   it.each(tabs)('bottom nav includes %s', (href) => {
     expect(content).toContain(href);
+  });
+  it('bottom nav does not include explore', () => {
+    expect(content).not.toContain('/explore');
+    expect(content).not.toContain('/explorer');
   });
 });
 

@@ -411,11 +411,11 @@ export default function TravelHomeBody({ user }: { user: User }) {
               <span className="text-xs text-travel-muted">{teamTripIdeas.length}</span>
             </div>
             <p className="text-xs text-travel-muted -mt-2">
-              Options the planner added (Explorer) or sent from Plan — reviewers sign off here.
+              Options added from planning or shared by teammates — reviewers sign off here.
             </p>
             {teamTripIdeas.length === 0 ? (
               <p className="text-sm text-travel-muted">
-                No shared ideas yet. Add trips on Explorer with this team selected, or send cards from Plan.
+                No shared ideas yet. Add trips in Plan or send cards from teammates on Team chat.
               </p>
             ) : (
               teamTripIdeas.map((item) => {
@@ -465,8 +465,8 @@ export default function TravelHomeBody({ user }: { user: User }) {
             )}
           </div>
         ) : null}
-        <Link href="/explorer" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
-          Browse more opportunities on Explorer
+        <Link href="/assistant" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
+          Need more options? Ask Copilot
         </Link>
       </div>
     );

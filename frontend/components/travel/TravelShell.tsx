@@ -35,8 +35,7 @@ export default function TravelShell({ children }: { children: ReactNode }) {
             <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">Lockton</p>
             <h1 className="text-lg font-semibold tracking-tight text-gray-900 truncate">Travel Companion</h1>
             <p className="text-[11px] text-travel-muted mt-1 leading-snug">
-              Home · what matters now · Explore · options · Team · who&apos;s involved · Copilot · help through each
-              stage
+              Home · what matters now · Team · who&apos;s involved · Copilot · help through each stage
             </p>
           </div>
         </div>

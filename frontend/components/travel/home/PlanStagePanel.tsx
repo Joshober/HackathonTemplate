@@ -288,10 +288,10 @@ export default function PlanStagePanel({
 
         <div className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-travel-muted text-sm">
           Nothing new to review.{' '}
-          <Link href="/explorer" className="text-blue-300 hover:underline">
-            Browse Explorer
+          <Link href="/home" className="text-blue-300 hover:underline">
+            Return to Home
           </Link>{' '}
-          and add a trip.
+          and add a trip in Plan.
         </div>
       </div>
     );
@@ -331,8 +331,8 @@ export default function PlanStagePanel({
             >
               Show skipped suggestions again
             </button>
-            <Link href="/explorer" className="block text-xs text-travel-muted hover:text-white/80">
-              Or find more on Explorer →
+            <Link href="/assistant" className="block text-xs text-travel-muted hover:text-white/80">
+              Need ideas? Ask Copilot →
             </Link>
           </div>
         ) : (

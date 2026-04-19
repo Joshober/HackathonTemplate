@@ -2,11 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Compass, Home, LayoutGrid, MessageSquare, Users } from 'lucide-react';
+import { Home, LayoutGrid, MessageSquare, Users } from 'lucide-react';
 
 const tabs: { href: string; label: string; Icon: typeof Home }[] = [
   { href: '/home', label: 'Home', Icon: Home },
-  { href: '/explore/flights', label: 'Explore', Icon: Compass },
   { href: '/assistant', label: 'AI', Icon: MessageSquare },
   { href: '/team', label: 'Team', Icon: Users },
   { href: '/profile', label: 'More', Icon: LayoutGrid },

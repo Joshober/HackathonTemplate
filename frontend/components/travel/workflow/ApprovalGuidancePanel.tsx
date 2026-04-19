@@ -34,8 +34,8 @@ type ApprovalData = {
   reasons: string[];
   fixes: string[];
   timeline: Array<{ step: string; status: string; detail: string }>;
-  submittedAt?: string;
-  decisionAt?: string;
+  submittedAt?: string | null;
+  decisionAt?: string | null;
 };
 
 function statusToOpportunity(status: string): TravelOpportunityStatus | undefined {

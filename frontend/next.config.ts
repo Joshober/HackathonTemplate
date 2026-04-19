@@ -14,7 +14,12 @@ const nextConfig: NextConfig = {
       '/pose-attendance',
       '/admin',
     ];
-    return legacy.map((source) => ({ source, destination: '/home', permanent: false }));
+    return [
+      ...legacy.map((source) => ({ source, destination: '/home', permanent: false })),
+      { source: '/explorer', destination: '/home', permanent: false },
+      { source: '/explore', destination: '/home', permanent: false },
+      { source: '/explore/:path*', destination: '/home', permanent: false },
+    ];
   },
   images: {
     remotePatterns: [

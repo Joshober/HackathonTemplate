@@ -9,6 +9,8 @@ import ExploreHotelsTab from '@/components/travel/explorer/ExploreHotelsTab';
 import ExploreRequirementsTab from '@/components/travel/explorer/ExploreRequirementsTab';
 import ExploreTripRecordTab from '@/components/travel/explorer/ExploreTripRecordTab';
 import ExplorePostTripTab from '@/components/travel/explorer/ExplorePostTripTab';
+import ApprovedEventsLivePricing from '@/components/travel/approve/ApprovedEventsLivePricing';
+import { TravelPricingOriginProvider } from '@/components/travel/approve/TravelPricingOriginContext';
 import {
   api,
   TRAVEL_ACTIVE_TEAM_STORAGE_KEY,
@@ -123,7 +125,14 @@ export function ExplorerWorkspace({ initialTab }: { initialTab?: ExploreTabId })
   );
 
   useEffect(() => {
-    if (exploreTab === 'flights' || exploreTab === 'trip' || exploreTab === 'hotels') {
+    if (
+      exploreTab === 'flights' ||
+      exploreTab === 'trip' ||
+      exploreTab === 'hotels' ||
+      exploreTab === 'policies' ||
+      exploreTab === 'destination' ||
+      exploreTab === 'packing'
+    ) {
       void refreshPanelItems();
     }
   }, [exploreTab, refreshPanelItems]);
@@ -303,29 +312,65 @@ export function ExplorerWorkspace({ initialTab }: { initialTab?: ExploreTabId })
     return <div className="py-24 text-center text-travel-muted text-sm">Signing you in…</div>;
   }
 
+  const livePricingBlock = (
+    <TravelPricingOriginProvider originHintCities={teamCities}>
+      <div className="space-y-3">
+        <section id="approve-step-quotes" className="scroll-mt-28 space-y-3">
+          <ApprovedEventsLivePricing
+            hideFlyingFrom
+            items={approvePipelineItems}
+            planningWindow={approvePlanningWindow}
+            overlapPresets={approveOverlapPresets}
+            originHintCities={teamCities}
+            onFinalizeBooking={approvePanel.onFinalize}
+            finalizeBusy={approvePanel.finalizeBusy}
+            onQuotesPersisted={
+              teamId
+                ? () => {
+                    void api.getTeamReturnFeed(teamId).then(setTeamFeedItems);
+                  }
+                : undefined
+            }
+          />
+        </section>
+        {approvePanel.approveMsg ? (
+          <p className="text-xs text-center text-travel-muted border border-gray-200 bg-gray-50 rounded-lg py-2 px-3">
+            {approvePanel.approveMsg}
+          </p>
+        ) : null}
+      </div>
+    </TravelPricingOriginProvider>
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2 mt-2">
         <TeamSelectorDropdown />
       </div>
-      <div className="flex gap-1 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide border-b border-gray-200/80">
-        {EXPLORE_TAB_LABELS.map((t) => {
-          const active = exploreTab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setExploreTab(t.id)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-              }`}
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
 
+      <div className="flex flex-col sm:flex-row gap-4 sm:items-start sm:gap-5">
+        <nav
+          className="flex flex-col gap-1 sm:w-44 shrink-0 border-b sm:border-b-0 sm:border-r border-gray-200/80 pb-3 sm:pb-0 sm:pr-3 -mx-1 px-1 sm:mx-0"
+          aria-label="Explorer sections"
+        >
+          {EXPLORE_TAB_LABELS.map((t) => {
+            const active = exploreTab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setExploreTab(t.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold border transition-colors ${
+                  active ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="flex-1 min-w-0 space-y-4">
       {exploreTab === 'hotels' ? <ExploreHotelsTab /> : null}
 
       {exploreTab === 'flights' ? (
@@ -358,12 +403,11 @@ export function ExplorerWorkspace({ initialTab }: { initialTab?: ExploreTabId })
       {exploreTab === 'requirements' ? <ExploreRequirementsTab /> : null}
 
       {exploreTab === 'policies' ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-3 text-sm text-gray-700">
+        <div className="space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Policies</h2>
-            <p className="text-travel-muted mt-1">
-              Am I following policy? Use these checkpoints before you book, then ask Copilot to translate anything
-              fuzzy into plain language.
+            <p className="text-sm text-travel-muted mt-1">
+              Compare quotes against caps and tiers using the same trip grid as Approve trips. Use Copilot for plain-language policy checks.
             </p>
           </div>
           <ul className="list-disc list-inside space-y-1.5 text-xs text-travel-muted border border-gray-100 rounded-xl p-3 bg-gray-50/80">
@@ -378,24 +422,37 @@ export function ExplorerWorkspace({ initialTab }: { initialTab?: ExploreTabId })
           >
             Run a policy pass in Copilot
           </Link>
+          {livePricingBlock}
         </div>
       ) : null}
 
       {exploreTab === 'destination' ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2 text-sm text-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900">Destination</h2>
-          <p className="text-travel-muted">Weather, office locations, and local context appear here as you attach trips and documents.</p>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Destination</h2>
+            <p className="text-sm text-travel-muted mt-1">
+              Trip windows, attendance, and flight/hotel estimates for each saved card — same calculator as Approve trips.
+            </p>
+          </div>
+          {livePricingBlock}
         </div>
       ) : null}
 
       {exploreTab === 'packing' ? (
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 space-y-2 text-sm text-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900">Packing</h2>
-          <p className="text-travel-muted">Use Home checklist and Copilot for outfit and packing suggestions vs destination weather.</p>
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Packing</h2>
+            <p className="text-sm text-travel-muted mt-1">
+              Dates and destinations below come from your team trips; pair with Home checklist and Copilot for weather-based packing.
+            </p>
+          </div>
+          {livePricingBlock}
         </div>
       ) : null}
 
       {exploreTab === 'post' ? <ExplorePostTripTab /> : null}
+        </div>
+      </div>
     </div>
   );
 }
