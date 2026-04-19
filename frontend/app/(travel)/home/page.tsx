@@ -1,13 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import TravelHomeBody from '@/components/travel/home/TravelHomeBody';
-import { useTravelStage } from '@/lib/travelContext';
 import TeamSelectorDropdown from '@/components/travel/TeamSelectorDropdown';
 
 export default function TravelHomePage() {
   const { user, loading } = useTravelAuth();
-  const { stage, setStage } = useTravelStage();
 
   if (loading || !user) {
     return (
@@ -22,7 +21,9 @@ export default function TravelHomePage() {
       <div className="flex items-center justify-between mt-2">
         <TeamSelectorDropdown />
       </div>
-      <TravelHomeBody user={user} />
+      <Suspense fallback={<div className="py-12 text-center text-sm text-travel-muted">Loading Home…</div>}>
+        <TravelHomeBody user={user} />
+      </Suspense>
     </div>
   );
 }
