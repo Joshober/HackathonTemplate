@@ -2,7 +2,14 @@
 
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type Profile, type TeamDetail, type TeamSummary, TRAVEL_ACTIVE_TEAM_STORAGE_KEY } from '@/lib/api';
+import {
+  api,
+  type Profile,
+  type TeamDetail,
+  type TeamSummary,
+  type TeamTripContext,
+  TRAVEL_ACTIVE_TEAM_STORAGE_KEY,
+} from '@/lib/api';
 import { useTravelAuth } from '@/components/travel/useTravelAuth';
 import TeamChatPanel from '@/components/travel/TeamChatPanel';
 import StartPlanningDropdown from '@/components/travel/StartPlanningDropdown';
@@ -11,6 +18,7 @@ import { useTeamPlanning } from '@/lib/teamPlanningContext';
 import { useTravelStage } from '@/lib/travelContext';
 import TravelDayItinerary from '@/components/travel/TravelDayItinerary';
 import type { Item } from '@/lib/api';
+import { getTravelPayload, isTravelItem } from '@/lib/travelItem';
 import {
   Plus, Users, X, UserPlus, XCircle, ArrowLeft, Crown, Star, MoreVertical, Shield, Rocket,
 } from 'lucide-react';
@@ -38,6 +46,12 @@ export default function TeamPage() {
 
   const { stage } = useTravelStage();
   const [panelItems, setPanelItems] = useState<Item[]>([]);
+  const [teamLinkedItems, setTeamLinkedItems] = useState<Item[]>([]);
+  const [tripEditDestination, setTripEditDestination] = useState('');
+  const [tripEditStart, setTripEditStart] = useState('');
+  const [tripEditEnd, setTripEditEnd] = useState('');
+  const [tripEditFocusId, setTripEditFocusId] = useState<string>('');
+  const [tripSaveBusy, setTripSaveBusy] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -88,15 +102,39 @@ export default function TeamPage() {
   }, [activeTeamId, bindToTeam]);
 
   useEffect(() => {
-    if (!activeTeamId) { setTeamDetail(null); return; }
+    if (!activeTeamId) {
+      setTeamDetail(null);
+      setTeamLinkedItems([]);
+      return;
+    }
     let cancelled = false;
     setDetailLoading(true);
     api.getTeam(activeTeamId)
       .then((d) => { if (!cancelled) setTeamDetail(d); })
       .catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : 'Could not load team'); })
       .finally(() => { if (!cancelled) setDetailLoading(false); });
+    void api.getItems().then((list) => {
+      if (cancelled) return;
+      const linked = list.filter((i) => i.teamId && String(i.teamId) === activeTeamId && isTravelItem(i));
+      setTeamLinkedItems(linked);
+    }).catch(() => { if (!cancelled) setTeamLinkedItems([]); });
     return () => { cancelled = true; };
   }, [activeTeamId]);
+
+  useEffect(() => {
+    const tc = teamDetail?.tripContext;
+    if (!tc) return;
+    setTripEditDestination(tc.tripDestination || '');
+    setTripEditStart(tc.tripStartDate || '');
+    setTripEditEnd(tc.tripEndDate || '');
+    setTripEditFocusId(tc.focusTripItemId || '');
+  }, [
+    teamDetail?.id,
+    teamDetail?.tripContext?.tripDestination,
+    teamDetail?.tripContext?.tripStartDate,
+    teamDetail?.tripContext?.tripEndDate,
+    teamDetail?.tripContext?.focusTripItemId,
+  ]);
 
   // Close member menu when clicking outside
   useEffect(() => {
@@ -109,8 +147,41 @@ export default function TeamPage() {
 
   const refreshTeamDetail = useCallback(async () => {
     if (!activeTeamId) return;
-    try { const d = await api.getTeam(activeTeamId); setTeamDetail(d); } catch {/* ignore */}
+    try {
+      const d = await api.getTeam(activeTeamId);
+      setTeamDetail(d);
+      const list = await api.getItems();
+      setTeamLinkedItems(list.filter((i) => i.teamId && String(i.teamId) === activeTeamId && isTravelItem(i)));
+    } catch {/* ignore */}
   }, [activeTeamId]);
+
+  const tripSourceLabel = (src: TeamTripContext['tripContextSource']) => {
+    if (src === 'user') return 'Saved';
+    if (src === 'inferred') return 'From team trips';
+    if (src === 'mixed') return 'Trips + defaults';
+    if (src === 'demo_docs') return 'Demo defaults';
+    return src || '';
+  };
+
+  const onSaveTripPlan = async () => {
+    if (!activeTeamId || tripSaveBusy) return;
+    setTripSaveBusy(true);
+    setErr(null);
+    try {
+      const { tripContext } = await api.updateTeamTripPlan(activeTeamId, {
+        tripDestination: tripEditDestination.trim() || null,
+        tripStartDate: tripEditStart.trim() || null,
+        tripEndDate: tripEditEnd.trim() || null,
+        focusTripItemId: tripEditFocusId || null,
+      });
+      setTeamDetail((prev) => (prev ? { ...prev, tripContext } : prev));
+      await loadTeams();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not save trip plan');
+    } finally {
+      setTripSaveBusy(false);
+    }
+  };
 
   const onCreateTeam = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,13 +406,18 @@ export default function TeamPage() {
           <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100 z-10 bg-white">
             <div>
               <h2 className="text-xl font-bold text-gray-900">{teamDetail.name}</h2>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <p className="text-sm text-gray-500">{teamDetail.members.length} members</p>
                 {coLeaderId && (
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
                     Co-Leader assigned
                   </span>
                 )}
+                {teamDetail.tripContext ? (
+                  <span className="text-[10px] font-semibold text-violet-700 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded-full">
+                    {tripSourceLabel(teamDetail.tripContext.tripContextSource)}
+                  </span>
+                ) : null}
               </div>
             </div>
 
@@ -373,6 +449,77 @@ export default function TeamPage() {
               </button>
             )}
           </div>
+
+          {/* Team trip window (Mongo + inferred / doc defaults) */}
+          {teamDetail.tripContext ? (
+            <div className="px-5 py-3 border-b border-gray-100 bg-slate-50/80 space-y-3">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-800">
+                <span>
+                  <span className="text-gray-500 font-medium">Trip: </span>
+                  {teamDetail.tripContext.tripDestination || '—'}
+                </span>
+                <span>
+                  <span className="text-gray-500 font-medium">Dates: </span>
+                  {teamDetail.tripContext.tripStartDate || '—'} → {teamDetail.tripContext.tripEndDate || '—'}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
+                <label className="block text-[11px] text-gray-500">
+                  Destination
+                  <input
+                    value={tripEditDestination}
+                    onChange={(e) => setTripEditDestination(e.target.value)}
+                    className="mt-0.5 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900"
+                    placeholder="e.g. London, UK"
+                  />
+                </label>
+                <label className="block text-[11px] text-gray-500">
+                  Start (YYYY-MM-DD)
+                  <input
+                    value={tripEditStart}
+                    onChange={(e) => setTripEditStart(e.target.value)}
+                    className="mt-0.5 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900"
+                    placeholder="2026-04-22"
+                  />
+                </label>
+                <label className="block text-[11px] text-gray-500">
+                  End (YYYY-MM-DD)
+                  <input
+                    value={tripEditEnd}
+                    onChange={(e) => setTripEditEnd(e.target.value)}
+                    className="mt-0.5 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900"
+                    placeholder="2026-04-26"
+                  />
+                </label>
+                <label className="block text-[11px] text-gray-500">
+                  Focus trip card
+                  <select
+                    value={tripEditFocusId}
+                    onChange={(e) => setTripEditFocusId(e.target.value)}
+                    className="mt-0.5 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900"
+                  >
+                    <option value="">None</option>
+                    {teamLinkedItems.map((it) => (
+                      <option key={it._id} value={it._id || ''}>
+                        {(it.title || 'Trip').slice(0, 48)}
+                        {getTravelPayload(it)?.location ? ` — ${getTravelPayload(it)!.location}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={tripSaveBusy}
+                  onClick={() => void onSaveTripPlan()}
+                  className="rounded-lg bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2"
+                >
+                  {tripSaveBusy ? 'Saving…' : 'Save trip plan'}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {/* Central Area: Chat or specific stage UI */}
           <div className="flex-1 overflow-hidden relative bg-white flex flex-col">
@@ -440,6 +587,14 @@ export default function TeamPage() {
               <div className="flex-1 text-left min-w-0 flex flex-col justify-center">
                 <h3 className="text-base font-bold text-gray-900 truncate leading-tight mb-1">{t.name}</h3>
                 <p className="text-[13px] font-medium text-[#64748b] leading-tight">{t.memberCount} {t.memberCount === 1 ? 'member' : 'members'}</p>
+                {t.tripContext?.tripDestination ? (
+                  <p className="text-[11px] text-gray-500 mt-1 truncate">
+                    {t.tripContext.tripDestination}
+                    {t.tripContext.tripStartDate && t.tripContext.tripEndDate
+                      ? ` · ${t.tripContext.tripStartDate} – ${t.tripContext.tripEndDate}`
+                      : ''}
+                  </p>
+                ) : null}
               </div>
             </button>
           ))}

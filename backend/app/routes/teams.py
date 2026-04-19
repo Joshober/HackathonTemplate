@@ -27,6 +27,22 @@ _indexes_ensured = False
 MAX_TEAM_CITY_PRESETS = 20
 MAX_MANUAL_AVAILABILITY_WINDOWS = 24
 
+# Doc-aligned defaults when a team has no linked trip cards yet (README / Plan brief: London + passport window; HackKU 2026).
+TEAM_TRIP_DOCS_DEFAULT_DESTINATION = 'London, UK'
+TEAM_TRIP_DOCS_DEFAULT_START = '2026-04-22'
+TEAM_TRIP_DOCS_DEFAULT_END = '2026-04-26'
+
+_TRIP_STATUS_RANK = {
+    'booked': 8,
+    'approved': 7,
+    'completed': 6,
+    'pending': 5,
+    'submitted': 4,
+    'ready_for_approval': 3,
+    'needs_changes': 2,
+    'draft': 1,
+}
+
 
 def _team_message_invokes_assistant(content: str, invoke_explicit) -> bool:
     """
@@ -87,11 +103,15 @@ def _normalize_city_list(raw) -> list[str]:
 
 
 def _normalize_iso_day(raw) -> str | None:
-    s = " ".join(str(raw or "").split()).strip()
+    if raw is None:
+        return None
+    if isinstance(raw, datetime):
+        return raw.date().isoformat()
+    s = " ".join(str(raw).split()).strip()
     if not s:
         return None
     try:
-        return date.fromisoformat(s).isoformat()
+        return date.fromisoformat(s[:10]).isoformat()
     except ValueError:
         return None
 
@@ -123,6 +143,174 @@ def _normalize_budget(raw) -> float | None:
     if v < 0:
         return None
     return round(v, 2)
+
+
+def _normalize_object_id_hex(raw) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, ObjectId):
+        return str(raw)
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        return str(ObjectId(s))
+    except InvalidId:
+        return None
+
+
+def _travel_dict(item: dict) -> dict:
+    t = item.get('travel')
+    return t if isinstance(t, dict) else {}
+
+
+def _item_trip_score(item: dict) -> tuple:
+    """Higher tuple = better candidate for team trip context."""
+    t = _travel_dict(item)
+    st = str(t.get('opportunityStatus') or 'draft').lower()
+    rank = _TRIP_STATUS_RANK.get(st, 0)
+    start = _normalize_iso_day(t.get('startDate'))
+    end = _normalize_iso_day(t.get('endDate'))
+    loc = str(t.get('location') or '').strip()
+    completeness = (4 if start and end else 0) + (2 if loc else 0)
+    upd = item.get('updatedAt')
+    if isinstance(upd, datetime):
+        if upd.tzinfo:
+            upd = upd.replace(tzinfo=None)
+    else:
+        upd = datetime.min
+    return (rank, completeness, upd)
+
+
+def _infer_trip_from_team_items(db, team_oid: ObjectId) -> dict | None:
+    """Best-effort trip from items already linked to this team (teamId)."""
+    items = list(db.items.find({'teamId': team_oid}).sort('updatedAt', -1).limit(120))
+    if not items:
+        return None
+    best = max(items, key=_item_trip_score)
+    t = _travel_dict(best)
+    loc = str(t.get('location') or '').strip()
+    start = _normalize_iso_day(t.get('startDate'))
+    end = _normalize_iso_day(t.get('endDate'))
+    if not loc and not (start and end):
+        return None
+    return {
+        'focusTripItemId': str(best['_id']),
+        'tripDestination': loc or None,
+        'tripStartDate': start,
+        'tripEndDate': end,
+    }
+
+
+def _docs_default_trip() -> dict:
+    return {
+        'focusTripItemId': None,
+        'tripDestination': TEAM_TRIP_DOCS_DEFAULT_DESTINATION,
+        'tripStartDate': TEAM_TRIP_DOCS_DEFAULT_START,
+        'tripEndDate': TEAM_TRIP_DOCS_DEFAULT_END,
+    }
+
+
+def _merge_trip_plan(db, team_oid: ObjectId, team: dict) -> dict:
+    """
+    Merge stored team fields, focused item, inferred team items, then doc demo defaults.
+    Returns tripContext dict for API + optional persistence hints.
+    """
+    raw_start = _normalize_iso_day(team.get('tripStartDate'))
+    raw_end = _normalize_iso_day(team.get('tripEndDate'))
+    raw_dest = str(team.get('tripDestination') or '').strip() or None
+    raw_focus = _normalize_object_id_hex(team.get('focusTripItemId'))
+
+    from_focus: dict = {}
+    if raw_focus:
+        try:
+            item = db.items.find_one({'_id': ObjectId(raw_focus), 'teamId': team_oid})
+        except (InvalidId, TypeError):
+            item = None
+        if item:
+            t = _travel_dict(item)
+            from_focus = {
+                'tripDestination': str(t.get('location') or '').strip() or None,
+                'tripStartDate': _normalize_iso_day(t.get('startDate')),
+                'tripEndDate': _normalize_iso_day(t.get('endDate')),
+            }
+
+    inferred = _infer_trip_from_team_items(db, team_oid)
+
+    dest = raw_dest or from_focus.get('tripDestination') or (inferred or {}).get('tripDestination')
+    start = raw_start or from_focus.get('tripStartDate') or (inferred or {}).get('tripStartDate')
+    end = raw_end or from_focus.get('tripEndDate') or (inferred or {}).get('tripEndDate')
+    focus = raw_focus or (inferred or {}).get('focusTripItemId')
+
+    used_demo = False
+    if not dest or not start or not end:
+        demo = _docs_default_trip()
+        if not dest:
+            dest = demo['tripDestination']
+            used_demo = True
+        if not start:
+            start = demo['tripStartDate']
+            used_demo = True
+        if not end:
+            end = demo['tripEndDate']
+            used_demo = True
+
+    persisted_src = str(team.get('tripContextSource') or '').strip()
+    if persisted_src in ('user', 'inferred', 'demo_docs', 'mixed') and raw_start and raw_end:
+        source = persisted_src
+    elif raw_start and raw_end:
+        source = 'user'
+    elif inferred and not used_demo:
+        source = 'inferred'
+    elif inferred and used_demo:
+        source = 'mixed'
+    else:
+        source = 'demo_docs'
+
+    return {
+        'focusTripItemId': focus,
+        'tripDestination': dest,
+        'tripStartDate': start,
+        'tripEndDate': end,
+        'tripContextSource': source,
+    }
+
+
+def _persist_team_trip_if_empty(db, team_oid: ObjectId, team: dict, merged: dict) -> None:
+    """Backfill Mongo when the team has no trip fields yet (infer from items or doc defaults)."""
+    has_any = bool(
+        team.get('tripStartDate')
+        or team.get('tripEndDate')
+        or team.get('tripDestination')
+        or team.get('focusTripItemId')
+    )
+    if has_any:
+        return
+    if not merged.get('tripStartDate') or not merged.get('tripEndDate'):
+        return
+    db.teams.update_one(
+        {'_id': team_oid},
+        {
+            '$set': {
+                'tripDestination': merged.get('tripDestination'),
+                'tripStartDate': merged.get('tripStartDate'),
+                'tripEndDate': merged.get('tripEndDate'),
+                'focusTripItemId': merged.get('focusTripItemId'),
+                'tripContextSource': merged.get('tripContextSource'),
+                'updatedAt': datetime.utcnow(),
+            }
+        },
+    )
+
+
+def _trip_context_response(merged: dict) -> dict:
+    return {
+        'focusTripItemId': merged.get('focusTripItemId'),
+        'tripDestination': merged.get('tripDestination'),
+        'tripStartDate': merged.get('tripStartDate'),
+        'tripEndDate': merged.get('tripEndDate'),
+        'tripContextSource': merged.get('tripContextSource'),
+    }
 
 
 def upsert_user_from_token(db, user_id: str) -> None:
@@ -251,6 +439,25 @@ def create_team(user_id):
         'createdAt': now,
         'updatedAt': now,
     }
+    ts = _normalize_iso_day(data.get('tripStartDate'))
+    te = _normalize_iso_day(data.get('tripEndDate'))
+    td = str(data.get('tripDestination') or '').strip() or None
+    focus = _normalize_object_id_hex(data.get('focusTripItemId'))
+    if ts and te:
+        if ts > te:
+            return jsonify({'error': 'tripStartDate must be on or before tripEndDate'}), 400
+        doc['tripStartDate'] = ts
+        doc['tripEndDate'] = te
+        doc['tripContextSource'] = 'user'
+    if td:
+        doc['tripDestination'] = td[:160]
+    if focus:
+        try:
+            own = db.items.find_one({'_id': ObjectId(focus), 'userId': user_id})
+        except (InvalidId, TypeError):
+            own = None
+        if own:
+            doc['focusTripItemId'] = focus
     result = db.teams.insert_one(doc)
     doc['_id'] = result.inserted_id
     return jsonify({
@@ -269,10 +476,12 @@ def list_teams(user_id):
     cursor = db.teams.find({'memberIds': user_id}).sort('updatedAt', -1)
     teams = []
     for t in cursor:
+        merged = _merge_trip_plan(db, t['_id'], t)
         teams.append({
             'id': str(t['_id']),
             'name': t.get('name', ''),
             'memberCount': len(t.get('memberIds') or []),
+            'tripContext': _trip_context_response(merged),
         })
     return jsonify({'teams': teams}), 200
 
@@ -289,6 +498,8 @@ def get_team(user_id, team_id):
     if not team:
         return jsonify({'error': 'Forbidden or not found'}), 403
     members = _resolve_members(db, team.get('memberIds') or [])
+    merged = _merge_trip_plan(db, oid, team)
+    _persist_team_trip_if_empty(db, oid, team, merged)
     return jsonify({
         'id': str(team['_id']),
         'name': team.get('name', ''),
@@ -296,7 +507,64 @@ def get_team(user_id, team_id):
         'createdBy': team.get('createdBy'),
         'members': members,
         'cityPresets': _normalize_city_list(team.get('cityPresets') or []),
+        'tripContext': _trip_context_response(merged),
     }), 200
+
+
+@bp.route('/teams/<team_id>/trip-plan', methods=['PATCH'])
+@require_auth
+@with_user_sync
+def set_team_trip_plan(user_id, team_id):
+    """Set team trip focus + destination + dates (any member)."""
+    oid = _parse_oid(team_id)
+    if not oid:
+        return jsonify({'error': 'Invalid team id'}), 400
+    db = get_db()
+    team = _team_for_member(db, oid, user_id)
+    if not team:
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+
+    set_fields: dict = {'updatedAt': datetime.utcnow(), 'tripContextSource': 'user'}
+    unset_doc: dict[str, str] = {}
+
+    if 'focusTripItemId' in data:
+        raw_f = data.get('focusTripItemId')
+        if raw_f in (None, '', False):
+            unset_doc['focusTripItemId'] = ''
+        else:
+            focus = _normalize_object_id_hex(raw_f)
+            if not focus:
+                return jsonify({'error': 'Invalid focusTripItemId'}), 400
+            item = db.items.find_one({'_id': ObjectId(focus), 'teamId': oid})
+            if not item:
+                return jsonify({'error': 'focusTripItemId must reference an item linked to this team'}), 400
+            set_fields['focusTripItemId'] = focus
+
+    if 'tripDestination' in data:
+        dest = str(data.get('tripDestination') or '').strip()
+        set_fields['tripDestination'] = dest[:160] if dest else None
+
+    if 'tripStartDate' in data:
+        set_fields['tripStartDate'] = _normalize_iso_day(data.get('tripStartDate'))
+    if 'tripEndDate' in data:
+        set_fields['tripEndDate'] = _normalize_iso_day(data.get('tripEndDate'))
+
+    ts_eff = set_fields.get('tripStartDate', team.get('tripStartDate'))
+    te_eff = set_fields.get('tripEndDate', team.get('tripEndDate'))
+    ts_eff = _normalize_iso_day(ts_eff) if ts_eff else None
+    te_eff = _normalize_iso_day(te_eff) if te_eff else None
+    if ts_eff and te_eff and ts_eff > te_eff:
+        return jsonify({'error': 'tripStartDate must be on or before tripEndDate'}), 400
+
+    upd: dict = {'$set': set_fields}
+    if unset_doc:
+        upd['$unset'] = unset_doc
+    db.teams.update_one({'_id': oid}, upd)
+
+    team = db.teams.find_one({'_id': oid}) or team
+    merged = _merge_trip_plan(db, oid, team)
+    return jsonify({'tripContext': _trip_context_response(merged)}), 200
 
 
 @bp.route('/teams/<team_id>/city-presets', methods=['PUT'])
