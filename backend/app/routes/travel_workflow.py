@@ -628,6 +628,89 @@ def copilot_requirements_check(user_id):
     ), 200
 
 
+def _approval_draft_static(destination: str, start: str | None, end: str | None, cost_est: float | None, required_by: list[str]) -> str:
+    dest_part = f"to {destination}" if destination else "for a business trip"
+    dates_part = f" from {start} to {end}" if start and end else ""
+    cost_part = f", estimated at ${cost_est:,.0f}" if cost_est is not None else ""
+    approver_part = (
+        " and ".join(required_by).replace("_", " ") if required_by else "the travel team"
+    )
+    return (
+        f"Hi — I'd like to request approval for a business trip {dest_part}{dates_part}{cost_part}. "
+        f"This trip requires sign-off from {approver_part} per company policy. "
+        "I've reviewed the available booking options and selected the most policy-compliant choice. "
+        "Please let me know if you need any additional details or justification."
+    )
+
+
+def _generate_approval_draft(
+    destination: str,
+    start: str | None,
+    end: str | None,
+    cost_est: float | None,
+    required_by: list[str],
+    reasons: list[str],
+    trip_title: str,
+    referer: str,
+) -> str:
+    api_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    if not api_key:
+        return _approval_draft_static(destination, start, end, cost_est, required_by)
+
+    model = os.getenv("OPENROUTER_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+    dest_part = f"to {destination}" if destination else "for a business trip"
+    dates_part = f" from {start} to {end}" if start and end else ""
+    cost_part = f", estimated at ${cost_est:,.0f}" if cost_est is not None else ""
+    approver_part = " and ".join(required_by).replace("_", " ") if required_by else "the travel team"
+    reasons_part = " ".join(reasons) if reasons else "standard policy applies."
+    title_hint = f" (trip: {trip_title})" if trip_title else ""
+
+    user_msg = (
+        f"Write a short, professional approval request message (3-5 sentences, plain English, no markdown) "
+        f"from a business traveler to their approver for a trip{dest_part}{dates_part}{cost_part}{title_hint}. "
+        f"Approver(s): {approver_part}. Policy context: {reasons_part} "
+        "The message should briefly state purpose, dates, cost, and ask for approval. "
+        "Do not use bullet points. Output only the message text, nothing else."
+    )
+
+    try:
+        resp = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": referer[:512],
+                "X-Title": "Travel Copilot Approval Draft",
+            },
+            json={
+                "model": model,
+                "temperature": 0.4,
+                "max_tokens": 200,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You write concise corporate travel approval request messages. Output only the message text, no extra commentary.",
+                    },
+                    {"role": "user", "content": user_msg},
+                ],
+            },
+            timeout=30,
+        )
+        if not resp.ok:
+            return _approval_draft_static(destination, start, end, cost_est, required_by)
+        body = resp.json() if resp.content else {}
+        choices = body.get("choices") if isinstance(body, dict) else None
+        if isinstance(choices, list) and choices:
+            msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+            content = (msg or {}).get("content") if isinstance(msg, dict) else None
+            if content and isinstance(content, str) and content.strip():
+                return content.strip()[:800]
+    except Exception as e:
+        logger.warning("approval draft LLM failed: %s", e)
+
+    return _approval_draft_static(destination, start, end, cost_est, required_by)
+
+
 @bp.route("/travel/approvals/prepare", methods=["POST"])
 @require_auth
 def prepare_approval(user_id):
@@ -667,7 +750,9 @@ def prepare_approval(user_id):
     if cost_est is None:
         fixes.append("Add a rough cost estimate to speed approval review.")
 
-    if status in {"approved", "booked", "completed"}:
+    if status in {"needs_changes", "rejected"}:
+        approval_status = "needs_changes"
+    elif status in {"approved", "booked", "completed"}:
         approval_status = "approved"
     elif status in {"submitted", "pending"}:
         approval_status = status
@@ -705,8 +790,53 @@ def prepare_approval(user_id):
         "submitted": "Approval request is submitted and awaiting decision.",
         "pending": "Approval is in review. Copilot can suggest fast fixes if blocked.",
         "approved": "Trip is approved for booking.",
-        "needs_changes": "Approval needs changes before booking.",
+        "needs_changes": "Approval needs changes before booking — review the fix suggestions below.",
     }.get(approval_status, "Approval status is being assessed.")
+
+    approval_draft = _generate_approval_draft(
+        destination=destination,
+        start=base["startDate"],
+        end=base["endDate"],
+        cost_est=cost_est,
+        required_by=sorted(list(set(required_by))),
+        reasons=reasons,
+        trip_title=str(item.get("title") or "") if item else "",
+        referer=request.headers.get("Origin") or "",
+    )
+
+    # Urgency level based on days until travel start
+    urgency = "none"
+    start_date_str = base.get("startDate") or ""
+    if start_date_str:
+        try:
+            from datetime import date as _date
+            start_dt = _date.fromisoformat(start_date_str[:10])
+            days_away = (start_dt - _date.today()).days
+            if days_away <= 3:
+                urgency = "high"
+            elif days_away <= 7:
+                urgency = "medium"
+            elif days_away <= 21:
+                urgency = "low"
+        except Exception:
+            pass
+
+    # Copilot-voice message Kelli sees as the headline
+    fix_count = len(fixes)
+    if approval_status == "approved":
+        copilot_message = "You're approved — ready to book whenever you are."
+    elif approval_status == "not_required":
+        copilot_message = "Good news: this trip doesn't need manager approval. You can book directly."
+    elif approval_status == "submitted":
+        copilot_message = "Your approval request is submitted. I'll flag anything that needs your attention."
+    elif approval_status == "pending":
+        copilot_message = "Approval is in review. Sit tight — I'll flag anything that needs your attention."
+    elif approval_status == "needs_changes":
+        copilot_message = f"Something needs fixing before this can be approved. I found {fix_count} item{'s' if fix_count != 1 else ''} to address."
+    elif fix_count > 0:
+        copilot_message = f"Approval is required — I found {fix_count} thing{'s' if fix_count != 1 else ''} to resolve before you can submit."
+    else:
+        copilot_message = "Approval is required for this trip. I've prepared a request you can send right now."
 
     return jsonify(
         {
@@ -718,8 +848,53 @@ def prepare_approval(user_id):
                 "timeline": timeline,
                 "submittedAt": travel.get("submittedAt"),
                 "decisionAt": travel.get("decisionAt"),
+                "approvalDraft": approval_draft,
             },
             "plainLanguageStatus": plain,
+            "copilotMessage": copilot_message,
+            "requestDraft": approval_draft,
+            "urgency": urgency,
+            "privacy": _privacy_meta(),
+        }
+    ), 200
+
+
+@bp.route("/travel/approvals/submit", methods=["POST"])
+@require_auth
+def submit_approval(user_id):
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+
+    item_id = str(data.get("itemId") or "").strip()
+    if not item_id:
+        return jsonify({"error": "itemId is required"}), 400
+
+    item = _load_item_for_user(db, user_id, item_id)
+    if item is None:
+        return jsonify({"error": "itemId not found for user"}), 404
+
+    now_str = _now_iso()
+    travel = item.get("travel") if isinstance(item.get("travel"), dict) else {}
+    updated_travel = {
+        **travel,
+        "opportunityStatus": "submitted",
+        "submittedAt": now_str,
+    }
+
+    try:
+        oid = ObjectId(item_id)
+    except Exception:
+        return jsonify({"error": "Invalid itemId"}), 400
+
+    db.items.update_one(
+        {"_id": oid, "userId": user_id},
+        {"$set": {"travel": updated_travel, "updatedAt": datetime.utcnow()}},
+    )
+
+    return jsonify(
+        {
+            "plainLanguageStatus": "Your approval request is submitted and awaiting decision.",
+            "submittedAt": now_str,
             "privacy": _privacy_meta(),
         }
     ), 200

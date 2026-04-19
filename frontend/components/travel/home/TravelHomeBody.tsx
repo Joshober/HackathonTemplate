@@ -321,9 +321,13 @@ export default function TravelHomeBody({ user }: { user: User }) {
     return (
       <div className="space-y-4">
         {commandCenter}
+
+        {/* Copilot Approval — hero position */}
+        <ApprovalGuidancePanel items={travelItems} onSaved={refresh} />
+
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Approval status</h2>
-          <p className="text-sm text-travel-muted mt-1">Reviewers come from your active team on the Team tab.</p>
+          <h2 className="text-sm font-semibold text-gray-700">Team approval</h2>
+          <p className="text-xs text-travel-muted mt-0.5">Reviewers come from your active team on the Team tab.</p>
         </div>
         {!activeTeamId ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -464,7 +468,6 @@ export default function TravelHomeBody({ user }: { user: User }) {
         <Link href="/explorer" className="block text-center text-xs text-blue-600 hover:underline pt-2 font-medium">
           Browse more opportunities on Explorer
         </Link>
-        <ApprovalGuidancePanel items={travelItems} onSaved={refresh} />
       </div>
     );
   }

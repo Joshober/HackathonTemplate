@@ -64,15 +64,16 @@ const STAGE_CONFIG: Record<TravelStageId, StageConfig> = {
   },
   approve: {
     label: 'Booking & approval',
-    tagline: 'Manager approval, policy triggers, and how to phrase a compliant request.',
+    tagline: 'I handle approvals so you don\'t have to — just tell me what\'s going on.',
     color: 'text-violet-700',
     bgColor: 'bg-violet-50',
     borderColor: 'border-violet-200',
     quickPrompts: [
-      { label: 'Why approval needed?', prompt: 'Why does this trip need manager approval? Explain the specific policy triggers.' },
-      { label: 'Compliant alternative', prompt: 'Is there a more policy-compliant option for this trip that would still meet my needs?' },
-      { label: 'Prepare request', prompt: 'Help me prepare a concise approval request with business justification.' },
+      { label: 'Write my approval request', prompt: 'Write a short, professional approval request I can send to my manager for this trip.' },
+      { label: "What's blocking me?", prompt: 'What specifically is blocking my approval, and what is the fastest fix?' },
+      { label: 'Cheaper alternative?', prompt: 'Is there a policy-compliant alternative under $1,500 that avoids manager approval?' },
       { label: 'Approval status', prompt: 'What is the current status of my approval and what are the next steps?' },
+      { label: 'Explain the rejection', prompt: 'My approval needs changes. Can you explain why in plain language and tell me what to do first?' },
     ],
   },
   travel: {

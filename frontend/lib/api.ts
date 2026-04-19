@@ -419,6 +419,7 @@ export interface TravelApprovalDecision {
   timeline: TravelApprovalTimelineStep[];
   submittedAt?: string | null;
   decisionAt?: string | null;
+  approvalDraft?: string;
 }
 
 export type TravelIssueType =
@@ -1149,9 +1150,24 @@ export const api = {
   }): Promise<{
     approval: TravelApprovalDecision;
     plainLanguageStatus: string;
+    copilotMessage?: string;
+    requestDraft?: string;
+    urgency?: 'none' | 'low' | 'medium' | 'high';
+    approvalDraft?: string;
     privacy: TravelPrivacyMeta;
   }> {
     return fetchWithAuth('/api/travel/approvals/prepare', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async submitTravelApproval(body: { itemId: string }): Promise<{
+    plainLanguageStatus: string;
+    submittedAt: string;
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/travel/approvals/submit', {
       method: 'POST',
       body: JSON.stringify(body),
     });
