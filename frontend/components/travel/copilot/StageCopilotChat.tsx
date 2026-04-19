@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useTravelStage } from '@/lib/travelContext';
 import type { TravelStageId } from '@/lib/travelTypes';
@@ -24,8 +25,8 @@ interface StageConfig {
 
 const STAGE_CONFIG: Record<TravelStageId, StageConfig> = {
   plan: {
-    label: 'Planning',
-    tagline: "I've read your documents. Ask me anything about your trip.",
+    label: 'Planning help',
+    tagline: 'Decide where to go, what to book, and what documents you will need — grounded in your saved trip.',
     color: 'text-blue-700',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
@@ -38,8 +39,8 @@ const STAGE_CONFIG: Record<TravelStageId, StageConfig> = {
     ],
   },
   approve: {
-    label: 'Approval',
-    tagline: 'Let me guide you through the approval process.',
+    label: 'Booking & approval',
+    tagline: 'Manager approval, policy triggers, and how to phrase a compliant request.',
     color: 'text-violet-700',
     bgColor: 'bg-violet-50',
     borderColor: 'border-violet-200',
@@ -51,8 +52,8 @@ const STAGE_CONFIG: Record<TravelStageId, StageConfig> = {
     ],
   },
   travel: {
-    label: 'Traveling',
-    tagline: "You're on the move. I'll keep it brief.",
+    label: 'On trip',
+    tagline: 'Short answers while you are in transit — delays, contacts, and day-of next steps.',
     color: 'text-emerald-700',
     bgColor: 'bg-emerald-50',
     borderColor: 'border-emerald-200',
@@ -65,8 +66,8 @@ const STAGE_CONFIG: Record<TravelStageId, StageConfig> = {
     ],
   },
   return: {
-    label: 'Return',
-    tagline: "Welcome back. Let's close out your trip.",
+    label: 'Post-trip wrap-up',
+    tagline: 'Expenses, follow-ups, and a clean handoff after you are back.',
     color: 'text-orange-700',
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
@@ -105,6 +106,7 @@ function newId() {
 
 export default function StageCopilotChat() {
   const { stage } = useTravelStage();
+  const searchParams = useSearchParams();
   const config = STAGE_CONFIG[stage];
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -112,6 +114,11 @@ export default function StageCopilotChat() {
   const [incidentDetected, setIncidentDetected] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const pre = searchParams.get('prefill') || searchParams.get('q');
+    if (pre) setInput(pre);
+  }, [searchParams]);
 
   // Reset chat when stage changes
   useEffect(() => {
@@ -305,7 +312,7 @@ export default function StageCopilotChat() {
           </div>
         )}
 
-        {incidentDetected && stage !== 'issues' && (
+        {incidentDetected && stage !== 'travel' && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-center gap-2 text-sm text-amber-800">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
             <span>

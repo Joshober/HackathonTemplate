@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { api, TRAVEL_ACTIVE_TEAM_STORAGE_KEY, type Item, type TravelMetadata, type ParsedTripDocument } from '@/lib/api';
 import { ChevronDown } from 'lucide-react';
 import OpportunityCard from '@/components/travel/OpportunityCard';
@@ -20,6 +21,7 @@ import PostTripFollowUpsPanel from '@/components/travel/workflow/PostTripFollowU
 import DocumentUploadPanel from '@/components/travel/DocumentUploadPanel';
 import TripContextCard from '@/components/travel/TripContextCard';
 import TravelProactiveBanner from '@/components/travel/home/TravelProactiveBanner';
+import HomeCommandCenter from '@/components/travel/home/HomeCommandCenter';
 
 function statusBadge(status: TravelOpportunityStatus | undefined) {
   const s = status || 'draft';
@@ -41,7 +43,8 @@ function statusBadge(status: TravelOpportunityStatus | undefined) {
 }
 
 export default function TravelHomeBody({ user }: { user: User }) {
-  const { stage } = useTravelStage();
+  const { stage, setStage } = useTravelStage();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<Item[]>([]);
   const [teamApprovedItems, setTeamApprovedItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +79,21 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
   const travelItems = useMemo(() => items.filter(isTravelItem), [items]);
   const voterEmail = user.email?.trim() || '';
+
+  const commandCenter = (
+    <HomeCommandCenter
+      travelItems={travelItems}
+      activeTeamId={activeTeamId}
+      parsedDoc={parsedDoc}
+      stage={stage}
+    />
+  );
+
+  useEffect(() => {
+    if (searchParams.get('focus') === 'upload') {
+      setStage('plan');
+    }
+  }, [searchParams, setStage]);
 
   useEffect(() => {
     refresh();
@@ -307,8 +325,9 @@ export default function TravelHomeBody({ user }: { user: User }) {
   if (stage === 'plan') {
     return (
       <div className="space-y-4">
+        {commandCenter}
         {/* Document Intelligence — always show at top of plan stage */}
-        <div className="space-y-3">
+        <div className="space-y-3" id="trip-doc-upload">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Your trip</h2>
             <p className="text-sm text-gray-500 mt-0.5">
@@ -334,6 +353,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
     return (
       <div className="space-y-4">
+        {commandCenter}
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Approval status</h2>
           <p className="text-sm text-travel-muted mt-1">Reviewers come from your active team on the Team tab.</p>
@@ -491,6 +511,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
     return (
       <div className="space-y-6">
+        {commandCenter}
         {/* Proactive travel banner */}
         <TravelProactiveBanner parsedDoc={parsedDoc} travelItems={travelItems} />
 
@@ -567,6 +588,7 @@ export default function TravelHomeBody({ user }: { user: User }) {
 
   return (
     <div className="space-y-4">
+      {commandCenter}
       <PostTripFollowUpsPanel items={travelItems} onSaved={refresh} />
       <ReturnStagePanel user={user} />
     </div>

@@ -24,7 +24,10 @@ function extractTextFromPdf(file: File): Promise<string> {
         for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          text += content.items.map((item: { str?: string }) => item.str ?? '').join(' ') + '\n';
+          text +=
+            content.items
+              .map((item) => ('str' in item && typeof item.str === 'string' ? item.str : ''))
+              .join(' ') + '\n';
         }
         resolve(text);
       } catch (err) {
