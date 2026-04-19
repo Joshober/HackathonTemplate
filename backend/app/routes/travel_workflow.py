@@ -10,6 +10,13 @@ from flask import Blueprint, jsonify, request
 
 from app.db.mongodb import get_db
 from app.routes.auth_backend import require_auth
+from app.services.travel_chat_context import (
+    build_trip_context,
+    get_document_context,
+    get_trip_ai_sources,
+    get_trip_contacts,
+    get_trip_reminders,
+)
 
 bp = Blueprint("travel_workflow", __name__)
 
@@ -260,6 +267,48 @@ def _privacy_meta() -> dict[str, Any]:
     }
 
 
+def _detect_trip_intent(message: str, stage: str | None = None) -> dict[str, Any]:
+    text = (message or "").strip().lower()
+    stage_norm = (stage or "").strip().lower()
+    rules = [
+        (
+            "requirements",
+            ("need", "missing", "requirement", "passport", "visa", "eta", "document"),
+            "Travel requirements, documents, or readiness question.",
+        ),
+        (
+            "approval",
+            ("approval", "approve", "manager", "policy", "rejected", "denied"),
+            "Approval status, policy fit, or approver workflow question.",
+        ),
+        (
+            "incident",
+            ("delay", "delayed", "canceled", "cancelled", "missed connection", "stranded", "hotel issue", "emergency"),
+            "Active disruption or urgent trip issue.",
+        ),
+        (
+            "followup",
+            ("expense", "follow-up", "follow up", "closeout", "feedback", "receipt"),
+            "Post-trip task or closure question.",
+        ),
+        (
+            "contacts",
+            ("contact", "call", "phone", "who do i contact", "support"),
+            "Support-routing question.",
+        ),
+    ]
+    for intent, terms, reason in rules:
+        if any(term in text for term in terms):
+            return {"intent": intent, "confidence": 0.92, "reason": reason}
+    if stage_norm == "approve":
+        return {"intent": "approval", "confidence": 0.58, "reason": "Approve stage default routing."}
+    if stage_norm == "travel":
+        return {"intent": "incident", "confidence": 0.54, "reason": "Travel stage default routing."}
+    if stage_norm == "return":
+        return {"intent": "followup", "confidence": 0.54, "reason": "Return stage default routing."}
+    return {"intent": "general", "confidence": 0.4, "reason": "No stronger keyword signal found."}
+
+
 @bp.route("/travel/checklist/generate", methods=["POST"])
 @require_auth
 def generate_checklist(user_id):
@@ -343,6 +392,96 @@ def generate_checklist(user_id):
             "summary": "Checklist generated from current trip metadata and policy guardrails.",
             "riskFlags": risk_flags,
             "tradeoffs": tradeoffs,
+            "privacy": _privacy_meta(),
+        }
+    ), 200
+
+
+@bp.route("/copilot/classify-intent", methods=["POST"])
+@require_auth
+def classify_copilot_intent(user_id):
+    del user_id
+    data = request.get_json(silent=True) or {}
+    message = str(data.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "message is required"}), 400
+    stage = str(data.get("journeyStage") or data.get("stage") or "").strip().lower() or None
+    return jsonify(_detect_trip_intent(message, stage)), 200
+
+
+@bp.route("/copilot/requirements-check", methods=["POST"])
+@require_auth
+def copilot_requirements_check(user_id):
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+
+    item = None
+    item_id = str(data.get("itemId") or data.get("tripId") or "").strip()
+    if item_id:
+        item = _load_item_for_user(db, user_id, item_id)
+        if item is None:
+            return jsonify({"error": "tripId not found for user"}), 404
+
+    base = _base_trip_fields(data, item)
+    destination = base["destination"]
+    start = base["startDate"]
+    end = base["endDate"]
+    required: list[str] = []
+    missing: list[str] = []
+    warnings: list[str] = []
+
+    if destination:
+        required.append("Destination confirmed")
+    else:
+        missing.append("Destination")
+    if start and end:
+        required.append("Travel dates confirmed")
+    else:
+        missing.append("Complete travel dates")
+
+    doc_ctx = get_document_context(db, user_id) or {}
+    docs = doc_ctx.get("documents") if isinstance(doc_ctx.get("documents"), list) else []
+    visa_hits: list[str] = []
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("tripSummary"):
+            required.append("Parsed itinerary available")
+        for vr in doc.get("visaRequirements") or []:
+            if isinstance(vr, dict):
+                requirement = str(vr.get("requirement") or "").strip()
+                country = str(vr.get("country") or "").strip()
+                if requirement:
+                    visa_hits.append(f"{country}: {requirement}" if country else requirement)
+        if doc.get("policyHighlights"):
+            required.append("Policy rules extracted")
+
+    if visa_hits:
+        required.extend(visa_hits[:4])
+    elif destination and re.search(r"\b(london|uk|europe|asia|mexico|canada|international)\b", destination.lower()):
+        warnings.append("International destination detected but no parsed visa or ETA requirement was found.")
+
+    if not docs:
+        missing.append("Parsed itinerary or policy document")
+        warnings.append("Upload and parse travel documents for grounded requirements.")
+
+    if base["costEstimate"] is None:
+        warnings.append("Cost estimate is missing, so approval guidance may be incomplete.")
+
+    next_step = (
+        "Upload and parse your itinerary document."
+        if not docs
+        else "Fill the highest-impact missing trip field before requesting approval."
+        if missing
+        else "Review the requirement list and complete the open traveler actions."
+    )
+
+    return jsonify(
+        {
+            "requiredItems": required[:8],
+            "missingItems": missing[:8],
+            "warnings": warnings[:6],
+            "nextStep": next_step,
             "privacy": _privacy_meta(),
         }
     ), 200
@@ -598,3 +737,43 @@ def escalate_issue(user_id):
             "privacy": _privacy_meta(),
         }
     ), 200
+
+
+@bp.route("/trips/<trip_id>/context", methods=["GET"])
+@require_auth
+def get_trip_context(user_id, trip_id):
+    db = get_db()
+    ctx = build_trip_context(db, user_id, trip_id)
+    if ctx is None:
+        return jsonify({"error": "tripId not found for user"}), 404
+    return jsonify(ctx), 200
+
+
+@bp.route("/trips/<trip_id>/contacts", methods=["GET"])
+@require_auth
+def trip_contacts(user_id, trip_id):
+    db = get_db()
+    payload = get_trip_contacts(db, user_id, trip_id)
+    if payload is None:
+        return jsonify({"error": "tripId not found for user"}), 404
+    return jsonify(payload), 200
+
+
+@bp.route("/trips/<trip_id>/reminders", methods=["GET"])
+@require_auth
+def trip_reminders(user_id, trip_id):
+    db = get_db()
+    payload = get_trip_reminders(db, user_id, trip_id)
+    if payload is None:
+        return jsonify({"error": "tripId not found for user"}), 404
+    return jsonify(payload), 200
+
+
+@bp.route("/audit/trips/<trip_id>/ai-sources", methods=["GET"])
+@require_auth
+def trip_ai_sources(user_id, trip_id):
+    db = get_db()
+    payload = get_trip_ai_sources(db, user_id, trip_id)
+    if payload is None:
+        return jsonify({"error": "tripId not found for user"}), 404
+    return jsonify(payload), 200

@@ -11,6 +11,11 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  meta?: {
+    nextStep?: string;
+    intent?: string;
+    sourcesUsed?: Array<{ sourceType: string; label: string }>;
+  };
 }
 
 interface StageConfig {
@@ -153,6 +158,14 @@ export default function StageCopilotChat() {
         role: 'assistant',
         content: result.reply || 'Sorry, I could not generate a response.',
         timestamp: new Date(),
+        meta: {
+          nextStep: result.nextStep,
+          intent: result.intent?.intent,
+          sourcesUsed: (result.sourcesUsed || []).slice(0, 3).map((source) => ({
+            sourceType: source.sourceType,
+            label: source.label,
+          })),
+        },
       };
       setMessages((prev) => [...prev, assistantMessage]);
 
@@ -279,14 +292,35 @@ export default function StageCopilotChat() {
                 <Bot className="w-3.5 h-3.5" />
               )}
             </div>
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-gray-900 text-white rounded-tr-sm'
-                  : `bg-white border border-gray-100 text-gray-800 rounded-tl-sm shadow-sm`
-              }`}
-            >
-              {formatContent(msg.content)}
+            <div className="max-w-[85%]">
+              <div
+                className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  msg.role === 'user'
+                    ? 'bg-gray-900 text-white rounded-tr-sm'
+                    : `bg-white border border-gray-100 text-gray-800 rounded-tl-sm shadow-sm`
+                }`}
+              >
+                {formatContent(msg.content)}
+              </div>
+              {msg.role === 'assistant' && msg.meta && (msg.meta.nextStep || msg.meta.sourcesUsed?.length || msg.meta.intent) ? (
+                <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2">
+                  {msg.meta.intent ? (
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                      Intent: <span className="font-semibold text-gray-700">{msg.meta.intent.replace(/_/g, ' ')}</span>
+                    </p>
+                  ) : null}
+                  {msg.meta.nextStep ? (
+                    <p className="mt-1 text-xs text-gray-700">
+                      <strong>Next step:</strong> {msg.meta.nextStep}
+                    </p>
+                  ) : null}
+                  {msg.meta.sourcesUsed?.length ? (
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      Sources: {msg.meta.sourcesUsed.map((source) => source.label).join(', ')}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         ))}
@@ -305,7 +339,7 @@ export default function StageCopilotChat() {
           </div>
         )}
 
-        {incidentDetected && stage !== 'issues' && (
+        {incidentDetected && stage !== 'travel' && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-center gap-2 text-sm text-amber-800">
             <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
             <span>

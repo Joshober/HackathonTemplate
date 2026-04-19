@@ -21,11 +21,14 @@ from app.services.library import get_library_count as _get_library_count
 from app.routes.auth_backend import require_auth
 from app.prompts.travel_copilot import system_preamble_for_mode, validate_assistant_mode
 from app.services.travel_chat_context import (
+    build_trip_context,
     build_travel_chat_context,
     context_used_flags,
     get_document_context,
+    get_trip_ai_sources,
     suggested_actions,
 )
+from app.routes.travel_workflow import _detect_trip_intent
 from app.config.openrouter_models import DEFAULT_CHAT_MODEL, DEFAULT_VISION_MODEL, DEFAULT_VIDEO_MODEL
 
 bp = Blueprint('chat', __name__)
@@ -958,6 +961,7 @@ def chat_copilot(user_id):
             return jsonify({'error': str(ve)}), 400
         session_id = (data.get('sessionId') or '').strip() or None
         current_page = (data.get('currentPage') or '').strip() or None
+        trip_id = (data.get('tripId') or '').strip() or None
         ui_state = data.get('uiState') if isinstance(data.get('uiState'), dict) else None
         personality = (data.get('personality') or '').strip() or None
         journey_stage_raw = (ui_state or {}).get('journeyStage') if isinstance(ui_state, dict) else None
@@ -982,14 +986,30 @@ def chat_copilot(user_id):
         from app.db.mongodb import get_db
 
         db = get_db()
-        ctx = build_travel_chat_context(
-            db,
-            user_id,
-            session_id=session_id,
-            current_page=current_page,
-            ui_state=ui_state,
+        ctx = (
+            build_trip_context(
+                db,
+                user_id,
+                trip_id,
+                session_id=session_id,
+                current_page=current_page,
+                ui_state=ui_state,
+            )
+            if trip_id
+            else None
         )
+        if ctx is None:
+            ctx = build_travel_chat_context(
+                db,
+                user_id,
+                session_id=session_id,
+                current_page=current_page,
+                ui_state=ui_state,
+                focused_trip_id=(ui_state or {}).get('focusedTripId') if isinstance(ui_state, dict) else None,
+            )
         ctx_json = json.dumps(ctx, ensure_ascii=False)
+        ai_sources = get_trip_ai_sources(db, user_id, trip_id) if trip_id else None
+        detected_intent = _detect_trip_intent(message, journey_stage)
 
         # Inject parsed document context if available
         doc_ctx = get_document_context(db, user_id)
@@ -1076,17 +1096,37 @@ def chat_copilot(user_id):
         escalation_recommended = incident_detected and any(
             k in lower_msg for k in ('cancelled', 'canceled', 'missed connection', 'stranded', 'emergency')
         )
+        next_step = None
+        if detected_intent["intent"] == "requirements":
+            gaps = cq.get('gaps') if isinstance(cq.get('gaps'), list) else []
+            next_step = (
+                f"Add this missing trip detail first: {gaps[0]}."
+                if gaps
+                else "Run a requirements check and confirm the remaining traveler actions."
+            )
+        elif detected_intent["intent"] == "approval":
+            next_step = "Review approval reasons and prepare the request with destination, dates, and rough cost."
+        elif detected_intent["intent"] == "incident":
+            next_step = "Triage the disruption and escalate immediately if the trip is blocked."
+        elif detected_intent["intent"] == "followup":
+            next_step = "Generate follow-up tasks and close the open compliance items."
+        elif detected_intent["intent"] == "contacts":
+            next_step = "Open the trip contacts list and route to the right support channel."
         return jsonify(
             {
                 'reply': assistant_message,
                 'mode': assistant_mode,
                 'stage': journey_stage,
+                'tripId': trip_id,
+                'intent': detected_intent,
                 'incidentDetected': incident_detected,
                 'escalationRecommended': escalation_recommended,
                 'privacyApplied': bool(privacy.get('redactionApplied') is True),
                 'contextUsed': context_used_flags(ctx),
                 'contextQuality': cq,
                 'suggestedActions': suggested_actions(ctx, assistant_mode),
+                'sourcesUsed': (ai_sources or {}).get('sources') or [],
+                'nextStep': next_step,
                 'usage': usage_merged,
             }
         ), 200

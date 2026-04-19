@@ -489,12 +489,16 @@ export interface TravelCopilotResponse {
   reply: string;
   mode: string;
   stage?: 'plan' | 'approve' | 'travel' | 'return';
+  tripId?: string;
+  intent?: { intent: string; confidence: number; reason?: string };
   incidentDetected?: boolean;
   escalationRecommended?: boolean;
   privacyApplied?: boolean;
   contextUsed: Record<string, boolean>;
   contextQuality?: TravelCopilotContextQuality;
   suggestedActions: TravelCopilotSuggestedAction[];
+  sourcesUsed?: Array<{ sourceType: string; label: string; documentType?: string; fields?: string[] }>;
+  nextStep?: string;
   usage?: Record<string, unknown>;
 }
 
@@ -1086,6 +1090,40 @@ export const api = {
     });
   },
 
+  async classifyCopilotIntent(body: {
+    message: string;
+    journeyStage?: string;
+  }): Promise<{
+    intent: string;
+    confidence: number;
+    reason: string;
+  }> {
+    return fetchWithAuth('/api/copilot/classify-intent', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  async copilotRequirementsCheck(body: {
+    itemId?: string;
+    tripId?: string;
+    destination?: string;
+    startDate?: string;
+    endDate?: string;
+    costEstimate?: number;
+  }): Promise<{
+    requiredItems: string[];
+    missingItems: string[];
+    warnings: string[];
+    nextStep: string;
+    privacy: TravelPrivacyMeta;
+  }> {
+    return fetchWithAuth('/api/copilot/requirements-check', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
   async prepareTravelApproval(body: {
     itemId?: string;
     destination?: string;
@@ -1150,6 +1188,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  },
+
+  async getTripContext(tripId: string): Promise<Record<string, unknown>> {
+    return fetchWithAuth(`/api/trips/${encodeURIComponent(tripId)}/context`);
+  },
+
+  async getTripContacts(tripId: string): Promise<{
+    tripId: string;
+    contacts: Array<{ type: string; label: string; value: string; availability?: string }>;
+  }> {
+    return fetchWithAuth(`/api/trips/${encodeURIComponent(tripId)}/contacts`);
+  },
+
+  async getTripReminders(tripId: string): Promise<{
+    tripId: string;
+    reminders: Array<{ id: string; label: string; type: string; status: string; dueDate?: string }>;
+  }> {
+    return fetchWithAuth(`/api/trips/${encodeURIComponent(tripId)}/reminders`);
+  },
+
+  async getTripAiSources(tripId: string): Promise<{
+    tripId: string;
+    sources: Array<{ sourceType: string; label: string; documentType?: string; fields?: string[] }>;
+  }> {
+    return fetchWithAuth(`/api/audit/trips/${encodeURIComponent(tripId)}/ai-sources`);
   },
 
   async getAdminMe(): Promise<AdminMeResponse> {
@@ -1346,19 +1409,15 @@ export const api = {
     message: string;
     assistantMode?: string;
     travelStage?: string;
+    tripId?: string;
     messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
     sessionId?: string;
     uiState?: Record<string, unknown>;
-  }): Promise<{
-    reply: string;
-    contextUsed?: Record<string, boolean>;
-    suggestedActions?: Array<{ label: string; prompt: string }>;
-    incidentDetected?: boolean;
-    privacy?: Record<string, unknown>;
-  }> {
+  }): Promise<TravelCopilotResponse> {
     const body = {
       message: params.message,
       assistantMode: params.assistantMode ?? 'trip_companion',
+      tripId: params.tripId,
       messages: params.messages ?? [],
       sessionId: params.sessionId,
       uiState: {
@@ -1370,6 +1429,6 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
+    }) as Promise<TravelCopilotResponse>;
   },
 };
