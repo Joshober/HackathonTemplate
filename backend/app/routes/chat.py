@@ -952,8 +952,17 @@ def chat_copilot(user_id):
     try:
         data = request.get_json(silent=True) or {}
         message = (data.get('message') or '').strip()
-        if not message:
-            return jsonify({'error': 'message is required'}), 400
+        attachment_context = (data.get('attachmentContext') or '').strip()
+        images_raw = data.get('images')
+        images_b64 = []
+        if isinstance(images_raw, list):
+            for x in images_raw[:6]:
+                if isinstance(x, str) and x.strip():
+                    images_b64.append(x.strip())
+        has_images = len(images_b64) > 0
+
+        if not message and not attachment_context and not has_images:
+            return jsonify({'error': 'message or attachments are required'}), 400
 
         try:
             assistant_mode = validate_assistant_mode(data.get('assistantMode') or data.get('mode'))
@@ -1049,7 +1058,17 @@ def chat_copilot(user_id):
             + "\n\n---\n\n"
             + ASSISTANT_WEB_SYSTEM
         )
-        messages = clean_hist + [{'role': 'user', 'content': message}]
+        user_turn = message
+        if attachment_context:
+            excerpt = attachment_context[:24000]
+            block = f"\n\n---\nUploaded file excerpts (this message):\n{excerpt}"
+            user_turn = (message + block).strip() if message else (
+                "The user attached files for this question (no separate text):\n" + excerpt
+            ).strip()
+
+        messages = clean_hist + [{'role': 'user', 'content': user_turn}]
+        if has_images:
+            messages = _build_messages_with_images(messages, images_b64)
 
         api_key = os.getenv('OPENROUTER_API_KEY')
         if not api_key:
@@ -1061,7 +1080,10 @@ def chat_copilot(user_id):
             'HTTP-Referer': request.headers.get('Origin', ''),
             'X-Title': 'Travel Copilot',
         }
-        model = (data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL).strip()
+        if has_images:
+            model = (data.get('model') or os.getenv('OPENROUTER_CHAT_VISION_MODEL') or DEFAULT_VISION_MODEL).strip()
+        else:
+            model = (data.get('model') or os.getenv('OPENROUTER_CHAT_MODEL') or DEFAULT_CHAT_MODEL).strip()
 
         assistant_message, usage_merged = _chat_with_web_search(
             messages,
@@ -1075,7 +1097,7 @@ def chat_copilot(user_id):
 
         cq = ctx.get('contextQuality') if isinstance(ctx.get('contextQuality'), dict) else {}
         privacy = ctx.get('privacy') if isinstance(ctx.get('privacy'), dict) else {}
-        lower_msg = message.lower()
+        lower_msg = user_turn.lower()
         incident_detected = any(
             k in lower_msg
             for k in (

@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { api, type ParsedTripDocument } from '@/lib/api';
+import { extractTextFromFile } from '@/lib/extractTravelFileText';
 import { Upload, FileText, CheckCircle, AlertCircle, Loader2, X } from 'lucide-react';
 
 interface Props {
@@ -10,60 +11,6 @@ interface Props {
 }
 
 const STORAGE_KEY = 'tripready_parsed_doc';
-
-function extractTextFromPdf(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist');
-        GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
-        const typedArray = new Uint8Array(e.target?.result as ArrayBuffer);
-        const pdf = await getDocument({ data: typedArray }).promise;
-        let text = '';
-        for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          text += content.items.map((item) => ('str' in item ? item.str ?? '' : '')).join(' ') + '\n';
-        }
-        resolve(text);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-function extractTextFromDocx(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const mammoth = await import('mammoth');
-        const result = await mammoth.extractRawText({ arrayBuffer: e.target?.result as ArrayBuffer });
-        resolve(result.value);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-function extractTextFromFile(file: File): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase();
-  if (ext === 'pdf') return extractTextFromPdf(file);
-  if (ext === 'docx') return extractTextFromDocx(file);
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => resolve(e.target?.result as string);
-    reader.onerror = reject;
-    reader.readAsText(file);
-  });
-}
 
 type UploadStatus = 'idle' | 'extracting' | 'parsing' | 'done' | 'error';
 

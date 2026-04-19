@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type TeamMessage } from '@/lib/api';
 import type { User } from '@/lib/auth';
-import { MessageCircle, Send } from 'lucide-react';
+import { MessageCircle, Send, Sparkles } from 'lucide-react';
+
+/** True if the message should ping the travel assistant (@AI / @assistant). */
+function messageInvokesAssistant(text: string): boolean {
+  const t = text.trim();
+  return /(?:^|\s)@ai\b/i.test(t) || /(?:^|\s)@assistant\b/i.test(t);
+}
 
 export default function TeamChatPanel({
   teamId,
@@ -41,7 +47,6 @@ export default function TeamChatPanel({
   const [pending, setPending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [askAssistant, setAskAssistant] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<TeamSystemEvent | null>(null);
   const [selectedAvailabilityEvent, setSelectedAvailabilityEvent] = useState<TeamSystemEvent | null>(null);
   const [decisionBusy, setDecisionBusy] = useState<null | 'approve' | 'veto'>(null);
@@ -49,6 +54,7 @@ export default function TeamChatPanel({
   const [availabilityEnd, setAvailabilityEnd] = useState('');
   const [availabilitySaving, setAvailabilitySaving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -88,7 +94,7 @@ export default function TeamChatPanel({
       setInput('');
       try {
         const { userMessage, assistantMessage } = await api.sendTeamMessage(teamId, trimmed, {
-          invokeAssistant: true, // simplified for new UI
+          invokeAssistant: messageInvokesAssistant(trimmed),
         });
         setMessages((prev) =>
           assistantMessage ? [...prev, userMessage, assistantMessage] : [...prev, userMessage]
@@ -290,18 +296,52 @@ export default function TeamChatPanel({
       {err ? <p className="text-xs text-red-500 px-5 text-center mt-2">{err}</p> : null}
 
       {/* Input Area */}
-      <div className="shrink-0 p-4 pb-6 bg-white shrink">
+      <div className="shrink-0 p-4 pb-6 bg-white shrink space-y-2">
+        <p className="text-[11px] text-gray-500 px-1">
+          Include <span className="font-semibold text-gray-700">@AI</span> (or{' '}
+          <span className="font-semibold text-gray-700">@assistant</span>) anywhere in your message to get a travel
+          copilot reply for the whole team.
+        </p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             send(input);
           }}
-          className="flex items-center gap-2 bg-[#f8f9fa] outline outline-1 outline-gray-100 rounded-full pl-5 pr-2 py-1.5 focus-within:outline-blue-500 transition-all shadow-sm max-w-full overflow-hidden"
+          className="flex items-center gap-2 bg-[#f8f9fa] outline outline-1 outline-gray-100 rounded-full pl-3 pr-2 py-1.5 focus-within:outline-blue-500 transition-all shadow-sm max-w-full overflow-hidden"
         >
+          <button
+            type="button"
+            onClick={() => {
+              const el = inputRef.current;
+              if (!el) {
+                setInput((v) => (v ? `${v} @AI ` : '@AI '));
+                return;
+              }
+              const start = el.selectionStart ?? input.length;
+              const end = el.selectionEnd ?? input.length;
+              const before = input.slice(0, start);
+              const after = input.slice(end);
+              const insert = before.length > 0 && !/\s$/.test(before) ? ' @AI ' : '@AI ';
+              const next = `${before}${insert}${after}`;
+              setInput(next);
+              requestAnimationFrame(() => {
+                el.focus();
+                const pos = start + insert.length;
+                el.setSelectionRange(pos, pos);
+              });
+            }}
+            disabled={pending}
+            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40"
+            title="Insert @AI"
+            aria-label="Insert @AI mention for travel assistant"
+          >
+            <Sparkles className="h-4 w-4" />
+          </button>
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type a message"
+            placeholder="Team chat — add @AI for travel help…"
             className="flex-1 bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none min-w-0"
             disabled={pending}
           />

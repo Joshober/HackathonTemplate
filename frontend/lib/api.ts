@@ -1413,8 +1413,12 @@ export const api = {
     messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
     sessionId?: string;
     uiState?: Record<string, unknown>;
+    /** Extracted text from PDF / DOCX / TXT uploaded in this turn (server merges into prompt). */
+    attachmentContext?: string;
+    /** JPEG base64 strings for vision (PNG etc. should be converted client-side). */
+    images?: string[];
   }): Promise<TravelCopilotResponse> {
-    const body = {
+    const body: Record<string, unknown> = {
       message: params.message,
       assistantMode: params.assistantMode ?? 'trip_companion',
       tripId: params.tripId,
@@ -1425,6 +1429,8 @@ export const api = {
         journeyStage: params.travelStage ?? 'plan',
       },
     };
+    if (params.attachmentContext?.trim()) body.attachmentContext = params.attachmentContext.trim();
+    if (params.images?.length) body.images = params.images;
     return fetchWithAuth('/api/chat/copilot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

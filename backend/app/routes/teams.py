@@ -28,6 +28,27 @@ MAX_TEAM_CITY_PRESETS = 20
 MAX_MANUAL_AVAILABILITY_WINDOWS = 24
 
 
+def _team_message_invokes_assistant(content: str, invoke_explicit) -> bool:
+    """
+    Whether to run the travel assistant for this team message.
+
+    - invokeAssistant true from client: always run.
+    - invokeAssistant false: run only if the text contains @AI or @assistant
+      (after line start or whitespace; case-insensitive).
+    - invokeAssistant omitted: same as false (mention-only unless overridden).
+    """
+    text = (content or '').strip()
+    has_mention = bool(
+        re.search(r'(?:^|\s)@ai\b', text, re.IGNORECASE)
+        or re.search(r'(?:^|\s)@assistant\b', text, re.IGNORECASE)
+    )
+    if invoke_explicit is True:
+        return True
+    if invoke_explicit is False:
+        return has_mention
+    return has_mention
+
+
 def _ensure_indexes(db):
     global _indexes_ensured
     if _indexes_ensured:
@@ -388,10 +409,7 @@ def post_message(user_id, team_id):
     if not content:
         return jsonify({'error': 'content is required'}), 400
 
-    invoke_raw = data.get('invokeAssistant')
-    invoke_assistant = True if invoke_raw is None else bool(invoke_raw)
-    if re.match(r'^\s*@assistant\b', content, re.IGNORECASE) or re.match(r'^\s*@ai\b', content, re.IGNORECASE):
-        invoke_assistant = True
+    invoke_assistant = _team_message_invokes_assistant(content, data.get('invokeAssistant'))
 
     now = datetime.utcnow()
     author_display = _display_name_for_user(db, user_id)
